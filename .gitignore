@@ -4,6 +4,7 @@
 /docs/Manifest*.toml
 /test/Manifest*.toml
 /test/jet/Manifest*.toml
+/test/contracts/Manifest*.toml
 /benchmark/Manifest*.toml
 # lanes and agent scratch
 /.worktrees/
@@ -11,6 +12,9 @@
 /.superpowers/
 /.claude/worktrees/
 /.claude/settings.local.json
+# machine-local settings and what gen.jl renders from them (private paths are never committed)
+/.agents/factory.local.toml
+/.claude/hooks/read-only-roots.txt
 # test and coverage output: never at the root
 *.jl.cov
 *.jl.*.cov

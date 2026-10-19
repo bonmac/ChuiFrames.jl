@@ -1,4 +1,4 @@
-<!-- vendored contract: coordinator commit 16b9e6a, contracts/chui-types.md, copied 2026-10-19 -->
+<!-- vendored contract: coordinator commit ff0100a, contracts/chui-types.md, copied 2026-10-19 -->
 # Contract: chui-types (v0)
 
 > **Binding since 2026-10-19** (ADR-0002/0004/0007/0009/0010 Accepted at the L0 checkpoint).

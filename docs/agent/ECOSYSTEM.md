@@ -1,4 +1,4 @@
-<!-- ecosystem rules: coordinator commit 16b9e6a, prompts/common.md, copied 2026-10-19 -->
+<!-- ecosystem rules: coordinator commit ff0100a, prompts/common.md, copied 2026-10-19 -->
 # Chui ecosystem: shared rules for the lead and every agent
 
 The lead session and every subagent or teammate it dispatches read this file before starting work. The lead copies it into each repo as `docs/agent/ECOSYSTEM.md` and keeps the copies in sync; each repo's copy carries a version stamp at the top.

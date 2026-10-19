@@ -1,4 +1,4 @@
-<!-- package brief: coordinator commit 16b9e6a, prompts/30-chui-frames.md, copied 2026-10-19 -->
+<!-- package brief: coordinator commit ff0100a, prompts/30-chui-frames.md, copied 2026-10-19 -->
 # Package brief: ChuiFrames.jl (data frames)
 
 The lead session hands this brief to the agents working on **ChuiFrames.jl**.
