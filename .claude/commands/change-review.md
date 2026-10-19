@@ -11,7 +11,14 @@ Review target: $ARGUMENTS (empty means the current branch)
    - `git diff --stat $(git merge-base HEAD main)..HEAD`
    - `julia scripts/dod.jl --base main` (definition of done)
    - `julia scripts/ci.jl guards`
+   - for a worktree lane: `scripts/lane audit <lane> --reported <file>`, where the file is the
+     changed-file list the lane reported (one path per line). It fails when the diff touches a
+     path outside the lane's owned globs (`scripts/lane new <lane> --owns ...`) or differs from
+     the reported list. A lane created without `--owns` fails it: pass `--owns` to audit.
 3. Wait for the reviewer's FINAL report. A preview is not a verdict.
 4. Check the findings yourself before acting on them: each needs file:line and evidence.
-5. Output: verdict (approve | changes requested), findings by severity, DoD result, and which
-   checks did not run and why. Close the reviewer agent once its report is read.
+   Every blocker carries a `Reproducer:` command; it is closed only when the reviewer quotes that
+   command RED before the fix and GREEN after. Same for a cross-repo request.
+5. Output: verdict (approve | changes requested), findings by severity (each with its
+   Reproducer and its red/green runs), DoD result, the lane audit, and which checks did not run
+   and why (a `NOT RUN (waiting)` CI job did not run). Close the reviewer agent once its report is read.

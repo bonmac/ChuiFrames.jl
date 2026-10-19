@@ -1,4 +1,4 @@
-<!-- ecosystem rules: coordinator commit 275e879, prompts/common.md, copied 2026-10-19 -->
+<!-- ecosystem rules: coordinator commit 16b9e6a, prompts/common.md, copied 2026-10-19 -->
 # Chui ecosystem: shared rules for the lead and every agent
 
 The lead session and every subagent or teammate it dispatches read this file before starting work. The lead copies it into each repo as `docs/agent/ECOSYSTEM.md` and keeps the copies in sync; each repo's copy carries a version stamp at the top.
@@ -33,7 +33,7 @@ The lead session and every subagent or teammate it dispatches read this file bef
    - PrecompileTools workloads, with measured time-to-first-x (TTFX, the delay before the first result after loading);
    - JET.jl type-stability checks, Aqua.jl, and ExplicitImports.jl;
    - Documenter.jl docs with doctests;
-   - JuliaFormatter, using the style recorded in the ecosystem ADR.
+   - Runic.jl as the formatter (zero-config; ADR-0007, decided at the L0 checkpoint).
 
 ## 2. Independence: each repo stands alone
 
@@ -51,8 +51,8 @@ The lead session and every subagent or teammate it dispatches read this file bef
 
 The lead builds this once as a versioned template (`<root>/factory/`). Each repo vendors a copy and records the template version it uses. A `sync-factory` script pulls updates deliberately and shows the diff, so repos can evolve separately.
 
-The template is adapted from three local projects; meta's ADR-0001 records what was kept and what was changed.
-- **Base: `~/reference-project-a`, the best-defined process.**
+The template is adapted from three private local projects, called here reference projects A, B and C; meta's ADR-0001 records what was kept and what was changed. Their paths are machine-local (the gitignored `.agents/factory.local.toml`).
+- **Base: reference project A, the best-defined process.**
   - The flow is Classify → Design → Plan → Execute → Verify → Review → Finish, run through `superpowers:*` skills.
   - Specs go in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`, and run artifacts in `.superpowers/sdd/<date-slug>/`.
   - ADRs live in `docs/adr/`, starting from `0000-template.md`.
@@ -60,13 +60,13 @@ The template is adapted from three local projects; meta's ADR-0001 records what 
   - A registry-generated agent roster, with commands such as `intake`, `lanes`, `change-review`, `release-check` and `test-changed`.
   - Hooks such as `bash_guard`, `write_guard`, `teammate_idle` and a pre-compact summary.
   - Test tiers, gate tiers, a coverage floor that only rises, and pre-commit guards.
-- **From `~/reference-project-b`:**
+- **From reference project B:**
   - one `.agents/agent-registry.toml` generated into the Claude and Codex agent files, with a `--check` that fails if they drift;
   - per-agent `scorecard` and `output_format`;
   - risk tiers T0–T3 tied to protected paths;
   - lane lifecycle rules: close each lane when done, an idle lane counts as failed, mark simulated work;
   - checks whose limits only tighten; handoff templates; a debt register.
-- **From `~/reference-project-c`:**
+- **From reference project C:**
   - `CLAUDE.md` as the source, with `AGENTS.md` generated from it;
   - adversarial agents (`critic`, `red-team`, `adjudicator`);
   - lane dispatch, close and idle skills, with a cap on open lanes and a lane ledger;
@@ -134,7 +134,7 @@ One Claude Code session, the **lead**, runs the whole effort in the background (
   Its `.gitignore` lists every package folder (`/Chui*.jl/`), so the packages nested inside it remain **separate git repos**.
 - **Boundary:**
   - The lead and every lane write only inside `<root>`.
-  - `~/reference-project-b`, `~/reference-project-a` and `~/reference-project-c` are read-only references.
+  - The three reference projects (§3; machine-local paths in the gitignored `.agents/factory.local.toml`) are read-only references.
   - Everything else is off limits.
 
 - **Repos stay separate:** the root repo, `ChuiCore.jl`, `ChuiTypes.jl` and `ChuiFrames.jl` are each their own git repo, with their own history, remote, CI, version and releases.

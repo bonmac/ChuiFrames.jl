@@ -1,9 +1,8 @@
-<!-- vendored contract: coordinator commit 275e879, contracts/chui-core.md, copied 2026-10-19 -->
+<!-- vendored contract: coordinator commit 16b9e6a, contracts/chui-core.md, copied 2026-10-19 -->
 # Contract: chui-core (v0)
 
-> **DRAFT: not binding.** This contract becomes binding when ADR-0002, ADR-0004, ADR-0007,
-> ADR-0009 and ADR-0010 are Accepted at the L0 ★. Until then no downstream relies on it and its
-> entries may change without a contract ADR (see [README.md](README.md), "Drafts").
+> **Binding since 2026-10-19** (ADR-0002/0004/0007/0009/0010 Accepted at the L0 checkpoint).
+> Stable entries change only through a contract ADR (see [README.md](README.md)).
 
 - **Owner:** ChuiCore. **Consumers:** ChuiTypes, ChuiFrames, and every future Chui package.
 - **Contract version:** v0, describing ChuiCore 0.0.1 (unreleased).
@@ -114,8 +113,9 @@ this a *recommendation* that ChuiCore's own ADR confirms, not a decision. Now th
 
 **Statement.** An *aggregator* `agg` is a value (usually a singleton or small immutable struct)
 that implements four generic functions owned by ChuiCore (ADR-0002 §2, ADR-0009 §5). The name
-`partial` is subject to the PROVISIONAL item "`partial`: protocol vs partial application"; if the
-L0 ★ renames it, this entry is edited before it becomes binding.
+`partial` is final: the user decided at the L0 checkpoint (2026-10-19, ADR-0009 §5) that the
+protocol keeps `partial` and partial application is named `papply` (PROVISIONAL "Composition
+helpers" below).
 
 | Function | Returns | Semantics |
 |---|---|---|
@@ -418,22 +418,13 @@ No IDs and no contract tests. Each item gets an ID when ChuiCore's ADR accepts i
   (E-37), so marking names public needs a version gate: Compat's `@compat public …` (a no-op on
   1.10; ADR-0006, E-06) or `@static if VERSION >= v"1.11" eval(Meta.parse("public …")) end`.
   Downstream code uses qualified names until this is decided.
-- **`partial`: protocol vs partial application** (★ decision item). Brief 10 asks for
-  partial-application helpers; a function `partial(f, args...)` would clash with the protocol's
-  `partial(agg, acc, chunk)` inside ChuiCore itself. Options:
-  (a, recommended) the protocol keeps `partial` (ADR-0009 §5's vocabulary, already in CC-004);
-  partial application is named `papply(f, args...)` (reusing `Base.Fix1`/`Fix2`, and `Base.Fix`
-  from 1.12, where they fit);
-  (b) the protocol function becomes `absorb(agg, acc, chunk)` (or `step!`), freeing `partial` for
-  partial application; CC-004 is edited before it becomes binding.
-  None of `partial`, `papply`, `absorb`, `step!` is exported by Base or Core (E-37).
 - **Typeclass trait encoding.** How `Semigroup`, `Monoid`, `Functor`, `Applicative`, `Monad`,
   `Alternative`, `Foldable`, `Traversable`, `Contravariant`, `Bifunctor`, `Profunctor` and
   `Category`/`Arrow` are encoded as Holy traits, how an instance is declared, and the names of
-  their operations. The monoid's neutral element is proposed as **`neutral(::Type{T})`**
-  (ADR-0009 §5 as amended): `identity` is Base's and CC-010 forbids a new binding of it; `mempty`
-  was considered and rejected as Haskell jargon. Neither `neutral` nor `mempty` is exported by
-  Base or Core (E-37).
+  their operations. *Name decided at the L0 checkpoint (2026-10-19, ADR-0009 §5):* the monoid's
+  neutral element is **`neutral`** (e.g. `neutral(::Type{T})`; the exact signature and trait
+  encoding stay open here). `identity` is Base's and CC-010 forbids a new binding of it; `mempty`
+  was rejected as Haskell jargon. Neither `neutral` nor `mempty` is exported by Base or Core (E-37).
 - **Law kits** (was CC-008). Recommended shape: ChuiCore exports `test_semigroup_laws`,
   `test_monoid_laws`, `test_aggregator_laws` as function stubs whose methods load only in test
   environments (ADR-0007 §2 option (a)); calling convention `test_*_laws(instance, gen; eq = …)`,
@@ -447,8 +438,13 @@ No IDs and no contract tests. Each item gets an ID when ChuiCore's ADR accepts i
   extension of the same binding is not a conflict; verified on 1.10.12 and 1.13.2, E-37);
   `ChuiCore.conflict_banner(io, mod)` prints them; silenced by `CHUI_QUIET_CONFLICTS=1`/`true`;
   each package calls it from `__init__` when `isinteractive()`. Names and switch are open.
-- **Composition helpers:** `pipe`, `curry`, partial application (see the `partial` item),
-  point-free helpers.
+- **Composition helpers:** `pipe`, `curry`, partial application, point-free helpers.
+  *Name decided at the L0 checkpoint (2026-10-19, ADR-0009 §5, option (a)):* partial application
+  is **`papply`**, because the aggregation protocol keeps `partial` (CC-004); rejected: renaming
+  the protocol function to `absorb`/`step!`. `papply`'s signature (e.g. `papply(f, args...)`,
+  reusing `Base.Fix1`/`Fix2`, and `Base.Fix` from 1.12, where they fit) and the other helpers stay
+  PROVISIONAL until ChuiCore's composition ADR. None of `partial`, `papply`, `absorb`, `step!` is
+  exported by Base or Core (E-37).
 - **The transducer substrate API** (`Map`, `Filter`, `MapCat`, `Take`, `Reduced`, `foldxl`,
   `foldxt` in the prototype). Its *location* (ChuiCore, own implementation, Transducers.jl interop
   only via `ChuiCoreTransducersExt`) is decided by ADR-0002 §4; its names and semantics are not.

@@ -10,7 +10,8 @@ const FACTORY = normpath(joinpath(ROOT, ".."))           # set when run inside f
 const IN_FACTORY = isfile(joinpath(FACTORY, "MANIFEST.toml")) && isfile(joinpath(FACTORY, "VERSION"))
 const JULIA = [Base.julia_cmd().exec; "--startup-file=no"]
 
-for f in ("gen.jl", "dod.jl", "ratchet.jl", "check_docs.jl", "ci.jl", "lane.jl", "sync_factory.jl", "bench.jl", "contract_usage.jl")
+for f in ("gen.jl", "dod.jl", "ratchet.jl", "check_docs.jl", "ci.jl", "lane.jl", "sync_factory.jl", "bench.jl", "contract_usage.jl",
+          "changelog.jl", "check_claims.jl", "evidence.jl")
     include(joinpath(SCRIPTS, f))
 end
 
@@ -52,12 +53,16 @@ end
     t0 = time()
     include("test_gen.jl")
     include("test_hooks.jl")
+    include("test_bash_guard.jl")
     include("test_dod.jl")
     include("test_ratchet.jl")
     include("test_check_docs.jl")
     include("test_contract_usage.jl")
     include("test_ci.jl")
     include("test_lane.jl")
+    include("test_changelog.jl")
+    include("test_check_claims.jl")
+    include("test_evidence.jl")
     include("test_sync_factory.jl")
     println("factory tests finished in $(round(time() - t0; digits = 1)) s")
 end

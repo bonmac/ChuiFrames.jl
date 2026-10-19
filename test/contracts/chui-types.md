@@ -1,13 +1,14 @@
-<!-- vendored contract: coordinator commit 275e879, contracts/chui-types.md, copied 2026-10-19 -->
+<!-- vendored contract: coordinator commit 16b9e6a, contracts/chui-types.md, copied 2026-10-19 -->
 # Contract: chui-types (v0)
 
-> **DRAFT: not binding.** This contract becomes binding when ADR-0002, ADR-0004, ADR-0007,
-> ADR-0009 and ADR-0010 are Accepted at the L0 ★. Until then no downstream relies on it and its
-> entries may change without a contract ADR (see [README.md](README.md), "Drafts").
+> **Binding since 2026-10-19** (ADR-0002/0004/0007/0009/0010 Accepted at the L0 checkpoint).
+> Stable entries change only through a contract ADR (see [README.md](README.md)).
 
 - **Owner:** ChuiTypes. **Consumers:** ChuiFrames, and future Chui packages.
 - **Contract version:** v0, describing ChuiTypes 0.0.1 (unreleased).
-- **Sources:** ADR-0002 §1, §2 (placement), ADR-0009 §4, §6, §7, ADR-0010 (format).
+- **Sources:** ADR-0002 §1, §2 (placement), ADR-0004 rule 2, ADR-0009 §4, §6, §7, ADR-0010 (format).
+- **Pre-0.1 dependency form** (decided at the L0 checkpoint, ADR-0004 rule 2): ChuiTypes depends
+  on ChuiCore's registered `0.0.x` snapshots from ChuiRegistry, not on a `v0.1.0-DEV` tag.
 - **Format:** see [README.md](README.md). Version 0 has one stable entry, CT-003. None of
   ChuiTypes' API is decided yet, so its types, effect runtime, futures and streams are
   [PROVISIONAL](#provisional), and the ecosystem's effect rules are **obligations**, not entries:
@@ -125,5 +126,4 @@ No IDs and no contract tests. Each item gets an ID when ChuiTypes' ADR accepts i
   on ChuiFrames. *Still open:* the adapter's API, which depends on `chui-frames.md`'s PROVISIONAL
   Source interface and its bounded-vs-streaming choice (ADR-0009 §7, ADR-0010 rule 6), and which
   stream operations ChuiTypes must make public for it.
-- **Pre-0.1 dependency form** for ChuiTypes on ChuiCore: `0.0.x` snapshots (ADR-0004 rule 2,
-  recommended) versus brief 20's `v0.1.0-DEV` (★ the user's decision).
+

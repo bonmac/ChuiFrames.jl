@@ -21,8 +21,13 @@ package's brief), `HANDOFF.md` (current state).
 3. Outward actions need the user: creating repos, pushing, tagging, registering, deleting,
    posting to GitHub.
 4. Never edit another repo. Need something upstream? Write a request (see `/contract-check`).
-5. main stays green. Every change lands through a reviewed PR with a CHANGELOG entry.
+5. main stays green. Every change lands through a reviewed PR with a changelog entry: a new
+   `changelog.d/<lane>.md` fragment (folded into `CHANGELOG.md` at release by
+   `julia scripts/changelog.jl fold`), or a `CHANGELOG.md` edit outside lanes.
 6. Python only through `uv`; R through `Rscript`.
+7. Change files with the Edit/Write tools, never `sed -i`, redirects or heredocs onto tracked
+   files. Test counts and benchmark numbers in docs cite an evidence file
+   (`julia scripts/evidence.jl <kind> -- <cmd>`, written to `.lanes/evidence/`).
 
 ## How work flows
 
@@ -44,8 +49,10 @@ Intake → Classify → Design → Plan → Execute → Verify → Review → Fi
 ## Lanes and agents
 
 - One lane = one worktree, one file scope, one deliverable:
-  `scripts/lane new <name>` → `.worktrees/<name>` on branch `feat/<name>`.
-- At most 4 lanes open (`[lanes] max_open` in `.agents/agent-registry.toml`).
+  `scripts/lane new <name> --owns '<globs>'` → `.worktrees/<name>` on branch `feat/<name>`;
+  `scripts/lane audit <name>` checks the lane's diff stays inside those globs.
+- At most 6 lanes open <!-- claim: max_open=6 --> (`[lanes] max_open` in `.agents/agent-registry.toml`;
+  `scripts/check_claims.jl` fails when this number drifts from it).
 - Close each agent as soon as its report is read. An agent that goes idle without a
   report is a FAILED lane: nudge once, then re-dispatch narrower or review directly.
 - Mark simulated work as simulated. Report the roster: ran, skipped (why), failed.

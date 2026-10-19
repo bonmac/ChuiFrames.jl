@@ -14,6 +14,8 @@ PAYLOAD=$(cat)
 have_jq() { command -v jq >/dev/null 2>&1; }
 need_jq() { have_jq || deny "jq not found on PATH; this guard fails closed. Install jq."; }
 field() { printf '%s' "$PAYLOAD" | jq -r "($1) // empty" 2>/dev/null; }
+# payload_ok: the payload parses as a JSON object (0.2.4: a guard that cannot read it fails closed).
+payload_ok() { printf '%s' "$PAYLOAD" | jq -e 'type == "object"' >/dev/null 2>&1; }
 session() { _s=$(field .session_id); printf '%s' "${_s:--}"; }
 deny() { printf '[factory] %s%s\n' "$*" "$(root_hint)" >&2; exit 2; }
 
@@ -80,6 +82,8 @@ abspath() {
     case $1 in
         "~") _p=$HOME ;;
         "~/"*) _p="$HOME/${1#"~/"}" ;;
+        "~+") _p=${2:-$ROOT} ;; # the current directory
+        "~+/"*) _p="${2:-$ROOT}/${1#"~+/"}" ;;
         '$HOME' | '${HOME}') _p=$HOME ;;
         '$HOME/'*) _p="$HOME/${1#'$HOME/'}" ;;
         '${HOME}/'*) _p="$HOME/${1#'${HOME}/'}" ;;
@@ -97,40 +101,7 @@ allowed() {
         /tmp | /tmp/* | /private/tmp | /private/tmp/* | /var/folders/* | /private/var/folders/*) return 0 ;;
     esac
     if [ -n "${TMPDIR:-}" ]; then
-        case $1 in "${TMPDIR%/}" | "${TMPDIR%/}"/*) return 0 ;; esac
+        case $1 in "${TMPDIR%/}" | "${TMPDIR%/}"/* | /private"${TMPDIR%/}"/*) return 0 ;; esac
     fi
-    return 1
-}
-
-# Read-only roots (.claude/hooks/read-only-roots.txt, generated from .agents/factory.toml):
-# directories where only read-only commands may run. RO_ROOTS holds one case-insensitive
-# glob per line (APFS, the macOS default, is case-insensitive: ~/Ref is ~/ref), built
-# once here so a match costs no fork. gen.jl rejects roots containing glob characters.
-RO_ROOTS=""
-if [ -f "$HOOKS_DIR/read-only-roots.txt" ]; then
-    _abs=""
-    while IFS= read -r _r || [ -n "$_r" ]; do
-        case $_r in '' | '#'*) continue ;; esac
-        _abs="$_abs$(abspath "$_r" /)
-"
-    done <"$HOOKS_DIR/read-only-roots.txt"
-    if [ -n "$_abs" ]; then
-        RO_ROOTS=$(printf '%s' "$_abs" | awk '{ o = ""; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1)
-            l = tolower(c); u = toupper(c); o = o (l != u ? "[" l u "]" : c) } print o }')
-    fi
-fi
-
-# in_read_only ABS: true if ABS is inside a read-only root; sets RO_HIT to that root's glob.
-# shellcheck disable=SC2034 # RO_HIT is read by bash_guard.sh
-in_read_only() {
-    [ -n "$RO_ROOTS" ] || return 1
-    _oifs=$IFS
-    IFS='
-'
-    for _r in $RO_ROOTS; do
-        # shellcheck disable=SC2254 # the pattern IS a glob
-        case $1 in $_r | $_r/*) IFS=$_oifs; RO_HIT=$(printf '%s' "$_r" | sed -E 's/\[(.)(.)\]/\1/g'); return 0 ;; esac
-    done
-    IFS=$_oifs
     return 1
 }

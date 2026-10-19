@@ -89,6 +89,7 @@ function main(args)
     end
     external = Set(filter!(!isempty, String.(split(get(opts, "--external", ""), ','))))
     union!(external, config_list(cfg, "check_docs", "external"))
+    push!(external, FACTORY_LOCAL)                     # machine-local and gitignored: often absent
     exclude = config_list(cfg, "check_docs", "exclude")
     ignore_fenced = get(get(cfg, "check_docs", Dict()), "ignore_fenced", false) === true
     tmpl = joinpath(root, "factory", "template")

@@ -19,3 +19,10 @@ exclude = ["docs/agent/*", "test/contracts/*.md"]
 external = []
 # Skip references inside ``` fenced code blocks.
 ignore_fenced = false
+
+[check_claims]
+# scripts/check_claims.jl (0.2.4): Markdown files (globs) scanned for `<!-- claim: key=value -->`
+# markers; empty = every tracked *.md. `required`: claim keys that must have at least one marker
+# (max_open, roles, factory_version, max_lines:<glob>, tests_pass, tests_total, ...).
+files = []
+required = ["max_open"]   # the CLAUDE.md lane-cap line carries its marker

@@ -1,0 +1,15 @@
+# Seeded by the ecosystem factory: the contract tests' OWN environment (the coordinator's
+# contracts/README.md), separate from test/Project.toml. It holds the upstream packages under
+# test, Test and TestItemRunner, and nothing from this package's test environment.
+# `julia scripts/ci.jl contracts` resolves a scratch copy of it against the latest upstream
+# release (`-- main`: each upstream's main from upstreams.toml), so this file is never rewritten.
+# Add each upstream here with a [compat] bound (ADR-0004: compat on everything), e.g.
+#   ChuiCore = "<uuid>"   and under [compat]   ChuiCore = "0.0.1"
+[deps]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
+
+[compat]
+Test = "1"
+TestItemRunner = "1"
+julia = "1.10"

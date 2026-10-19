@@ -57,6 +57,11 @@ function tracked_files(dir)
     return files
 end
 
+"Julia environment variables inherited from a parent shell that make a lane or a CI job resolve the wrong project (0.2.4)."
+const LEAKY_ENV = ("JULIA_PROJECT", "JULIA_LOAD_PATH", "JULIA_DEPOT_PATH")
+env_warnings() = ["$k=$(ENV[k]) is set in this environment and is inherited by everything started from here. Unset it unless you mean it."
+                  for k in LEAKY_ENV if !isempty(get(ENV, k, ""))]
+
 "Parse `--key value` / `--flag` arguments. Returns (Dict, positional)."
 function parse_args(args, flags::Tuple = (), options::Tuple = ())
     opts = Dict{String, Any}()
@@ -81,35 +86,42 @@ end
 
 # --- repo-owned factory config and the sync record -------------------------------------
 const FACTORY_CONFIG = ".agents/factory.toml"
-const CONFIG_KEYS = Dict("bash_guard" => ("read_only_roots",),
-                         "check_docs" => ("exclude", "external", "ignore_fenced"))
+# Machine-local, gitignored (factory 0.2.3): read-only roots that must not be committed (private
+# paths). gen.jl merges its [bash_guard] read_only_roots into .claude/hooks/read-only-roots.txt.
+const FACTORY_LOCAL = ".agents/factory.local.toml"
+const CONFIG_KEYS = Dict("bash_guard" => ("read_only_roots", "require_read_only_roots"),
+                         "check_docs" => ("exclude", "external", "ignore_fenced"),
+                         "check_claims" => ("files", "required"))   # 0.2.4: scripts/check_claims.jl
+const BOOL_KEYS = ("ignore_fenced", "require_read_only_roots")
 
 """
-    factory_config(root) -> Dict
+    factory_config(root, rel = FACTORY_CONFIG; keys = CONFIG_KEYS) -> Dict
 
 The repo-owned `.agents/factory.toml` (seeded per profile), validated; empty when absent.
 Unknown tables or keys are an error so a typo cannot silently disable a guard.
 """
-function factory_config(root, rel = FACTORY_CONFIG)
+function factory_config(root, rel = FACTORY_CONFIG; keys = CONFIG_KEYS)
     p = joinpath(root, rel)
     isfile(p) || return Dict{String, Any}()
     cfg = TOML.parsefile(p)
     for (k, v) in cfg
         k == "version" && continue
-        haskey(CONFIG_KEYS, k) || error("$FACTORY_CONFIG: unknown table `$k`")
-        v isa AbstractDict || error("$FACTORY_CONFIG: `$k` must be a table")
+        haskey(keys, k) || error("$rel: unknown table `$k`")
+        v isa AbstractDict || error("$rel: `$k` must be a table")
         for (kk, vv) in v
-            kk in CONFIG_KEYS[k] || error("$FACTORY_CONFIG: unknown key `$k.$kk`")
-            if kk == "ignore_fenced"
-                vv isa Bool || error("$FACTORY_CONFIG: `$k.$kk` must be true or false")
+            kk in keys[k] || error("$rel: unknown key `$k.$kk`")
+            if kk in BOOL_KEYS
+                vv isa Bool || error("$rel: `$k.$kk` must be true or false")
             else
                 (vv isa AbstractVector && all(x -> x isa AbstractString, vv)) ||
-                    error("$FACTORY_CONFIG: `$k.$kk` must be a list of strings")
+                    error("$rel: `$k.$kk` must be a list of strings")
             end
         end
     end
     return cfg
 end
+"The machine-local `.agents/factory.local.toml`: only `[bash_guard] read_only_roots`."
+factory_local(root) = factory_config(root, FACTORY_LOCAL; keys = Dict("bash_guard" => ("read_only_roots",)))
 config_list(cfg, table, key) = String[string(x) for x in get(get(cfg, table, Dict()), key, String[])]
 
 "The sync record `.factory-version` (empty Dict when the repo was never synced)."

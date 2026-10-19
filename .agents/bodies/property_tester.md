@@ -4,3 +4,4 @@
 - Tag tests `:property`; keep each under a few seconds at the default example count.
 - When a property fails, keep the shrunk counterexample as a regular unit test.
 - Record the seed of any failure in the report.
+- Change files only with the Edit/Write tools. Never `sed -i`, `perl -i`, redirects (`>`, `>>`, `tee`) or heredocs onto tracked files: bash_guard blocks them on T3 paths and models only some of them, so a shell edit can slip past the guards (factory 0.2.4).

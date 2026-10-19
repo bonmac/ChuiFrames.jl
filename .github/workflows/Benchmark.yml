@@ -1,5 +1,10 @@
-# Factory-managed (see .factory-version). Fails when a benchmark's median is slower than the
-# merge base by more than ratchets.toml bench.time_tolerance.
+# Factory-managed (see .factory-version). ADR-0011: AirspeedVelocity compares the PR head with
+# the default branch on benchmark/benchmarks.jl (`const SUITE = BenchmarkGroup()`) and writes
+# a time/memory table to the job summary. WARNING-ONLY: `continue-on-error: true`, and
+# AirspeedVelocity reports without failing on a slowdown (UNVERIFIED: its README names no
+# failure threshold). To make it blocking once baselines settle (a T3 change, in the repo's
+# CHANGELOG): drop `continue-on-error` and add the step `julia scripts/ci.jl bench -- --base
+# origin/<default branch>`, which fails beyond ratchets.toml bench.time_tolerance.
 name: Benchmark
 on:
   pull_request:
@@ -8,20 +13,25 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 permissions:
-  contents: read
+  contents: read          # job-summary mode posts no PR comment, so needs no write permission
 env:
   ECOSYSTEM_REGISTRY_URL: ${{ vars.ECOSYSTEM_REGISTRY_URL }}
 jobs:
   bench:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    continue-on-error: true  # warning-only (ADR-0011)
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: julia-actions/setup-julia@v3
         with:
           version: '1'
-      - uses: julia-actions/cache@v3
+      # the personal registry (ADR-0005) for unregistered ecosystem dependencies; the action's
+      # own setup-julia shares ~/.julia (UNVERIFIED that it keeps added registries)
       - run: julia scripts/ci.jl setup
-      - run: julia scripts/ci.jl bench -- --base origin/${{ github.base_ref || 'main' }}
+      # inputs from the action's action.yml (read 2026-10-19): julia-version, job-summary,
+      # mode (default time,memory), rev, bench-on, filter, script, tune, exeflags, extra-pkgs
+      - uses: MilesCranmer/AirspeedVelocity.jl@action-v1
+        with:
+          julia-version: '1'
+          job-summary: 'true'

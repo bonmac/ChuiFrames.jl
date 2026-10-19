@@ -8,7 +8,9 @@
 #   ref        the PR body (or a commit message) names docs/superpowers/specs/ or plans/
 #   spec       ... names docs/superpowers/specs/
 #   tests      src/ or ext/ changed  =>  test/ changed
-#   changelog  CHANGELOG.md changed
+#   changelog  CHANGELOG.md changed, or a changelog.d/<name>.md fragment ADDED (0.2.4): lanes in one
+#              repo then never share a file; the release manager folds the fragments into
+#              CHANGELOG.md with `julia scripts/changelog.jl fold`
 #   adr        an NNNN-*.md file in the ADR directory (not the template) changed, or the body cites
 #              ADR-NNNN. The directory is `adr_dir` in .factory-version (from the MANIFEST profile;
 #              `adr` for the coordinator), default docs/adr; --adr-dir overrides it.
@@ -33,6 +35,9 @@ function path_tier(risk, path)
     return best
 end
 
+"A changelog fragment: `changelog.d/<name>.md` (one level, not README.md, not a dotfile: what changelog.jl folds)."
+is_fragment(f) = occursin(r"^changelog\.d/[^/.][^/]*\.md$", f) && f != "changelog.d/README.md"
+
 label_tier(labels) = (ts = filter(l -> l in TIERS, [replace(l, r"^tier:" => "") for l in labels]);
                       isempty(ts) ? nothing : TIERS[maximum(tierindex.(ts))])
 
@@ -43,7 +48,8 @@ Pure core: `changed` is the list of changed paths, `text` the PR body plus commi
 `results` is a vector of (requirement, status, detail) with status :pass, :fail or :info.
 """
 function evaluate(risk, changed::Vector{<:AbstractString}, labels, text::AbstractString;
-                  kept::Vector{<:AbstractString} = changed, adr_dir::AbstractString = "docs/adr")
+                  kept::Vector{<:AbstractString} = changed, added::Vector{<:AbstractString} = kept,
+                  adr_dir::AbstractString = "docs/adr")
     lt = label_tier(labels)
     pts = filter(!isnothing, [path_tier(risk, f) for f in changed])
     candidates = String[risk["default_tier"]; pts]
@@ -69,7 +75,10 @@ function evaluate(risk, changed::Vector{<:AbstractString}, labels, text::Abstrac
             any(f -> startswith(f, "test/"), kept) ? (:pass, "test/ changed with src/") :
             (:fail, "src/ or ext/ changed but nothing under test/ did")
         elseif req == "changelog"
-            "CHANGELOG.md" in kept ? (:pass, "CHANGELOG.md changed") : (:fail, "add a CHANGELOG.md entry under ## Unreleased")
+            frag = filter(is_fragment, added)
+            "CHANGELOG.md" in kept ? (:pass, "CHANGELOG.md changed") :
+            !isempty(frag) ? (:pass, "changelog fragment $(first(frag)) added") :
+            (:fail, "add a changelog.d/<lane>.md fragment (or a CHANGELOG.md entry under ## Unreleased)")
         elseif req == "adr"
             dir = rstrip(adr_dir, '/') * "/"
             adr = any(f -> startswith(f, dir) && occursin(r"^\d{4}-.+\.md$", chopprefix(f, dir)) &&
@@ -110,9 +119,11 @@ function main(args)
     names(args...) = String.(filter!(!isempty, split(something(git(root, "diff", "--name-only", "--no-renames", args..., mb, head), ""), '\n')))
     changed = names()
     kept = names("--diff-filter=d")
+    # an empty fragment would never reach CHANGELOG.md (changelog.jl fold refuses it): not evidence
+    added = filter(f -> !is_fragment(f) || !isempty(strip(something(git(root, "show", "$head:$f"), ""))), names("--diff-filter=A"))
     msgs = something(git(root, "log", "--format=%B", "$mb..$head"), "")
     risk = TOML.parsefile(joinpath(root, "risk.toml"))
-    tier, results = evaluate(risk, changed, labels, body * "\n" * msgs; kept,
+    tier, results = evaluate(risk, changed, labels, body * "\n" * msgs; kept, added,
                              adr_dir = haskey(opts, "--adr-dir") ? opts["--adr-dir"] : adr_dir(root))
     println("dod.jl: $(length(changed)) files changed since $(first(mb, 10)); tier $tier")
     for (req, st, detail) in results

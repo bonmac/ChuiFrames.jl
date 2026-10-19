@@ -38,6 +38,8 @@ Upstream: $ARGUMENTS (empty means every upstream in `test/contracts/upstreams.to
    `julia scripts/ci.jl contracts -- main` (upstream main, warning only). Paste both outputs.
 6. Missing upstream API: do NOT edit the upstream repo. Draft the request text for the
    coordinator's `requests/<from>-to-<to>-<slug>.md`: the need, the proposed API, the urgency,
-   the contract affected. Then continue behind an adapter.
+   the contract affected, and a `- **Reproducer:**` line: a command in this repo that is RED
+   until the upstream change lands. Closing the request quotes that command RED (before) and
+   GREEN (after). Then continue behind an adapter.
 7. Output: the contract_usage.jl output before and after, tests changed, run results,
    requests drafted.

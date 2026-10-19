@@ -9,7 +9,11 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
 - One lane = one repo, one file scope, one deliverable, one definition of done. No two open
   lanes share a file.
 - Give the agent its brief, its scope, and the output format from its registry entry.
-- Worktree lanes: `scripts/lane new <name> [--base main]` creates `.worktrees/<name>`.
+- Worktree lanes: `scripts/lane new <name> --owns '<globs>' [--base main]` creates
+  `.worktrees/<name>` and records the globs the lane may touch (`changelog.d/<name>.md` is
+  added). The brief's file scope and `--owns` are the same list.
+- The brief says: change files with Edit/Write only, never `sed -i`, redirects or heredocs.
+- Each lane records its change in `changelog.d/<name>.md`, never in `CHANGELOG.md`.
 - The cap is `[lanes] max_open` (default 4). `dispatch_limit.sh` refuses the next spawn.
 
 **Monitor**
@@ -22,11 +26,15 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
   yourself, and say which you did. Never count its work as reviewed.
 
 **Close**
+- Before a lane lands, `scripts/lane audit <name> --reported <file>` (the changed files the lane
+  reported) must pass; a path outside `--owns` is a finding, not a formality.
 - Close the agent (TaskStop) in the same step as reading its report. A listing is not proof of
-  closure.
+  closure. Before recording a lane as `no_report`, check once more for a late message: a report
+  can arrive after the stop.
 - Remove a merged worktree lane with `scripts/lane remove <name>`; show `git worktree list`.
 
 **Report**
 - `subagent_mode: actual | simulated | mixed`. Simulated means the pass was not spawned.
 - The roster: which agents ran, which lanes were skipped and why, which failed or went idle.
-- Verify a lane's claims (re-run its test command) before building on them.
+- Verify a lane's claims (re-run its test command) before building on them. Test counts come
+  from an evidence file (`julia scripts/evidence.jl tests -- <cmd>`); cite it.

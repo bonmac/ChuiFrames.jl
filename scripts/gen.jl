@@ -11,7 +11,8 @@
 #   risk.toml                                         -> .claude/hooks/protected-paths.txt,
 #                                                        .github/pull_request_template.md
 #   .agents/checks.toml (+ checks.local.toml)         -> docs/CHECK_COVERAGE.md
-#   .agents/factory.toml [bash_guard]                 -> .claude/hooks/read-only-roots.txt
+#   .agents/factory.toml [bash_guard]                 -> .claude/hooks/limits.env, .claude/hooks/read-only-roots.txt
+#     + .agents/factory.local.toml (gitignored)          (the roots file is gitignored too)
 # Stdlib only (TOML), so it runs before any environment is instantiated.
 module Gen
 
@@ -137,11 +138,13 @@ function agents_md(root, reg)
     return String(take!(io))
 end
 
-function limits_env(reg)
+function limits_env(reg, cfg = Dict{String, Any}())
     lanes = get(reg, "lanes", Dict{String, Any}())
-    return banner_hash(".agents/agent-registry.toml [lanes]") * "\n" *
+    req = get(get(cfg, "bash_guard", Dict{String, Any}()), "require_read_only_roots", false)
+    return banner_hash(".agents/agent-registry.toml [lanes] + .agents/factory.toml [bash_guard]") * "\n" *
            "MAX_OPEN_LANES=$(get(lanes, "max_open", 4))\n" *
-           "LEDGER=$(get(lanes, "ledger", ".lanes/ledger.jsonl"))\n"
+           "LEDGER=$(get(lanes, "ledger", ".lanes/ledger.jsonl"))\n" *
+           "READ_ONLY_ROOTS_REQUIRED=$(req ? 1 : 0)\n"
 end
 
 function load_risk(root)
@@ -228,24 +231,33 @@ function check_coverage(checks)
 end
 
 # One root per line for bash_guard.sh (which expands a leading ~). Inside a root only
-# read-only commands may run; the list is repo-owned in .agents/factory.toml.
+# read-only commands may run. The list is repo-owned in .agents/factory.toml plus the
+# machine-local, gitignored .agents/factory.local.toml (private paths are never committed);
+# the output is gitignored too, and bash_guard.sh fails closed without it when
+# `require_read_only_roots = true`.
 function read_only_roots_txt(root)
-    cfg = try
-        factory_config(root)
+    cfgs = try
+        [(FACTORY_CONFIG, factory_config(root)), (FACTORY_LOCAL, factory_local(root))]
     catch e
         fail(e isa ErrorException ? e.msg : sprint(showerror, e))
     end
     io = IOBuffer()
-    println(io, banner_hash(".agents/factory.toml [bash_guard] read_only_roots"))
+    println(io, banner_hash("$FACTORY_CONFIG + $FACTORY_LOCAL [bash_guard] read_only_roots"))
     println(io, "# One directory per line; bash_guard.sh allows only read-only commands inside it.")
-    for r in config_list(cfg, "bash_guard", "read_only_roots")
+    println(io, "# Gitignored: it may name private paths. Regenerate with `julia scripts/gen.jl`.")
+    seen = Set{String}()
+    for (src, cfg) in cfgs, r in config_list(cfg, "bash_guard", "read_only_roots")
         r = rstrip(r, '/')
-        (startswith(r, "/") || startswith(r, "~/")) || fail(".agents/factory.toml: read_only_roots entry `$r` must be absolute or start with ~/")
-        occursin(r"[\s*?\[\]]", r) && fail(".agents/factory.toml: read_only_roots entry `$r` contains whitespace or a glob character")
-        println(io, r)
+        (startswith(r, "/") || startswith(r, "~/")) || fail("$src: read_only_roots entry `$r` must be absolute or start with ~/")
+        occursin(r"[\s*?\[\]]", r) && fail("$src: read_only_roots entry `$r` contains whitespace or a glob character")
+        r in seen || println(io, r)
+        push!(seen, r)
     end
     return String(take!(io))
 end
+
+"Generated files that are gitignored (machine-local): `--check` skips them when absent."
+const LOCAL_OUTPUTS = (".claude/hooks/read-only-roots.txt",)
 
 "Return Dict(relative path => expected content) for every generated file."
 function outputs(root)
@@ -257,7 +269,8 @@ function outputs(root)
         out[".codex/agents/$(a["slug"]).toml"] = codex_agent(root, a)
     end
     out["AGENTS.md"] = agents_md(root, reg)
-    out[".claude/hooks/limits.env"] = limits_env(reg)
+    cfg = try factory_config(root) catch e; fail(e isa ErrorException ? e.msg : sprint(showerror, e)) end
+    out[".claude/hooks/limits.env"] = limits_env(reg, cfg)
     out[".claude/hooks/protected-paths.txt"] = protected_txt(risk)
     out[".claude/hooks/read-only-roots.txt"] = read_only_roots_txt(root)
     out[".github/pull_request_template.md"] = pr_template(risk)
@@ -285,7 +298,9 @@ function check(root; io = stdout)
     problems = String[]
     for (rel, want) in sort!(collect(out))
         p = joinpath(root, rel)
-        if !isfile(p)
+        if !isfile(p) && rel in LOCAL_OUTPUTS
+            continue                                  # gitignored; bash_guard.sh fails closed if it is required
+        elseif !isfile(p)
             push!(problems, "missing  $rel")
         elseif read(p, String) != want
             push!(problems, "drifted  $rel")

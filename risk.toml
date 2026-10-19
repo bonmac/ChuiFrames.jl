@@ -11,9 +11,11 @@ default_tier = "T1"
 # `requires` names what scripts/dod.jl checks:
 #   ci (CI itself), ref (PR links a spec or plan under docs/superpowers/),
 #   spec (PR links a spec), tests (src/ or ext/ changed => test/ changed),
-#   changelog (CHANGELOG.md changed), review (branch protection; dod.jl only reports it),
-#   adr (an ADR under docs/adr/ added or changed, or the PR cites a coordinator ADR-NNNN;
-#        the directory is `adr_dir` in .factory-version).
+#   changelog (CHANGELOG.md changed, or a new changelog.d/*.md fragment, which the release
+#             manager folds into CHANGELOG.md with `julia scripts/changelog.jl fold`),
+#   review (branch protection; dod.jl only reports it),
+#   adr (an ADR added or changed in the repo's ADR directory, or the PR cites a coordinator
+#        ADR-NNNN; the directory is the profile's `adr_dir`, recorded in .factory-version).
 [tiers.T0]
 summary = "Trivial: typo, comment, formatting, docs wording. No spec or plan."
 requires = ["ci"]
@@ -38,6 +40,28 @@ globs = [
   ".claude/hooks/*",
   ".agents/agent-registry.toml",
   ".agents/factory.toml",
+  ".agents/factory.local*",            # machine-local roots (gitignored)
+  # agent rules and the check register: a lane must not delete a body rule or a blind spot
+  ".agents/bodies/*",
+  ".agents/checks.toml",
+  ".claude/agents/*",
+  ".codex/agents/*",
+  # the gate scripts (and the helpers they all include): a lane must not weaken its own gate
+  "scripts/dod.jl",
+  "scripts/ratchet.jl",
+  "scripts/gen.jl",
+  "scripts/check_docs.jl",
+  "scripts/contract_usage.jl",
+  "scripts/ci.jl",
+  "scripts/_common.jl",
+  "scripts/bench.jl",
+  "scripts/lane",
+  "scripts/lane.jl",                   # `scripts/lane audit` gates /change-review (0.2.4)
+  "scripts/changelog.jl",
+  "scripts/check_claims.jl",
+  "scripts/evidence.jl",
+  # the gate's own tests (0.2.4): a lane must not weaken a test so its gate passes
+  "scripts/test/*",
   "risk.toml",
   "ratchets.toml",
   ".factory-version",

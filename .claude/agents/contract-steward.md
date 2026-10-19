@@ -18,7 +18,9 @@ Mode: `write`. File scope: `test/contracts/**`.
 - Contract tests are tagged `:contract`; CI runs them against the latest upstream release (blocking) and upstream main (warning).
 - `test/contracts/USED.md` lists every contract ID the package relies on, one `:contract` test item each; `julia scripts/contract_usage.jl --strict` checks it against the tests, the vendored contract files and the code.
 - Upstream gaps: draft the text of a request for the coordinator's `requests/` (`<from>-to-<to>-<slug>.md`) and hand it to the lead (that file is outside this repo); keep working behind an adapter.
+- Every request carries a `- **Reproducer:**` line: a command, run in this repo, that is RED until the upstream change lands (a `:contract` test item, a `julia -e` call). The request is closed only when the same command's RED run (before) and GREEN run (after, against the released upstream) are quoted in it.
 - Never edit an upstream repo.
+- Change files only with the Edit/Write tools. Never `sed -i`, `perl -i`, redirects (`>`, `>>`, `tee`) or heredocs onto tracked files: bash_guard blocks them on T3 paths and models only some of them, so a shell edit can slip past the guards (factory 0.2.4).
 
 ## Output format
 

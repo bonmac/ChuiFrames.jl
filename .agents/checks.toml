@@ -5,19 +5,19 @@
 
 [[checks]]
 id = "bash_guard"
-rule = "No destructive git/rm commands, no pushes or GitHub actions without the user, no writes outside the repo root, only read-only commands inside the read-only roots of .agents/factory.toml"
+rule = "No destructive git/rm commands, no pushes or GitHub actions without the user, no writes outside the repo root, no modelled writes to T3 protected paths (without the user's FACTORY_ALLOW_T3=1), only read-only commands inside the read-only roots of .agents/factory.toml"
 prevented_by = ".claude/hooks/bash_guard.sh"
 runs_in = ["hook PreToolUse(Bash)"]
 test = "scripts/test/test_hooks.jl"
-blind_spots = ["commands built at runtime (eval, variables, $(...), aliases, scripts, julia/python -e)", "`cd` to a computed target (`cd \"$D\"`, `cd -`, `cd` in a subshell or `sh -c '...'` string) is not followed", "read-only roots: a program in the root started by path from outside it (`sh ~/ref/run.sh`, `python ~/ref/x.py`), tools that find a project by a path argument or env var (`--manifest-path`, `UV_PROJECT`, `JULIA_PROJECT`), symlinks into a root", "the read-only allowlist trusts its tools (`less` can run `!cmd`; `git log/diff --output=f`, `rg --pre`, `git -c core.pager=...`)", "subshells, `popd` and `cd -` are not unwound, so `(cd root && ls); make` counts `make` as inside the root (a false positive, never a bypass)", "quoted arguments containing spaces (and a quoted ` > /abs/path` inside a message is a false positive)", "heredoc detection assumes `<<WORD` and a terminator line equal to WORD", "tools that write through their own config (Pkg depot, uv cache)", "Bash run outside Claude Code"]
+blind_spots = ["commands built at runtime: aliases, functions, scripts, julia/python -e, `sh -c '...'`/`bash -c` strings and arguments to tools that run commands (`git -c alias.x='!...'`, `make` recipes); a command NAME that is an expansion (`$X`, `$(...)`, backticks, `${IFS}`) and `eval` are blocked", "write targets held in variables (`> \"$f\"`, `cp a \"$D\"`) are not resolved and pass; only `$HOME` and `$TMPDIR` (the hook's own value) are expanded", "`cd` to a computed target (`cd \"$D\"`, `cd -`, `cd` in a subshell or `sh -c '...'` string) is not followed", "read-only roots: a program in the root started by path from outside it (`sh ~/ref/run.sh`, `python ~/ref/x.py`), tools that find a project by a path argument or env var (`--manifest-path`, `UV_PROJECT`, `JULIA_PROJECT`), symlinks into a root", "the read-only allowlist trusts its tools (`less` can run `!cmd`; `git log/diff --output=f`, `rg --pre`, `git -c core.pager=...`)", "subshells, `popd` and `cd -` are not unwound, so `(cd root && ls); make` counts `make` as inside the root (a false positive, never a bypass)", "quoted text ('...', \"...\", $'...') is one argument, never a redirect target or a second command (\"$(...)\" and backticks inside double quotes ARE split and checked; a `#` comment ends the line)", "writes outside the root AND to T3 paths (0.2.4) are modelled for redirections (incl. `>|`), rm, rmdir, mkdir, touch, chmod, chown, truncate, tee, mv, cp/ln/install/rsync (last operand, `-t`), dd of=, sed -i/perl -i, curl -o, wget -O/-P, tar -x (-C DIR, else the cwd), unzip (-d DIR, else the cwd), find -delete/-fprint, git init/clone/worktree, and (T3) git rm/mv/restore/`checkout -- PATHS`; any other tool (`tar -cf /x`, `curl -sSLo /x` clusters, `patch`, `git apply`/`am`/`stash apply`/`reset <commit> -- f`, `npm --prefix`, `pip --target`, `cmake -B`, editors, and julia/python/sh code: `julia -e 'write(\"risk.toml\", ...)'`) is not, so a T3 path is unguarded through any Bash write bash_guard does not model", "T3 through Bash: a directory target is refused when it holds a T3 path (`rm -r scripts`, `cp x scripts/`, `find . -name x -delete`, `tar -x -C .`), a false positive for a harmless write into such a directory; a write target held in a variable, built at runtime or reached through a symlink is not matched; `mkdir` and `touch` of a directory are not checked as directory targets; targets read from stdin (`find . | xargs rm`) are not seen; a glob target is expanded case-sensitively by the guard (`rm RISK.TOM?` matches nothing here, nor in sh); a find -exec command outside a short read-only list is taken to write below find's start paths (a false positive for harmless commands)", "`rm -rf` passes only on LITERAL absolute targets strictly below $TMPDIR (the hook's environment) or three levels below /private/tmp/claude-<uid>/ (so another session's or project's scratchpad of the same user can be named and deleted); symlinks are not resolved (`ln -s / $S/l && rm -rf $S/l/opt`), and a target ending in `/` or `/.` is refused", "wrappers are modelled by name and option list (env sudo doas nice time timeout xargs caffeinate exec nohup builtin command, find -exec/-ok); others (`stdbuf`, `chroot`, `parallel`, `watch`, `script`, `flock`, `ssh`) hide the command they run", "a sourced library (`_lib.sh`, `_bash_guard_lib.sh`, `_read_only_roots.sh`, `_bash_guard_cmd.sh`, `_bash_guard_write.sh`) that is missing blocks; one that is edited is trusted", "heredoc detection is bash's: an unquoted `<<WORD` outside `((...))`/`$((...))` and `<<<`; the body ends at a line equal to WORD (quotes and backslashes removed; a quoted blank ends WORD early, so only more is checked); a body never terminated is checked as commands; with several heredocs on one line only the last WORD is used", "tools that write through their own config (Pkg depot, uv cache)", "Bash run outside Claude Code"]
 
 [[checks]]
 id = "write_guard"
-rule = "Edit/Write tools never write outside the repo root, and never touch T3 protected paths without approval"
+rule = "Edit/Write tools never write outside the repo root, never below a .git directory, and never touch T3 protected paths (of the nearest real git checkout and of the repo root; bash_guard's t3_check) without approval"
 prevented_by = ".claude/hooks/write_guard.sh"
 runs_in = ["hook PreToolUse(Edit|Write|MultiEdit|NotebookEdit)"]
 test = "scripts/test/test_hooks.jl"
-blind_spots = ["writes made through Bash (bash_guard covers only part)", "symlinks inside the repo pointing outside", "T0-T2 paths (left to scripts/dod.jl at merge)", "a session started inside factory/template runs the TEMPLATE's hooks with the template as root (the denial says so; dispatch lanes from the repo root)", "guards fail closed when their script is missing only if settings.json itself is intact"]
+blind_spots = ["T3 paths are unguarded for any Bash write that bash_guard does not model (see bash_guard's list: julia/python/sh code, `git apply`, `patch`, editors, targets in variables); the post-hoc checks are dod.jl's T3 tier at merge and `scripts/lane audit`", "symlinks inside the repo pointing outside", "T0-T2 paths (left to scripts/dod.jl at merge)", "a session started inside factory/template runs the TEMPLATE's hooks with the template as root (the denial says so; dispatch lanes from the repo root)", "guards fail closed when their script is missing only if settings.json itself is intact"]
 
 [[checks]]
 id = "teammate_idle"
@@ -69,11 +69,11 @@ blind_spots = ["prose quality of bodies and CLAUDE.md", "whether agents follow t
 
 [[checks]]
 id = "dod"
-rule = "A PR links a spec/plan (or is T0), changes tests with src/, adds a CHANGELOG entry, and has an ADR when T3"
+rule = "A PR links a spec/plan (or is T0), changes tests with src/, adds a changelog entry (CHANGELOG.md or a new changelog.d/*.md fragment), and has an ADR when T3"
 prevented_by = "scripts/dod.jl"
 runs_in = ["ci Guards (pull_request)"]
 test = "scripts/test/test_dod.jl"
-blind_spots = ["that the linked spec matches the change", "that the changed tests test the changed code", "review approval (left to branch protection)", "a mislabelled PR below the path-derived tier is raised, but one above is trusted"]
+blind_spots = ["that the linked spec matches the change", "that the changed tests test the changed code", "that a changelog fragment describes the change (any new non-empty changelog.d/*.md counts; `changelog.jl fold` rejects empty ones at release)", "review approval (left to branch protection)", "a mislabelled PR below the path-derived tier is raised, but one above is trusted"]
 
 [[checks]]
 id = "ratchet"
@@ -105,15 +105,15 @@ rule = "Workflows call only jobs that scripts/ci.jl defines, so CI and local run
 prevented_by = "scripts/ci.jl"
 runs_in = ["ci (every workflow)", "local"]
 test = "scripts/test/test_ci.jl"
-blind_spots = ["workflow steps that are not ci.jl calls (setup, cache, upload, TagBot)", "the upstream-main contract run is UNVERIFIED end to end"]
+blind_spots = ["workflow steps that are not ci.jl calls (setup, cache, upload, TagBot)", "the upstream-main contract run is UNVERIFIED end to end", "a skip's kind (0.2.4) is decided from the checkout: a package is `profile = package` in .factory-version or a root Project.toml; deleting both makes the package jobs `not applicable` (exit 0)", "`waiting` skips (no upstreams, no benchmark/ directory) exit 0 with a NOT RUN notice and a GitHub warning; deleting the whole benchmark/ directory turns `bench` from missing into waiting"]
 
 [[checks]]
 id = "lane_tool"
-rule = "Worktree lanes live at <repo>/.worktrees/<lane>, within the cap, and are removed only when clean and merged"
+rule = "Worktree lanes live at <repo>/.worktrees/<lane>, within the cap, and are removed only when clean and merged; `lane audit` fails a lane whose changes leave its owned globs or differ from its reported files"
 prevented_by = "scripts/lane.jl"
 runs_in = ["local scripts/lane"]
 test = "scripts/test/test_lane.jl"
-blind_spots = ["`--allow-ignored` deletes ignored files the caller did not copy out", "worktrees made with plain git worktree add", "EnterWorktree lanes under .claude/worktrees/"]
+blind_spots = ["`--allow-ignored` deletes ignored files the caller did not copy out", "worktrees made with plain git worktree add", "EnterWorktree lanes under .claude/worktrees/", "`lane audit` checks only the lane's own worktree: a write a lane made into ANOTHER checkout (the main checkout, a sibling lane, a nested repo) is not in its diff, and the owned globs are whatever `--owns` recorded (the lane's branch config is not tamper-proof)", "`audit` runs only when /change-review runs it (it is not a CI job)", "`branch.<b>.lane-base` and `lane-owns` live in the repo's git config: a lane that rewrites them to another real branch or to wider globs passes the audit (a base equal to the lane's branch, or not a commit, fails); the audit prints the base and owns it used so the reviewer can compare them with the brief"]
 
 [[checks]]
 id = "sync_factory"
@@ -122,3 +122,27 @@ prevented_by = "scripts/sync_factory.jl"
 runs_in = ["local"]
 test = "scripts/test/test_sync_factory.jl"
 blind_spots = ["a `local-modified` managed file stops receiving factory updates until the edit is reverted or --force is used", "seeded files (CLAUDE.md, risk.toml, ...) are never updated after the first sync; their diff is only shown"]
+
+[[checks]]
+id = "check_claims"
+rule = "A number stated in Markdown next to a `<!-- claim: key=value -->` marker equals the value derived from the registry, ratchets.toml, the factory version or the test evidence, and each required key has a marker"
+prevented_by = "scripts/check_claims.jl"
+runs_in = ["ci Guards", "local scripts/ci.jl guards"]
+test = "scripts/test/test_check_claims.jl"
+blind_spots = ["numbers without a marker (only `required` keys must have one)", "test-total claims are UNVERIFIED (exit 0) where the evidence file is absent, which is every CI run; `--strict` fails them", "the marker's line must state the value, but any occurrence of it on the line counts", "markers in indented (4-space) code blocks are read as claims", "evidence files are plain text under .lanes/: one written by hand (or by the Write tool) is trusted, and its `dirty:` and `exit:` fields are not checked"]
+
+[[checks]]
+id = "evidence"
+rule = "Test counts and other reported numbers come from a file that records the commit, a dirty flag, the command, its exit code, the time and the full output"
+prevented_by = "scripts/evidence.jl"
+runs_in = ["local"]
+test = "scripts/test/test_evidence.jl"
+blind_spots = ["evidence files are gitignored (.lanes/evidence/): they prove a run only on the machine that made them", "a dirty run is recorded as dirty, not refused", "test totals sum every Julia `Test Summary:` table in the output, including one a subprocess printed", "nothing forces a number in prose to cite one (check_claims does for marked lines)"]
+
+[[checks]]
+id = "changelog"
+rule = "Changelog fragments (changelog.d/*.md) are folded into CHANGELOG.md at release, in name order, and an empty or heading-bearing fragment stops the fold"
+prevented_by = "scripts/changelog.jl"
+runs_in = ["local /release-check"]
+test = "scripts/test/test_changelog.jl"
+blind_spots = ["the fold runs only when the release manager runs it", "fragment order is by file name, not by merge order"]

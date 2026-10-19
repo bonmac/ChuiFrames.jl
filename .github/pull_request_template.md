@@ -13,7 +13,7 @@
 
 Protected paths raise the tier automatically (`scripts/dod.jl`):
 
-- T3: `.github/workflows/*`, `.claude/settings.json`, `.claude/hooks/*`, `.agents/agent-registry.toml`, `.agents/factory.toml`, `risk.toml`, `ratchets.toml`, `.factory-version`
+- T3: `.github/workflows/*`, `.claude/settings.json`, `.claude/hooks/*`, `.agents/agent-registry.toml`, `.agents/factory.toml`, `.agents/factory.local*`, `.agents/bodies/*`, `.agents/checks.toml`, `.claude/agents/*`, `.codex/agents/*`, `scripts/dod.jl`, `scripts/ratchet.jl`, `scripts/gen.jl`, `scripts/check_docs.jl`, `scripts/contract_usage.jl`, `scripts/ci.jl`, `scripts/_common.jl`, `scripts/bench.jl`, `scripts/lane`, `scripts/lane.jl`, `scripts/changelog.jl`, `scripts/check_claims.jl`, `scripts/evidence.jl`, `scripts/test/*`, `risk.toml`, `ratchets.toml`, `.factory-version`
 - T2: `Project.toml`, `test/contracts/*`, `ext/*`
 
 ## Evidence
