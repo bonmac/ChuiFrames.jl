@@ -43,7 +43,7 @@ Commands run on 2026-10-19 (Julia 1.13.2 = `julia`, 1.10.12 = `julia +lts`):
 - GitHub Actions workflows: need a remote (no remote until the user's ★ decision); only linted.
 - `julia scripts/ci.jl contracts`: skips (no upstream URLs; nothing released).
 - `julia scripts/ci.jl format` (Runic): not run; the formatter is ★ pending (ADR-0007).
-- `julia scripts/ci.jl bench`: no `benchmark/` yet (phase 1+).
+- `julia scripts/ci.jl bench`: no benchmark/ yet (phase 1+).
 
 ## Blockers and decisions waiting
 
