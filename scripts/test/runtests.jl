@@ -10,8 +10,10 @@ const FACTORY = normpath(joinpath(ROOT, ".."))           # set when run inside f
 const IN_FACTORY = isfile(joinpath(FACTORY, "MANIFEST.toml")) && isfile(joinpath(FACTORY, "VERSION"))
 const JULIA = [Base.julia_cmd().exec; "--startup-file=no"]
 
-for f in ("gen.jl", "dod.jl", "ratchet.jl", "check_docs.jl", "ci.jl", "lane.jl", "sync_factory.jl", "bench.jl", "contract_usage.jl",
-          "changelog.jl", "check_claims.jl", "evidence.jl")
+for f in (
+        "gen.jl", "dod.jl", "ratchet.jl", "check_docs.jl", "ci.jl", "lane.jl", "sync_factory.jl", "bench.jl", "contract_usage.jl",
+        "changelog.jl", "check_claims.jl", "evidence.jl",
+    )
     include(joinpath(SCRIPTS, f))
 end
 
@@ -38,7 +40,7 @@ function commit!(d, files::Dict, msg = "change")
         write(joinpath(d, rel), c)
     end
     sh(`git -C $d add -- .`)
-    sh(`git -C $d commit -q -m $msg`)
+    return sh(`git -C $d commit -q -m $msg`)
 end
 "Run f with stdout captured; returns (result, output)."
 function capture(f)
@@ -53,6 +55,7 @@ end
     t0 = time()
     include("test_gen.jl")
     include("test_hooks.jl")
+    include("test_hooks_lifecycle.jl")
     include("test_bash_guard.jl")
     include("test_dod.jl")
     include("test_ratchet.jl")

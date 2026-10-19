@@ -34,7 +34,7 @@ end
     @test Lane.audit(["src/A.jl", "docs/x.md"], ["src/*"]) == ["outside owns: docs/x.md"]
     @test Lane.audit(["src/A.jl"], String[]) == ["no owned globs recorded (create the lane with --owns, or pass --owns to audit)"]
     @test Lane.audit(["src/A.jl", "src/B.jl"], ["src/*"], ["src/A.jl", "src/C.jl"]) ==
-          ["changed but not reported: src/B.jl", "reported but not changed: src/C.jl"]
+        ["changed but not reported: src/B.jl", "reported but not changed: src/C.jl"]
     d = tmp_repo(Dict(".gitignore" => "/.worktrees/\n/.lanes/\n", "src/A.jl" => "a\n", "docs/x.md" => "x\n"))
     lane(args...) = capture(() -> Lane.main([args..., "--repo", d]))
     rc, out = lane("new", "aud", "--owns", "src/*, test/a_test.jl")
@@ -67,8 +67,10 @@ end
     @test rc == 0 && !occursin("[info] no --reported", out)
     write(rep, "src/B.jl\nsrc/C.jl\n")                                         # the report differs from the diff
     rc, out = lane("audit", "aud", "--reported", rep)
-    @test rc == 1 && fails(out) == ["changed but not reported: changelog.d/aud.md", "changed but not reported: src/A.jl",
-                                    "reported but not changed: src/C.jl"]
+    @test rc == 1 && fails(out) == [
+        "changed but not reported: changelog.d/aud.md", "changed but not reported: src/A.jl",
+        "reported but not changed: src/C.jl",
+    ]
     @test lane("audit", "aud", "--owns", "docs/*")[1] == 1                      # --owns overrides the recorded globs
     # the 0.2.4 review (M3): a commit reverted in the working tree, or a staged change reverted on disk
     rc, out = lane("new", "rev", "--owns", "src/*")

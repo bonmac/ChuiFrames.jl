@@ -24,7 +24,7 @@ id = "teammate_idle"
 rule = "A teammate does not go idle without reporting"
 prevented_by = ".claude/hooks/teammate_idle.sh"
 runs_in = ["hook TeammateIdle"]
-test = "scripts/test/test_hooks.jl"
+test = "scripts/test/test_hooks_lifecycle.jl"
 blind_spots = ["cannot see whether a SendMessage report was sent; the second idle passes either way", "plain subagents (no TeammateIdle event)", "fails open without jq"]
 
 [[checks]]
@@ -32,7 +32,7 @@ id = "dispatch_limit"
 rule = "At most [lanes] max_open subagent lanes are open per session"
 prevented_by = ".claude/hooks/dispatch_limit.sh"
 runs_in = ["hook PreToolUse(Agent|Task)"]
-test = "scripts/test/test_hooks.jl"
+test = "scripts/test/test_hooks_lifecycle.jl"
 blind_spots = ["teammates may not emit SubagentStart/Stop (UNVERIFIED), so they may not be counted", "a crashed subagent with no SubagentStop stays counted until the session changes", "Workflow-tool fan-out is not counted"]
 
 [[checks]]
@@ -40,7 +40,7 @@ id = "lane_ledger"
 rule = "Every subagent start and stop is recorded in the lane ledger"
 prevented_by = ".claude/hooks/lane_ledger.sh"
 runs_in = ["hook SubagentStart", "hook SubagentStop"]
-test = "scripts/test/test_hooks.jl"
+test = "scripts/test/test_hooks_lifecycle.jl"
 blind_spots = ["fails open (no jq, unwritable .lanes/)", "records ids only, not outcomes"]
 
 [[checks]]
@@ -48,7 +48,7 @@ id = "precompact"
 rule = "Compaction does not lose the branch, open lanes and dirty files"
 prevented_by = ".claude/hooks/precompact.sh"
 runs_in = ["hook PreCompact", "hook SessionStart(compact) via .claude/hooks/session_start.sh"]
-test = "scripts/test/test_hooks.jl"
+test = "scripts/test/test_hooks_lifecycle.jl"
 blind_spots = ["decisions that exist only in the conversation", "re-injection relies on the SessionStart `compact` matcher (documented, not yet observed here)"]
 
 [[checks]]
@@ -56,7 +56,7 @@ id = "session_start"
 rule = "The pre-compaction snapshot is put back into context after compaction"
 prevented_by = ".claude/hooks/session_start.sh"
 runs_in = ["hook SessionStart(compact)"]
-test = "scripts/test/test_hooks.jl"
+test = "scripts/test/test_hooks_lifecycle.jl"
 blind_spots = ["prints at most 40 lines", "a stale snapshot from an earlier compaction is printed if precompact failed"]
 
 [[checks]]
@@ -89,7 +89,7 @@ rule = "Markdown links and backticked repo paths point at files that exist"
 prevented_by = "scripts/check_docs.jl"
 runs_in = ["ci Guards", "local scripts/ci.jl guards"]
 test = "scripts/test/test_check_docs.jl"
-blind_spots = ["paths outside the known prefixes", "anchors (#section)", "command flags named in docs", "the CONVENTIONS list in check_docs.jl is trusted even where a repo never creates those paths", "files excluded and references allowed by .agents/factory.toml [check_docs] (and fenced blocks when ignore_fenced = true)", "in a checkout holding the factory, a path in factory/*.md that exists only in factory/template/ passes even if it was meant as a repo path"]
+blind_spots = ["paths outside the known prefixes", "anchors (#section)", "command flags named in docs", "the CONVENTIONS list in check_docs.jl is trusted even where a repo never creates those paths", "files excluded and references allowed by .agents/factory.toml [check_docs] (and fenced blocks when ignore_fenced = true)", "in a checkout holding the factory, a path in factory/*.md that exists only in factory/template/ passes even if it was meant as a repo path", "a reference to an untracked path that a tracked .gitignore ignores passes whether or not it exists (it is machine-local: present in a dev checkout, absent in a fresh clone), so a typo that still matches an ignore pattern is not caught: a glob (`*.parquet`), or an unanchored directory (`dev/` matches a dev folder at any depth); outside a git checkout nothing counts as ignored"]
 
 [[checks]]
 id = "contract_usage"

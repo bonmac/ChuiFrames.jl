@@ -3,10 +3,12 @@
     @test [(c[1], c[2]) for c in cs] == [(1, ["max_open" => "6"]), (6, ["x" => "1", "y" => "2", "evidence" => "e"])]
     reg = "version = 1\n[lanes]\nmax_open = 6\n[[agents]]\nslug = \"a\"\n[[agents]]\nslug = \"b\"\n"
     rat = "[[size]]\nglob = \".claude/hooks/*.sh\"\nmax_lines = 150\n"
-    files = Dict(".gitignore" => "/.lanes/\n", ".agents/agent-registry.toml" => reg, "ratchets.toml" => rat,
-                 ".factory-version" => "version = \"0.2.4\"\nprofile = \"package\"\n",
-                 "HANDOFF.md" => "The lane cap is 6 <!-- claim: max_open=6 -->; 2 roles <!-- claim: roles=2 -->.\n" *
-                                 "Factory 0.2.4 <!-- claim: factory_version=0.2.4 -->, hooks <= 150 lines <!-- claim: max_lines:.claude/hooks/*.sh=150 -->\n")
+    files = Dict(
+        ".gitignore" => "/.lanes/\n", ".agents/agent-registry.toml" => reg, "ratchets.toml" => rat,
+        ".factory-version" => "version = \"0.2.4\"\nprofile = \"package\"\n",
+        "HANDOFF.md" => "The lane cap is 6 <!-- claim: max_open=6 -->; 2 roles <!-- claim: roles=2 -->.\n" *
+            "Factory 0.2.4 <!-- claim: factory_version=0.2.4 -->, hooks <= 150 lines <!-- claim: max_lines:.claude/hooks/*.sh=150 -->\n"
+    )
     d = tmp_repo(files)
     run_cc(args...) = capture(() -> CheckClaims.main([args..., "--root", d]))
     fails(out) = [String(m.captures[1]) for m in eachmatch(r"\[FAIL\] (.*)", out)]
@@ -22,7 +24,7 @@
     write(joinpath(d, "HANDOFF.md"), "x 16 <!-- claim: max_open=6 --> <!-- claim: bogus=1 --> <!-- claim: roles -->\n")
     rc, out = run_cc()
     @test rc == 1 && length(fails(out)) == 3 && occursin("does not state 6", out) && occursin("unknown claim key `bogus`", out) &&
-          occursin("`roles` has no value", out)
+        occursin("`roles` has no value", out)
     write(joinpath(d, "HANDOFF.md"), "6 <!-- Claim: max_open=6 -->\n6 <!--claim max_open=6-->\n`<!-- Claim: x -->` is an example\n")
     rc, out = run_cc()                                                         # the review: mistyped markers were ignored
     @test rc == 1 && length(fails(out)) == 2 && all(f -> occursin("malformed claim marker", f), fails(out))
@@ -39,8 +41,12 @@
     @test run_cc()[1] == 2
     rm(joinpath(d, ".agents/factory.toml")); rm(joinpath(d, "OTHER.md"))
     # a nested checkout (the coordinator's factory/template) is checked against its own registry
-    commit!(d, Dict("factory/template/.agents/agent-registry.toml" => "version = 1\n[lanes]\nmax_open = 4\n",
-                    "factory/template/CLAUDE.md" => "At most 4 lanes <!-- claim: max_open=4 -->\n"), "nested")
+    commit!(
+        d, Dict(
+            "factory/template/.agents/agent-registry.toml" => "version = 1\n[lanes]\nmax_open = 4\n",
+            "factory/template/CLAUDE.md" => "At most 4 lanes <!-- claim: max_open=4 -->\n"
+        ), "nested"
+    )
     rc, out = run_cc()
     @test rc == 0 || (print(out); false)
     write(joinpath(d, "factory/template/CLAUDE.md"), "At most 6 lanes <!-- claim: max_open=6 -->\n")

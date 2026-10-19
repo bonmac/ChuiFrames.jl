@@ -38,8 +38,10 @@ the record not committed), a checkout holding the factory (`factory/MANIFEST.tom
 coordinator, else a package; 0.2.0 always fell back to `package` and so reported every
 package job as never called in a coordinator checkout.
 """
-checkout_profile(root) = get(CI.factory_record(root), "profile",
-                             isfile(joinpath(root, "factory", "MANIFEST.toml")) ? "coordinator" : "package")
+checkout_profile(root) = get(
+    CI.factory_record(root), "profile",
+    isfile(joinpath(root, "factory", "MANIFEST.toml")) ? "coordinator" : "package"
+)
 
 @testset "ci.jl" begin
     wf = joinpath(ROOT, ".github/workflows")
@@ -86,7 +88,8 @@ checkout_profile(root) = get(CI.factory_record(root), "profile",
 
     @testset "test job really runs Pkg.test on a package" begin
         d = mktempdir()
-        write(joinpath(d, "Project.toml"), """
+        write(
+            joinpath(d, "Project.toml"), """
             name = "FactoryProbe"
             uuid = "4b3a7c1e-0d5e-4c55-9a0b-2b6f0f1e9a11"
             version = "0.1.0"
@@ -94,7 +97,8 @@ checkout_profile(root) = get(CI.factory_record(root), "profile",
             Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
             [targets]
             test = ["Test"]
-            """)
+            """
+        )
         mkpath(joinpath(d, "src")); write(joinpath(d, "src/FactoryProbe.jl"), "module FactoryProbe\nf() = 1\nend\n")
         mkpath(joinpath(d, "test"))
         write(joinpath(d, "test/runtests.jl"), "using Test, FactoryProbe\n@test FactoryProbe.f() == 1\n@test ARGS == [\"unit\"]\n")
@@ -107,19 +111,21 @@ checkout_profile(root) = get(CI.factory_record(root), "profile",
         # [sources] path into the tracked Project.toml, added the package to [deps], dropped comments.
         uuid = "7d2c1f0e-3b4a-4e5f-8a9b-0c1d2e3f4a5b"
         tomlv = "TOML = \"fa267f1f-6049-4f14-aa54-33bafae1ed76\""
-        d = tmp_repo(Dict(
-            "Project.toml" => "name = \"FactoryEnvProbe\"\nuuid = \"$uuid\"\nversion = \"0.1.0\"\n",
-            "src/FactoryEnvProbe.jl" => "module FactoryEnvProbe\nf() = 1\nend\n",
-            ".gitignore" => "/Manifest*.toml\n/docs/Manifest*.toml\n/test/jet/Manifest*.toml\n/test/contracts/Manifest*.toml\n",
-            # a relative [sources] path (Julia >= 1.11) must still resolve from the scratch copy
-            "docs/Project.toml" => "# docs env: this comment must survive\n[deps]\nFactoryEnvProbe = \"$uuid\"\n$tomlv\n\n[sources]\nFactoryEnvProbe = {path = \"..\"}\n\n[compat]\nTOML = \"1\"\n",
-            "docs/make.jl" => "using TOML, FactoryEnvProbe\nFactoryEnvProbe.f() == 1 || error(\"probe\")\n",
-            "test/jet/Project.toml" => "# jet env: this comment must survive\n[deps]\n$tomlv\n\n[compat]\nTOML = \"1\"\n",
-            "test/jet/runjet.jl" => "using TOML\nconst N = Symbol(TOML.parsefile(joinpath(@__DIR__, \"..\", \"..\", \"Project.toml\"))[\"name\"])\n@eval using \$N\n",
-            "test/contracts/Project.toml" => "# contracts env\n[deps]\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n\n[compat]\nTest = \"1\"\n",
-            "test/contracts/upstreams.toml" => "[upstreams]\nUp = \"https://example.invalid/Up.jl\"\n",
-            "test/contracts/runtests.jl" => "using Test\n@test Base.active_project() != abspath(\"test/contracts/Project.toml\")\n",
-        ))
+        d = tmp_repo(
+            Dict(
+                "Project.toml" => "name = \"FactoryEnvProbe\"\nuuid = \"$uuid\"\nversion = \"0.1.0\"\n",
+                "src/FactoryEnvProbe.jl" => "module FactoryEnvProbe\nf() = 1\nend\n",
+                ".gitignore" => "/Manifest*.toml\n/docs/Manifest*.toml\n/test/jet/Manifest*.toml\n/test/contracts/Manifest*.toml\n",
+                # a relative [sources] path (Julia >= 1.11) must still resolve from the scratch copy
+                "docs/Project.toml" => "# docs env: this comment must survive\n[deps]\nFactoryEnvProbe = \"$uuid\"\n$tomlv\n\n[sources]\nFactoryEnvProbe = {path = \"..\"}\n\n[compat]\nTOML = \"1\"\n",
+                "docs/make.jl" => "using TOML, FactoryEnvProbe\nFactoryEnvProbe.f() == 1 || error(\"probe\")\n",
+                "test/jet/Project.toml" => "# jet env: this comment must survive\n[deps]\n$tomlv\n\n[compat]\nTOML = \"1\"\n",
+                "test/jet/runjet.jl" => "using TOML\nconst N = Symbol(TOML.parsefile(joinpath(@__DIR__, \"..\", \"..\", \"Project.toml\"))[\"name\"])\n@eval using \$N\n",
+                "test/contracts/Project.toml" => "# contracts env\n[deps]\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n\n[compat]\nTest = \"1\"\n",
+                "test/contracts/upstreams.toml" => "[upstreams]\nUp = \"https://example.invalid/Up.jl\"\n",
+                "test/contracts/runtests.jl" => "using Test\n@test Base.active_project() != abspath(\"test/contracts/Project.toml\")\n",
+            )
+        )
         files = filter(f -> isfile(joinpath(d, f)), CI.tracked_files(d))
         before = Dict(f => read(joinpath(d, f)) for f in files)
         td = mktempdir()                                                # tempname() reads TMPDIR per call
@@ -143,11 +149,17 @@ checkout_profile(root) = get(CI.factory_record(root), "profile",
     end
 
     @testset "a skip declares its kind; a missing seeded file is red (0.2.4)" begin
-        seeded = Dict("Project.toml" => "name = \"P\"\nuuid = \"4b3a7c1e-0d5e-4c55-9a0b-2b6f0f1e9a12\"\n",
-                      "test/jet/Project.toml" => "", "test/jet/runjet.jl" => "", "docs/Project.toml" => "", "docs/make.jl" => "",
-                      "test/contracts/Project.toml" => "", "test/contracts/runtests.jl" => "",
-                      "test/contracts/upstreams.toml" => "[upstreams]\nUp = \"https://example.invalid/Up.jl\"\n")
-        mk() = (d = mktempdir(); for (f, c) in seeded; mkpath(dirname(joinpath(d, f))); write(joinpath(d, f), c); end; d)
+        seeded = Dict(
+            "Project.toml" => "name = \"P\"\nuuid = \"4b3a7c1e-0d5e-4c55-9a0b-2b6f0f1e9a12\"\n",
+            "test/jet/Project.toml" => "", "test/jet/runjet.jl" => "", "docs/Project.toml" => "", "docs/make.jl" => "",
+            "test/contracts/Project.toml" => "", "test/contracts/runtests.jl" => "",
+            "test/contracts/upstreams.toml" => "[upstreams]\nUp = \"https://example.invalid/Up.jl\"\n"
+        )
+        mk() = (
+            d = mktempdir(); for (f, c) in seeded
+                mkpath(dirname(joinpath(d, f))); write(joinpath(d, f), c)
+            end; d
+        )
         job_of(f) = startswith(f, "test/jet") ? "jet" : startswith(f, "docs") ? "docs" : "contracts"
         d = mk()
         for job in ("jet", "docs", "contracts")                              # all present: the job runs

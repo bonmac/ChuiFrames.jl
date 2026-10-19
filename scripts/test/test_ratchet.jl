@@ -1,7 +1,9 @@
 @testset "ratchet.jl" begin
-    old = TOML.parse("""
+    old = TOML.parse(
+        """
         [coverage]\nfloor = 80.0\n[bench]\ntime_tolerance = 0.10
-        [[size]]\nglob = "src/*.jl"\nmax_lines = 600\n""")
+        [[size]]\nglob = "src/*.jl"\nmax_lines = 600\n"""
+    )
     @test isempty(Ratchet.direction(old, old))
     up = deepcopy(old); up["coverage"]["floor"] = 85.0; up["size"][1]["max_lines"] = 500
     up["bench"]["time_tolerance"] = 0.05

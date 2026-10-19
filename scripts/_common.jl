@@ -59,8 +59,10 @@ end
 
 "Julia environment variables inherited from a parent shell that make a lane or a CI job resolve the wrong project (0.2.4)."
 const LEAKY_ENV = ("JULIA_PROJECT", "JULIA_LOAD_PATH", "JULIA_DEPOT_PATH")
-env_warnings() = ["$k=$(ENV[k]) is set in this environment and is inherited by everything started from here. Unset it unless you mean it."
-                  for k in LEAKY_ENV if !isempty(get(ENV, k, ""))]
+env_warnings() = [
+    "$k=$(ENV[k]) is set in this environment and is inherited by everything started from here. Unset it unless you mean it."
+        for k in LEAKY_ENV if !isempty(get(ENV, k, ""))
+]
 
 "Parse `--key value` / `--flag` arguments. Returns (Dict, positional)."
 function parse_args(args, flags::Tuple = (), options::Tuple = ())
@@ -89,9 +91,11 @@ const FACTORY_CONFIG = ".agents/factory.toml"
 # Machine-local, gitignored (factory 0.2.3): read-only roots that must not be committed (private
 # paths). gen.jl merges its [bash_guard] read_only_roots into .claude/hooks/read-only-roots.txt.
 const FACTORY_LOCAL = ".agents/factory.local.toml"
-const CONFIG_KEYS = Dict("bash_guard" => ("read_only_roots", "require_read_only_roots"),
-                         "check_docs" => ("exclude", "external", "ignore_fenced"),
-                         "check_claims" => ("files", "required"))   # 0.2.4: scripts/check_claims.jl
+const CONFIG_KEYS = Dict(
+    "bash_guard" => ("read_only_roots", "require_read_only_roots"),
+    "check_docs" => ("exclude", "external", "ignore_fenced"),
+    "check_claims" => ("files", "required")
+)   # 0.2.4: scripts/check_claims.jl
 const BOOL_KEYS = ("ignore_fenced", "require_read_only_roots")
 
 """

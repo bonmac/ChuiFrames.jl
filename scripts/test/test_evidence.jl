@@ -1,9 +1,9 @@
 @testset "evidence.jl (0.2.4)" begin
     summ = """
-        Test Summary:  | Pass  Fail  Error  Total   Time
-        factory        | 1002     1      1   1004  52.3s
-          gen.jl       |  269     1           270   2.7s
-        """
+    Test Summary:  | Pass  Fail  Error  Total   Time
+    factory        | 1002     1      1   1004  52.3s
+      gen.jl       |  269     1           270   2.7s
+    """
     @test Evidence.test_totals(summ) == Dict("pass" => 1002, "fail" => 1, "error" => 1, "broken" => 0, "total" => 1004)
     @test Evidence.test_totals("Test Summary: | Pass  Total  Time\nfactory       | 1006   1006  52.0s\n")["total"] == 1006
     blank = "Test Summary: | Pass  Fail  Error  Total  Time\nfactory       |   10            1     11  1.0s\n"   # an empty Fail column

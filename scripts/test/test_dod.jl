@@ -36,8 +36,10 @@
     @test t3(["adr/sub/0012-x.md"]; dir = "adr") == ["adr"]
     @test t3(["adrx/0012-x.md"]; dir = "adr") == ["adr"]
     # deleting the CHANGELOG or a test is not evidence
-    tier, res = DoD.evaluate(risk, ["src/A.jl", "test/a.jl", "CHANGELOG.md"], ["T1"], "docs/superpowers/plans/x.md";
-                             kept = ["src/A.jl"])
+    tier, res = DoD.evaluate(
+        risk, ["src/A.jl", "test/a.jl", "CHANGELOG.md"], ["T1"], "docs/superpowers/plans/x.md";
+        kept = ["src/A.jl"]
+    )
     @test failed(res) == ["tests", "changelog"]
     # default_tier = "T0" is honoured
     r0 = deepcopy(risk); r0["default_tier"] = "T0"
@@ -55,11 +57,17 @@
         @test frag(["src/A.jl", "test/a.jl", "changelog.d/.mine.md"]) == ["changelog"]   # the review: fold never sees it
         @test frag(["src/A.jl", "test/a.jl", "changelog.d/x.md"]; kept = ["src/A.jl", "test/a.jl"], added = String[]) == ["changelog"]
         @test frag(["src/A.jl", "test/a.jl", "CHANGELOG.md"]) == String[]      # the CHANGELOG.md path still works
-        d = tmp_repo(Dict("risk.toml" => read(joinpath(ROOT, "risk.toml"), String), "src/A.jl" => "x\n",
-                          "changelog.d/old.md" => "- old\n"))
+        d = tmp_repo(
+            Dict(
+                "risk.toml" => read(joinpath(ROOT, "risk.toml"), String), "src/A.jl" => "x\n",
+                "changelog.d/old.md" => "- old\n"
+            )
+        )
         sh(`git -C $d checkout -q -b feat/f`)
-        commit!(d, Dict("src/A.jl" => "y\n", "test/a.jl" => "t\n", "changelog.d/old.md" => "- edited\n"),
-                "feat: A\n\nPlan: docs/superpowers/plans/2026-10-19-a.md")
+        commit!(
+            d, Dict("src/A.jl" => "y\n", "test/a.jl" => "t\n", "changelog.d/old.md" => "- edited\n"),
+            "feat: A\n\nPlan: docs/superpowers/plans/2026-10-19-a.md"
+        )
         rc, out = capture(() -> DoD.main(["--root", d, "--base", "main"]))
         @test rc == 1 && fails(out) == ["changelog"]                           # editing an old fragment is not evidence
         commit!(d, Dict("changelog.d/empty.md" => "  \n"), "docs: empty fragment")   # the review: an empty one is no entry
@@ -76,8 +84,10 @@
         commit!(d, Dict("src/A.jl" => "y\n"), "feat: change A")
         rc, out = capture(() -> DoD.main(["--root", d, "--base", "main"]))
         @test rc == 1 && occursin("NOT DONE", out) && fails(out) == ["ref", "tests", "changelog"]
-        commit!(d, Dict("test/a.jl" => "t\n", "CHANGELOG.md" => "- A\n"),
-                "test: cover A\n\nPlan: docs/superpowers/plans/2026-10-19-a.md")
+        commit!(
+            d, Dict("test/a.jl" => "t\n", "CHANGELOG.md" => "- A\n"),
+            "test: cover A\n\nPlan: docs/superpowers/plans/2026-10-19-a.md"
+        )
         rc, out = capture(() -> DoD.main(["--root", d, "--base", "main"]))
         @test rc == 0 && occursin("dod.jl: DONE", out) && isempty(fails(out))
         @test capture(() -> DoD.main(["--root", d, "--base", "nope"]))[1] == 2
@@ -90,8 +100,10 @@
         @test rc == 1 && occursin("tier T3", out) && fails(out) == ["spec", "changelog", "adr"]
         # adr_dir comes from .factory-version (written by sync_factory.jl), or --adr-dir
         @test DoD.adr_dir(d) == "docs/adr"
-        commit!(d, Dict("adr/0012-move.md" => "# ADR\n", "CHANGELOG.md" => "- mv\n"),
-                "chore: move hook\n\nSpec: docs/superpowers/specs/2026-10-19-mv-design.md")
+        commit!(
+            d, Dict("adr/0012-move.md" => "# ADR\n", "CHANGELOG.md" => "- mv\n"),
+            "chore: move hook\n\nSpec: docs/superpowers/specs/2026-10-19-mv-design.md"
+        )
         rc, out = capture(() -> DoD.main(["--root", d, "--base", "main", "--labels", "T3"]))
         @test rc == 1 && fails(out) == ["adr"]
         rc, out = capture(() -> DoD.main(["--root", d, "--base", "main", "--labels", "T3", "--adr-dir", "adr"]))

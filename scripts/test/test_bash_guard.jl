@@ -6,7 +6,7 @@
     @testset "bash_guard: guard-rereview bypasses (0.2.3)" begin
         # ⏎ is a newline and “ a double quote; raw strings keep $ and \ literal. All but three gave rc 0 on 0.2.2.
         nl(c) = replace(c, "⏎" => "\n", "“" => "\"")
-        gb(c; hooks = HOOKS) = hook("bash_guard.sh", bash(nl(c); cwd = root), root; hooks)[1]
+        gb(c; hooks = TEST_HOOKS) = hook("bash_guard.sh", bash(nl(c); cwd = root), root; hooks)[1]
         cases = [
             # M1: TMPDIR reassigned without `=`; a literal $TMPDIR/... is never a relative path
             raw"unset TMPDIR; rm -rf $TMPDIR/opt", raw"unset TMPDIR && rm -rf “$TMPDIR“/Users",
@@ -44,15 +44,18 @@
             "rm \\⏎-rf /opt/x", "git reset \\⏎--hard",
             # the 0.2.3 reviewer: long and late clean flags, commit -n (= --no-verify)
             "git clean --force", "git clean -d --force", "git clean -x -d -f", "git commit -nm x", "git commit -n -m x",
-            "git commit -an", "git commit -m x -n"]
+            "git commit -an", "git commit -m x -n",
+        ]
         for c in cases
             @test gb(c) == 2 || (println("not blocked: $(nl(c))"); false)
         end
         # m2: --git-dir / --work-tree name the repository, like -C
         h = hooks_with_roots(REF_ROOTS)
         mt = expanduser("~/ro-fixture/ref-a")
-        for c in ("git --git-dir ~/ro-fixture/ref-a/.git checkout .", "git --git-dir=$mt/.git checkout .",
-                  "git --work-tree=$mt checkout .", "git --work-tree $mt checkout .")
+        for c in (
+                "git --git-dir ~/ro-fixture/ref-a/.git checkout .", "git --git-dir=$mt/.git checkout .",
+                "git --work-tree=$mt checkout .", "git --work-tree $mt checkout .",
+            )
             @test gb(c; hooks = h) == 2 || (println("not blocked: $c"); false)
         end
         @test gb("git --git-dir ~/ro-fixture/ref-a/.git log -1"; hooks = h) == 0
@@ -85,7 +88,8 @@
             raw"while read -r l; do echo “$l“; done < f", "echo `date` > out.txt", raw"x=$(git rev-parse HEAD) && echo “$x“",
             "nohup julia x.jl > log.txt 2>&1 &", "{ echo a; echo b; } > out.txt", "echo x >| out.txt",
             "git clean -n", "git clean --dry-run -d", "git commit -m x", "git commit -am \"fix: not -n here\"",
-            "git commit -m fix-nothing", "git commit --amend --no-edit", "git commit -mrun"]
+            "git commit -m fix-nothing", "git commit --amend --no-edit", "git commit -mrun",
+        ]
         for c in allow
             @test gb(c) == 0 || (println("blocked: $(nl(c)) ", hook("bash_guard.sh", bash(nl(c); cwd = root), root)[3]); false)
         end
@@ -103,35 +107,41 @@
         lane = joinpath(r, ".worktrees/l1"); mkpath(lane); write(joinpath(lane, ".git"), "gitdir: x\n")
         # hermetic: the checkout's own list (a coordinator's seeded risk.toml) may differ from the template's
         mkpath(joinpath(r, ".claude/hooks"))
-        write(joinpath(r, ".claude/hooks/protected-paths.txt"), "# fixture\nT3 .github/workflows/*\nT3 .claude/settings.json\nT3 .claude/hooks/*\n" *
-              "T3 .agents/checks.toml\nT3 scripts/dod.jl\nT3 scripts/gen.jl\nT3 scripts/ci.jl\nT3 scripts/test/*\nT3 risk.toml\nT3 ratchets.toml\nT2 Project.toml\n")
+        write(
+            joinpath(r, ".claude/hooks/protected-paths.txt"), "# fixture\nT3 .github/workflows/*\nT3 .claude/settings.json\nT3 .claude/hooks/*\n" *
+                "T3 .agents/checks.toml\nT3 scripts/dod.jl\nT3 scripts/gen.jl\nT3 scripts/ci.jl\nT3 scripts/test/*\nT3 risk.toml\nT3 ratchets.toml\nT2 Project.toml\n"
+        )
         pkg = joinpath(r, "Pkg.jl"); mkpath(joinpath(pkg, ".claude/hooks")); write(joinpath(pkg, ".git"), "gitdir: x\n")
         write(joinpath(pkg, ".claude/hooks/protected-paths.txt"), "T3 src/Secret.jl\n")      # its own list
         t3(c; env = Dict{String, String}(), cwd = r) = hook("bash_guard.sh", bash(c; cwd), r; env)
-        deny = ["sed -i '' s/T3/T0/ risk.toml", "printf x > scripts/dod.jl", "rm scripts/test/test_dod.jl",
-                "echo x >> risk.toml", "echo x | tee -a .claude/hooks/bash_guard.sh", "cp /tmp/x scripts/ci.jl",
-                "mv scripts/gen.jl /tmp/", "install -m 644 /tmp/x scripts/dod.jl", "ln -sf /tmp/x ratchets.toml",
-                "truncate -s 0 risk.toml", "touch .agents/checks.toml", "dd if=/dev/zero of=risk.toml count=1",
-                "perl -pi -e s/a/b/ risk.toml", "sed --in-place=.bak -e s/a/b/ .github/workflows/CI.yml",
-                "cat > risk.toml <<'EOF'⏎x⏎EOF", "echo x > RISK.TOML", "echo x > ./scripts/../risk.toml",
-                "cd scripts && rm dod.jl", "cd scripts/test; echo x > test_dod.jl", "chmod -R 000 scripts",
-                "rm -r scripts", "rm -r .github", "mv .claude /tmp/c", "rmdir scripts/test", "find . -name '*.jl' -delete",
-                "find scripts -delete", "cp -r /tmp/x/. .", "cp /tmp/dod.jl scripts/", "tar -xf /tmp/a.tar -C .",
-                "unzip /tmp/a.zip -d scripts", "rsync -a /tmp/x/ ./", "curl -o risk.toml http://e", "wget -O risk.toml http://e",
-                "git rm risk.toml", "git mv scripts/dod.jl x.jl", "git restore risk.toml",
-                "git checkout HEAD~1 -- risk.toml", "git checkout HEAD~1 risk.toml", "git -C scripts checkout -- dod.jl",
-                "echo x > .worktrees/l1/risk.toml", "echo x > Pkg.jl/src/Secret.jl", "mv Pkg.jl /tmp/p",
-                "FACTORY_ALLOW_T3=1 sed -i '' s/a/b/ risk.toml", "if true; then echo x > risk.toml; fi",
-                "find . -name x -exec cp /tmp/y risk.toml +"]
+        deny = [
+            "sed -i '' s/T3/T0/ risk.toml", "printf x > scripts/dod.jl", "rm scripts/test/test_dod.jl",
+            "echo x >> risk.toml", "echo x | tee -a .claude/hooks/bash_guard.sh", "cp /tmp/x scripts/ci.jl",
+            "mv scripts/gen.jl /tmp/", "install -m 644 /tmp/x scripts/dod.jl", "ln -sf /tmp/x ratchets.toml",
+            "truncate -s 0 risk.toml", "touch .agents/checks.toml", "dd if=/dev/zero of=risk.toml count=1",
+            "perl -pi -e s/a/b/ risk.toml", "sed --in-place=.bak -e s/a/b/ .github/workflows/CI.yml",
+            "cat > risk.toml <<'EOF'⏎x⏎EOF", "echo x > RISK.TOML", "echo x > ./scripts/../risk.toml",
+            "cd scripts && rm dod.jl", "cd scripts/test; echo x > test_dod.jl", "chmod -R 000 scripts",
+            "rm -r scripts", "rm -r .github", "mv .claude /tmp/c", "rmdir scripts/test", "find . -name '*.jl' -delete",
+            "find scripts -delete", "cp -r /tmp/x/. .", "cp /tmp/dod.jl scripts/", "tar -xf /tmp/a.tar -C .",
+            "unzip /tmp/a.zip -d scripts", "rsync -a /tmp/x/ ./", "curl -o risk.toml http://e", "wget -O risk.toml http://e",
+            "git rm risk.toml", "git mv scripts/dod.jl x.jl", "git restore risk.toml",
+            "git checkout HEAD~1 -- risk.toml", "git checkout HEAD~1 risk.toml", "git -C scripts checkout -- dod.jl",
+            "echo x > .worktrees/l1/risk.toml", "echo x > Pkg.jl/src/Secret.jl", "mv Pkg.jl /tmp/p",
+            "FACTORY_ALLOW_T3=1 sed -i '' s/a/b/ risk.toml", "if true; then echo x > risk.toml; fi",
+            "find . -name x -exec cp /tmp/y risk.toml +",
+        ]
         for c in deny
             rc, _, err = t3(nl(c))
             @test (rc == 2 && (occursin("T3", err) || occursin("own T3 paths", err))) || (println("not blocked (T3): $(nl(c)) rc=$rc $err"); false)
         end
-        allow = ["sed -i '' s/a/b/ src/A.jl", "echo x > notes.md", "rm -r build", "cat risk.toml", "cp risk.toml /tmp/x",
-                 "grep T3 risk.toml > /tmp/x", "mkdir -p scripts/test", "touch scripts/new_tool.jl", "git add risk.toml",
-                 "git checkout main", "git checkout -b feat/x", "git diff -- risk.toml", "julia scripts/gen.jl",
-                 "git rm build.log", "git rm -r --cached scripts", "echo x > Pkg.jl/risk.toml", "echo x > .worktrees/l1/notes.md", "cp a.txt docs/",
-                 "git commit -m \"git rm risk.toml\"", "git log -- scripts/dod.jl > /tmp/log"]
+        allow = [
+            "sed -i '' s/a/b/ src/A.jl", "echo x > notes.md", "rm -r build", "cat risk.toml", "cp risk.toml /tmp/x",
+            "grep T3 risk.toml > /tmp/x", "mkdir -p scripts/test", "touch scripts/new_tool.jl", "git add risk.toml",
+            "git checkout main", "git checkout -b feat/x", "git diff -- risk.toml", "julia scripts/gen.jl",
+            "git rm build.log", "git rm -r --cached scripts", "echo x > Pkg.jl/risk.toml", "echo x > .worktrees/l1/notes.md", "cp a.txt docs/",
+            "git commit -m \"git rm risk.toml\"", "git log -- scripts/dod.jl > /tmp/log",
+        ]
         for c in allow
             rc, _, err = t3(c)
             @test rc == 0 || (println("blocked (T3): $c $err"); false)
@@ -175,27 +185,29 @@
         end
         rv(c; root = r) = hook("bash_guard.sh", bash(c; cwd = root), root)
         deny = [# M2: glob characters (the shell expands them; the guard now does too) and brace lists
-                "rm risk.tom?", "rm scripts/dod.j*", "rm scripts/[d]od.jl", "rm -r scripts/tes?", "rm {risk,x}.toml",
-                "printf x > risk.tom?",
-                # M4: $'...' / $"..." quoting, ~+ and ~-, x->f redirects, git's -C/--git-dir, env -C, rsync, find -exec
-                raw"rm $'risk.toml'", raw"rm $\"risk.toml\"", raw"printf x > $'risk.toml'", "rm ~+/risk.toml", "rm ~-/x",
-                "printf x->risk.toml", "printf x-> risk.toml", "git --git-dir=.git rm risk.toml",
-                "git --work-tree=. --git-dir=.git rm risk.toml", "git -C scripts -C test rm t.jl", "env -C scripts rm dod.jl",
-                "rsync a scripts/dod.jl -q", "find . -name t.jl -exec rm {} +", raw"find scripts -exec cp /tmp/x {} \;",
-                # M1: .git markers and .git internals; suspected: GNU names, git aliases
-                "touch .git/hooks/pre-commit", "mkdir scripts/.git", "touch .claude/.git", "gsed -i s/a/b/ risk.toml",
-                "grm risk.toml", "gtimeout 5 rm risk.toml", "git -c alias.nuke=rm nuke risk.toml",
-                # re-verification (N1): unzip without -d and tar -x without -C extract into the cwd
-                "unzip -o /tmp/a.zip", "tar -xf /tmp/a.tar", "cd scripts && unzip -o /tmp/a.zip", "tar xzf /tmp/a.tgz"]
+            "rm risk.tom?", "rm scripts/dod.j*", "rm scripts/[d]od.jl", "rm -r scripts/tes?", "rm {risk,x}.toml",
+            "printf x > risk.tom?",
+            # M4: $'...' / $"..." quoting, ~+ and ~-, x->f redirects, git's -C/--git-dir, env -C, rsync, find -exec
+            raw"rm $'risk.toml'", raw"rm $\"risk.toml\"", raw"printf x > $'risk.toml'", "rm ~+/risk.toml", "rm ~-/x",
+            "printf x->risk.toml", "printf x-> risk.toml", "git --git-dir=.git rm risk.toml",
+            "git --work-tree=. --git-dir=.git rm risk.toml", "git -C scripts -C test rm t.jl", "env -C scripts rm dod.jl",
+            "rsync a scripts/dod.jl -q", "find . -name t.jl -exec rm {} +", raw"find scripts -exec cp /tmp/x {} \;",
+            # M1: .git markers and .git internals; suspected: GNU names, git aliases
+            "touch .git/hooks/pre-commit", "mkdir scripts/.git", "touch .claude/.git", "gsed -i s/a/b/ risk.toml",
+            "grm risk.toml", "gtimeout 5 rm risk.toml", "git -c alias.nuke=rm nuke risk.toml",
+            # re-verification (N1): unzip without -d and tar -x without -C extract into the cwd
+            "unzip -o /tmp/a.zip", "tar -xf /tmp/a.tar", "cd scripts && unzip -o /tmp/a.zip", "tar xzf /tmp/a.tgz",
+        ]
         for c in deny
             rc, _, err = rv(c)
             @test rc == 2 || (println("not blocked (review): $c rc=$rc"); false)
         end
         allow = [# m6: into a directory means DIR/<source name>; the index-only git forms touch no file
-                 "cp /tmp/notes.md .", "mv /tmp/notes.md .", "cp -r /tmp/docs ./docs-copy", "git restore --staged risk.toml",
-                 "git rm --cached scripts/test/t.jl", "rm build/*.o", "find . -name '*.jl' -exec grep -l foo {} +",
-                 "ls *.md > /tmp/x", "git -C scripts log -1", "unzip -o /tmp/a.zip -d build", "tar -xf /tmp/a.tar -C build",
-                 "cd /tmp && unzip -o a.zip", "printf '%s' 'a->b' > notes.md"]
+            "cp /tmp/notes.md .", "mv /tmp/notes.md .", "cp -r /tmp/docs ./docs-copy", "git restore --staged risk.toml",
+            "git rm --cached scripts/test/t.jl", "rm build/*.o", "find . -name '*.jl' -exec grep -l foo {} +",
+            "ls *.md > /tmp/x", "git -C scripts log -1", "unzip -o /tmp/a.zip -d build", "tar -xf /tmp/a.tar -C build",
+            "cd /tmp && unzip -o a.zip", "printf '%s' 'a->b' > notes.md",
+        ]
         for c in allow
             rc, _, err = rv(c)
             @test rc == 0 || (println("blocked (review): $c $err"); false)
@@ -217,7 +229,7 @@
         r2 = realpath(mktempdir())
         @test hook("write_guard.sh", write_payload("$r2/risk.toml"), r2; hooks = h)[1] == 2
         @test hook("write_guard.sh", write_payload("/tmp/scratch.md"), r2; hooks = h)[1] == 0   # outside the root: no list needed
-        h2 = joinpath(mktempdir(), "hooks"); cp(HOOKS, h2); rm(joinpath(h2, "_bash_guard_write.sh"))
+        h2 = joinpath(mktempdir(), "hooks"); cp(TEST_HOOKS, h2); rm(joinpath(h2, "_bash_guard_write.sh"))
         rc, _, err = hook("write_guard.sh", write_payload("$r2/a.jl"), r2; hooks = h2)
         @test rc == 2 && occursin("missing", err)
     end

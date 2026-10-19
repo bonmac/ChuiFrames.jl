@@ -19,38 +19,38 @@
 
     @testset "grep of qualified upstream names" begin
         code = """
-            using ChuiCore: compose, ⨟, fmap as fm
-            import ChuiTypes: Effect
-            x = ChuiCore.pure(1) |> ChuiCore.:⨟   # ChuiCore.commented
-            y = ChuiCoreExtra.thing; z = NotChuiCore.thing
-            """
+        using ChuiCore: compose, ⨟, fmap as fm
+        import ChuiTypes: Effect
+        x = ChuiCore.pure(1) |> ChuiCore.:⨟   # ChuiCore.commented
+        y = ChuiCoreExtra.thing; z = NotChuiCore.thing
+        """
         @test CU.used_names(code, ["ChuiCore", "ChuiTypes"]) ==
-              Set(["ChuiCore.compose", "ChuiCore.⨟", "ChuiCore.fmap", "ChuiTypes.Effect", "ChuiCore.pure"])
+            Set(["ChuiCore.compose", "ChuiCore.⨟", "ChuiCore.fmap", "ChuiTypes.Effect", "ChuiCore.pure"])
         # parenthesised operators; #= =# block comments (0.2.1 review)
         @test CU.used_names("using ChuiCore: (⨟), init\nf = ChuiCore.:(⨟)\n", ["ChuiCore"]) == Set(["ChuiCore.⨟", "ChuiCore.init"])
         @test CU.used_names("#= old:\nChuiCore.Sum()\n=#\nChuiCore.pure(1)\n", ["ChuiCore"]) == Set(["ChuiCore.pure"])
     end
 
     contract = """
-        # chui-core contract
-        ### CC-001 `⨟` composes
-        `since=0.0.1 status=stable`
-        names: `ChuiCore.:⨟`, `ChuiCore.opcompose`
-        ### CC-002 Old thing
-        `since=0.0.1 status=retired`
-        names: `ChuiCore.old`
-        ### CC-003 Aggregators
-        `since=0.0.1 status=deprecated`
-        #### Details
-        names: `ChuiCore.init`
-        ### CC-004 Rule only
-        `since=0.0.1 status=stable`
-        ### CC-005 No status line
-        names: `ChuiCore.broken`
-        ## PROVISIONAL
-        #### lazy
-        names: `ChuiCore.lazy`
-        """
+    # chui-core contract
+    ### CC-001 `⨟` composes
+    `since=0.0.1 status=stable`
+    names: `ChuiCore.:⨟`, `ChuiCore.opcompose`
+    ### CC-002 Old thing
+    `since=0.0.1 status=retired`
+    names: `ChuiCore.old`
+    ### CC-003 Aggregators
+    `since=0.0.1 status=deprecated`
+    #### Details
+    names: `ChuiCore.init`
+    ### CC-004 Rule only
+    `since=0.0.1 status=stable`
+    ### CC-005 No status line
+    names: `ChuiCore.broken`
+    ## PROVISIONAL
+    #### lazy
+    names: `ChuiCore.lazy`
+    """
 
     @testset "contract file parsing" begin
         e = CU.parse_contract(contract)
@@ -80,7 +80,8 @@
                 @testitem "CC-001 ⨟ composes" tags = [:contract] begin end
                 @testitem "CC-004 rule" tags = [:contract] begin end
                 """,
-            "src/P.jl" => "module P\nusing ChuiCore: ⨟\nf = ChuiCore.opcompose\nend\n")
+            "src/P.jl" => "module P\nusing ChuiCore: ⨟\nf = ChuiCore.opcompose\nend\n"
+        )
         r = tmp_repo(files)
         errs, warns, summary = CU.check(r)
         @test (isempty(errs) && isempty(warns)) || (foreach(println, [errs; warns]); false)
@@ -95,16 +96,19 @@
         @test capture(() -> CU.main(["--root", r, "--strict"]))[1] == 1
 
         # every kind of error at once
-        commit!(r, Dict(
-            "test/contracts/USED.md" => "- CC-001\n- CC-004\n- CC-002\n- CC-003\n- CC-099\n- CC-005\n",
-            "test/contracts/more.jl" => """
-                @testitem "CC-002 old" tags = [:contract] begin end
-                @testitem "CC-003 agg" tags = [:contract] begin @test_skip false end
-                @testitem "CC-004 again" begin end
-                @testitem "CC-005 x" begin end
-                @testitem "CC-007 unlisted" begin end
-                """,
-            "src/Q.jl" => "using ChuiCore: init\nChuiTypes.x\n"))
+        commit!(
+            r, Dict(
+                "test/contracts/USED.md" => "- CC-001\n- CC-004\n- CC-002\n- CC-003\n- CC-099\n- CC-005\n",
+                "test/contracts/more.jl" => """
+                    @testitem "CC-002 old" tags = [:contract] begin end
+                    @testitem "CC-003 agg" tags = [:contract] begin @test_skip false end
+                    @testitem "CC-004 again" begin end
+                    @testitem "CC-005 x" begin end
+                    @testitem "CC-007 unlisted" begin end
+                    """,
+                "src/Q.jl" => "using ChuiCore: init\nChuiTypes.x\n"
+            )
+        )
         errs, warns, _ = CU.check(r)
         has(p) = any(e -> occursin(p, e), errs) || (println("missing error: ", p, "\n  got: ", errs); false)
         @test has("CC-099 is listed in USED.md but has no `@testitem")           # untested (and unknown)
@@ -131,14 +135,17 @@
     end
 
     @testset "0.2.1 review: contract_files-only upstreams, commented-out and untagged items" begin
-        r = tmp_repo(Dict(
-            # no URL yet: the upstream is named only in [contract_files], and its names are still grepped
-            "test/contracts/upstreams.toml" => "[upstreams]\n[contract_files]\nChuiCore = \"test/contracts/chui-core.md\"\n",
-            "test/contracts/chui-core.md" => contract,
-            "test/contracts/USED.md" => "- CC-001\n",
-            "test/contracts/c.jl" => "# @testitem \"CC-001 commented out\" tags = [:contract] begin end\n" *
-                                     "#=\n@testitem \"CC-001 in a block comment\" tags = [:contract] begin end\n=#\n",
-            "src/P.jl" => "using ChuiCore: ⨟, init\n"))
+        r = tmp_repo(
+            Dict(
+                # no URL yet: the upstream is named only in [contract_files], and its names are still grepped
+                "test/contracts/upstreams.toml" => "[upstreams]\n[contract_files]\nChuiCore = \"test/contracts/chui-core.md\"\n",
+                "test/contracts/chui-core.md" => contract,
+                "test/contracts/USED.md" => "- CC-001\n",
+                "test/contracts/c.jl" => "# @testitem \"CC-001 commented out\" tags = [:contract] begin end\n" *
+                    "#=\n@testitem \"CC-001 in a block comment\" tags = [:contract] begin end\n=#\n",
+                "src/P.jl" => "using ChuiCore: ⨟, init\n"
+            )
+        )
         errs, _, summary = CU.check(r)
         @test any(e -> occursin("CC-001 is listed in USED.md but has no `@testitem", e), errs)   # comments are not tests
         @test any(e -> occursin("ChuiCore.init is covered by CC-003", e), errs)                   # grepped without a URL
@@ -153,11 +160,14 @@
     if IN_FACTORY && isdir(joinpath(FACTORY, "..", "contracts"))
         @testset "against the coordinator's contracts/ (read only)" begin
             cdir = normpath(joinpath(FACTORY, "..", "contracts"))
-            r = tmp_repo(Dict(
-                "test/contracts/upstreams.toml" => "[upstreams]\nChuiCore = \"u\"\n[contract_files]\nChuiCore = \"test/contracts/chui-core.md\"\n",
-                "test/contracts/USED.md" => "- CC-001\n- CC-002\n- CC-004\n- CC-006\n- CC-003\n",
-                "test/contracts/c.jl" => join(("@testitem \"$id t\" tags = [:contract] begin end\n" for id in ("CC-001", "CC-002", "CC-004", "CC-006", "CC-003"))),
-                "src/P.jl" => "using ChuiCore: ⨟, init, partial, combine, final\nChuiCore.Sum\n"))
+            r = tmp_repo(
+                Dict(
+                    "test/contracts/upstreams.toml" => "[upstreams]\nChuiCore = \"u\"\n[contract_files]\nChuiCore = \"test/contracts/chui-core.md\"\n",
+                    "test/contracts/USED.md" => "- CC-001\n- CC-002\n- CC-004\n- CC-006\n- CC-003\n",
+                    "test/contracts/c.jl" => join(("@testitem \"$id t\" tags = [:contract] begin end\n" for id in ("CC-001", "CC-002", "CC-004", "CC-006", "CC-003"))),
+                    "src/P.jl" => "using ChuiCore: ⨟, init, partial, combine, final\nChuiCore.Sum\n"
+                )
+            )
             errs, _, _ = CU.check(r; contracts = cdir)
             @test any(e -> occursin("CC-003 is status=retired", e), errs)                   # retired in chui-core.md
             @test any(e -> occursin("ChuiCore.Sum is covered by CC-007", e), errs)

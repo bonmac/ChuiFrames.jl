@@ -11,8 +11,10 @@
         # runtime scratch a template-rooted session leaves behind is never offered
         mkpath(joinpath(fac, "template/.lanes")); write(joinpath(fac, "template/.lanes/ledger.jsonl"), "{}\n")
         mkpath(joinpath(fac, "template/.claude")); write(joinpath(fac, "template/.claude/settings.local.json"), "{}\n")
-        @test !any(p -> startswith(p[2], ".lanes/") || p[2] == ".claude/settings.local.json",
-                   SyncFactory.plan(fac, mktempdir(), "package", Dict{String, Any}()))
+        @test !any(
+            p -> startswith(p[2], ".lanes/") || p[2] == ".claude/settings.local.json",
+            SyncFactory.plan(fac, mktempdir(), "package", Dict{String, Any}())
+        )
         sync(args...; to) = capture(() -> SyncFactory.main(["--from", fac, "--to", to, args...]))
         to = tmp_repo()
         rc, out = sync(; to)
@@ -28,8 +30,10 @@
         @test Base.Filesystem.filemode(joinpath(to, "scripts/lane")) & 0o100 != 0
         # 0.2.4: the template's executables (every hook, every script; 15280a8 dropped +x from four) stay executable
         exe(p) = Base.Filesystem.filemode(p) & 0o100 != 0
-        want = [rel for rel in SyncFactory.template_files(joinpath(FACTORY, "template"))
-                if occursin(r"^(\.claude/hooks/[^/]+\.sh|scripts/[^/]+\.jl|scripts/lane|scripts/test/runtests\.jl)$", rel)]
+        want = [
+            rel for rel in SyncFactory.template_files(joinpath(FACTORY, "template"))
+                if occursin(r"^(\.claude/hooks/[^/]+\.sh|scripts/[^/]+\.jl|scripts/lane|scripts/test/runtests\.jl)$", rel)
+        ]
         @test length(want) >= 25
         for rel in want
             @test exe(joinpath(FACTORY, "template", rel)) || (println("template file not executable: $rel"); false)
@@ -63,8 +67,10 @@
 
         # a local edit to a managed file the factory also changed is a conflict: shown, not overwritten without --force
         write(joinpath(to, ".claude/hooks/precompact.sh"), "# local edit\n")
-        write(joinpath(fac, "template/.claude/hooks/precompact.sh"),
-              read(joinpath(fac, "template/.claude/hooks/precompact.sh"), String) * "# upstream\n")
+        write(
+            joinpath(fac, "template/.claude/hooks/precompact.sh"),
+            read(joinpath(fac, "template/.claude/hooks/precompact.sh"), String) * "# upstream\n"
+        )
         rc, out = sync("--apply"; to)
         @test rc == 1 && occursin("conflict", out)
         @test read(joinpath(to, ".claude/hooks/precompact.sh"), String) == "# local edit\n"
@@ -83,7 +89,7 @@
         write(joinpath(fac, "MANIFEST.toml"), replace(m, "paths = [\n  \"CLAUDE.md\"," => "paths = [\n  \"$tc\",\n  \"CLAUDE.md\","; count = 1))
         rc, out = sync(; to)
         @test rc == 0 && occursin(r"now-seeded\s+\.claude/commands/test-changed\.md", out) &&
-              !occursin(r"removed-upstream\s+\.claude/commands/test-changed\.md", out)
+            !occursin(r"removed-upstream\s+\.claude/commands/test-changed\.md", out)
         rc, out = sync("--apply"; to)
         @test rc == 0 && !haskey(TOML.parsefile(joinpath(to, ".factory-version"))["managed"], tc) && isfile(joinpath(to, tc))
         rc, out = sync(; to)
@@ -120,8 +126,12 @@
         @test occursin("READ_ONLY_ROOTS_REQUIRED=1", read(joinpath(c, ".claude/hooks/limits.env"), String))
         roots = read(joinpath(c, ".claude/hooks/read-only-roots.txt"), String)     # rendered by gen.jl after sync
         @test all(l -> startswith(l, "#"), split(roots, '\n'; keepempty = false))
-        guard(cmd) = run(pipeline(ignorestatus(addenv(`sh $(joinpath(c, ".claude/hooks/bash_guard.sh"))`, "CLAUDE_PROJECT_DIR" => c));
-                                  stdin = IOBuffer(bash(cmd)), stdout = devnull, stderr = devnull)).exitcode
+        guard(cmd) = run(
+            pipeline(
+                ignorestatus(addenv(`sh $(joinpath(c, ".claude/hooks/bash_guard.sh"))`, "CLAUDE_PROJECT_DIR" => c));
+                stdin = IOBuffer(bash(cmd)), stdout = devnull, stderr = devnull
+            )
+        ).exitcode
         @test guard("ls") == 2 && guard("julia scripts/gen.jl") == 0                 # required, none: fails closed
         write(joinpath(c, ".agents/factory.local.toml"), "[bash_guard]\nread_only_roots = [\"~/ro-fixture/ref-a/\"]\n")
         capture(() -> Gen.write_all(c))

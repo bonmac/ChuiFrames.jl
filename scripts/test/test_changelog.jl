@@ -1,7 +1,7 @@
 @testset "changelog.jl (0.2.4)" begin
     cl = "# Changelog\n\nIntro.\n\n## Unreleased\n\n- old entry\n\n## 0.1.0 (2026-01-01)\n\n- first\n"
     @test Changelog.fold_text(cl, ["- a\n", "- b\n  more\n"]) ==
-          "# Changelog\n\nIntro.\n\n## Unreleased\n\n- old entry\n- a\n- b\n  more\n\n## 0.1.0 (2026-01-01)\n\n- first\n"
+        "# Changelog\n\nIntro.\n\n## Unreleased\n\n- old entry\n- a\n- b\n  more\n\n## 0.1.0 (2026-01-01)\n\n- first\n"
     @test Changelog.fold_text("# C\n\n## 0.1.0\n\n- x\n", ["- a"]) == "# C\n\n## Unreleased\n\n- a\n\n## 0.1.0\n\n- x\n"
     @test Changelog.fold_text("# C\n\nIntro.\n", ["- a"]) == "# C\n\nIntro.\n\n## Unreleased\n\n- a\n"
     @test Changelog.fold_text("# C\n\n## Unreleased\n", ["- a"]) == "# C\n\n## Unreleased\n\n- a\n"
