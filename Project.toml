@@ -1,0 +1,7 @@
+name = "ChuiFrames"
+uuid = "a485ff65-e0ad-46c3-b088-da97dcdd405d"
+version = "0.0.1"
+authors = ["Boniface Makone"]
+
+[compat]
+julia = "1.10"

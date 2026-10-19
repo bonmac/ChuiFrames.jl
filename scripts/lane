@@ -1,0 +1,3 @@
+#!/bin/sh
+# scripts/lane: thin wrapper so lanes are `scripts/lane new <name>`. See scripts/lane.jl.
+exec julia --startup-file=no "$(dirname -- "$0")/lane.jl" "$@"

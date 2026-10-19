@@ -1,0 +1,15 @@
+# Upstream ecosystem packages this package's contract tests (tag :contract) cover.
+# `julia scripts/ci.jl contracts` tests against the latest release (blocking in CI);
+# `julia scripts/ci.jl contracts -- main` against each upstream's main (warning only).
+# Example:  ChuiCore = "https://github.com/<owner>/ChuiCore.jl"
+# ChuiCore and ChuiTypes have no repository URL yet (no remotes until the user's ★ decision),
+# so they are listed only under [contract_files]; `ci.jl contracts` skips until a URL is added.
+[upstreams]
+
+# Each upstream's contract file: a copy of the coordinator's contracts/<package>.md, kept in
+# this repo so a fresh clone can check itself; /contract-check refreshes it.
+# scripts/contract_usage.jl resolves USED.md's IDs and the `names:` lines against it.
+# Example:  ChuiCore = "test/contracts/chui-core.md"
+[contract_files]
+ChuiCore = "test/contracts/chui-core.md"
+ChuiTypes = "test/contracts/chui-types.md"

@@ -1,0 +1,48 @@
+# Risk tiers and protected paths: the ONE list. Repo-owned after the first sync.
+# Read by:
+#   scripts/gen.jl  -> .claude/hooks/protected-paths.txt (write_guard.sh blocks T3 writes)
+#                   -> .github/pull_request_template.md  (tier checkboxes)
+#   scripts/dod.jl  -> tier of a change = max(PR label tier, tiers of the paths it touches)
+# Glob rule everywhere: `*` matches any characters INCLUDING `/` (sh `case` semantics),
+# and paths are relative to the repo (or worktree lane) root.
+version = 1
+default_tier = "T1"
+
+# `requires` names what scripts/dod.jl checks:
+#   ci (CI itself), ref (PR links a spec or plan under docs/superpowers/),
+#   spec (PR links a spec), tests (src/ or ext/ changed => test/ changed),
+#   changelog (CHANGELOG.md changed), review (branch protection; dod.jl only reports it),
+#   adr (an ADR under docs/adr/ added or changed, or the PR cites a coordinator ADR-NNNN;
+#        the directory is `adr_dir` in .factory-version).
+[tiers.T0]
+summary = "Trivial: typo, comment, formatting, docs wording. No spec or plan."
+requires = ["ci"]
+
+[tiers.T1]
+summary = "Normal change inside this package: a plan, tests first, review."
+requires = ["ci", "ref", "tests", "changelog", "review"]
+
+[tiers.T2]
+summary = "Public API, contracts, dependencies or compat bounds: full spec, plan, review."
+requires = ["ci", "spec", "tests", "changelog", "review"]
+
+[tiers.T3]
+summary = "Process, CI, hooks, release machinery: needs an ADR and the user's approval."
+requires = ["ci", "spec", "tests", "changelog", "review", "adr"]
+
+[[protected]]
+tier = "T3"
+globs = [
+  ".github/workflows/*",
+  ".claude/settings.json",
+  ".claude/hooks/*",
+  ".agents/agent-registry.toml",
+  ".agents/factory.toml",
+  "risk.toml",
+  "ratchets.toml",
+  ".factory-version",
+]
+
+[[protected]]
+tier = "T2"
+globs = ["Project.toml", "test/contracts/*", "ext/*"]

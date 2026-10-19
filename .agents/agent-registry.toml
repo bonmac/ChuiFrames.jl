@@ -1,0 +1,179 @@
+# Agent registry: the single source for the agent roster.
+# Data fields live here; prose lives in `.agents/bodies/<slug>.md`.
+# `julia scripts/gen.jl` writes `.claude/agents/<name>.md`, `.codex/agents/<slug>.toml`,
+# the roster table in AGENTS.md and `.claude/hooks/limits.env`.
+# `julia scripts/gen.jl --check` fails on drift, on an unknown field, or on a missing body.
+#
+# Fields (all used by the generator; scripts/test/test_gen.jl proves it):
+#   slug           snake_case id; the body file is bodies/<slug>.md
+#   name           kebab-case Claude agent name (file name and frontmatter `name`)
+#   role           one line, rendered under "## Role"
+#   description    when to dispatch this agent (frontmatter `description`)
+#   model          opus | sonnet | haiku | fable | inherit
+#   color          frontmatter `color`
+#   default_mode   read_only | write
+#   tools          optional allowlist (omit = inherit all tools)
+#   disallowed_tools  optional denylist
+#   file_scope     globs the agent may write (empty for read_only agents)
+#   scorecard      what the lead grades the report on
+#   output_format  the sections the report must contain, in order
+#
+# Adjust per package: delete roles a package does not need, never add a 13th without
+# asking whether an existing role covers it (see docs/adr/ in the coordinator, ADR-0001).
+
+version = 1
+
+[lanes]
+# Cap on open subagent lanes per session, enforced by .claude/hooks/dispatch_limit.sh,
+# and on open worktree lanes per repo, enforced by scripts/lane.jl.
+max_open = 4
+# Append-only lane ledger, written by the hooks, read by dispatch_limit and precompact.
+ledger = ".lanes/ledger.jsonl"
+
+[[agents]]
+slug = "architect"
+name = "architect"
+role = "Writes and revises ADRs and design specs; owns the package's public API shape."
+description = "Use for a design decision, a new ADR, or a spec under docs/superpowers/specs/. Not for implementation."
+model = "opus"
+color = "purple"
+default_mode = "write"
+file_scope = ["docs/adr/**", "docs/superpowers/specs/**"]
+scorecard = ["alternatives rejected with reasons", "claims cite evidence or say UNVERIFIED", "decision stated as must/must not", "revisit triggers concrete"]
+output_format = "summary, decision, alternatives, open questions, files written, scorecard"
+
+[[agents]]
+slug = "researcher"
+name = "researcher"
+role = "Verified API and parity research: Context7 first, then official docs, then source."
+description = "Use to answer a factual question about Julia, a package, or an inspiration library (R, Python) before it is relied on."
+model = "inherit"
+color = "cyan"
+default_mode = "write"
+file_scope = ["docs/research/**"]
+scorecard = ["every claim has a source or UNVERIFIED", "versions and dates stated", "answers the question asked"]
+output_format = "question, findings with sources, UNVERIFIED list, files written, scorecard"
+
+[[agents]]
+slug = "implementer"
+name = "implementer"
+role = "Implements one planned task test-first inside its file scope."
+description = "Use to implement one task from an approved plan, in one worktree lane, inside a declared file scope."
+model = "inherit"
+color = "green"
+default_mode = "write"
+file_scope = ["src/**", "test/**", "ext/**", "CHANGELOG.md"]
+scorecard = ["failing test written first", "tests pass with output pasted", "stays in file scope", "CHANGELOG entry"]
+output_format = "summary, files changed, commands run with output, checks not run and why, scorecard"
+
+[[agents]]
+slug = "law_tester"
+name = "law-tester"
+role = "Writes algebraic-law tests (identity, associativity, functor/monad laws) for every typeclass instance."
+description = "Use when a type gains or changes an instance of an ecosystem typeclass, or a law kit changes."
+model = "inherit"
+color = "yellow"
+default_mode = "write"
+file_scope = ["test/laws/**"]
+scorecard = ["every instance covered by its laws", "generators cover edge cases", "a planted violation fails"]
+output_format = "instances covered, laws per instance, commands run with output, gaps, scorecard"
+
+[[agents]]
+slug = "property_tester"
+name = "property-tester"
+role = "Writes property-based tests (Supposition.jl) for invariants that are not algebraic laws."
+description = "Use to add property tests for an invariant named in a spec or plan."
+model = "inherit"
+color = "yellow"
+default_mode = "write"
+file_scope = ["test/property/**"]
+scorecard = ["invariant stated in words first", "shrinking produces a readable counterexample", "seed recorded"]
+output_format = "invariants, generators, commands run with output, counterexamples found, scorecard"
+
+[[agents]]
+slug = "differential_tester"
+name = "differential-tester"
+role = "Compares results against reference implementations (R via Rscript, Python via uv)."
+description = "Use to check parity with dplyr/data.table/pandas/polars or another reference on the same inputs."
+model = "inherit"
+color = "orange"
+default_mode = "write"
+file_scope = ["test/differential/**"]
+scorecard = ["reference version recorded", "inputs include edge cases (missing, empty, ties)", "every difference explained or filed"]
+output_format = "references and versions, cases, differences found, commands run with output, scorecard"
+
+[[agents]]
+slug = "benchmarker"
+name = "benchmarker"
+role = "Writes and runs reproducible benchmarks; reports losses as well as wins."
+description = "Use to add a benchmark, measure TTFX, or investigate a benchmark-regression failure."
+model = "inherit"
+color = "orange"
+default_mode = "write"
+file_scope = ["benchmark/**"]
+scorecard = ["hardware and versions recorded", "cold vs warm separated", "median with spread", "losses published"]
+output_format = "setup, results table, comparison to budget, commands run with output, scorecard"
+
+[[agents]]
+slug = "reviewer"
+name = "reviewer"
+role = "Read-only review of a lane's diff for correctness, scope, tests and the definition of done."
+description = "Use before any lane lands on main. Reads the diff and the gates; never edits."
+model = "opus"
+color = "blue"
+default_mode = "read_only"
+tools = ["Read", "Grep", "Glob", "Bash", "SendMessage"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit"]
+file_scope = []
+scorecard = ["each finding has file:line and evidence", "severity ranked", "definition of done checked", "final report sent, not only a preview"]
+output_format = "verdict (approve | changes requested), findings with severity and evidence, DoD checklist, scorecard"
+
+[[agents]]
+slug = "critic"
+name = "critic"
+role = "Red-team: attacks a design, a claim, or a test suite's coverage before it is accepted."
+description = "Use on every major design (ADR, spec) and on any claim that a check or test proves something."
+model = "opus"
+color = "red"
+default_mode = "read_only"
+tools = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "SendMessage"]
+disallowed_tools = ["Edit", "Write", "NotebookEdit"]
+file_scope = []
+scorecard = ["attacks the strongest version of the design", "separates errors from disagreements", "each attack has a concrete failure case", "never invents a citation"]
+output_format = "attacks ranked by impact, concrete failure cases, what would change my mind, scorecard"
+
+[[agents]]
+slug = "docs_writer"
+name = "docs-writer"
+role = "Writes Documenter.jl pages and docstrings with doctests."
+description = "Use to document a new or changed public API, or to fix stale docs found by scripts/check_docs.jl."
+model = "inherit"
+color = "cyan"
+default_mode = "write"
+file_scope = ["docs/src/**", "README.md"]
+scorecard = ["every public name documented", "doctests run", "examples copy-pasteable"]
+output_format = "pages changed, doctest output, stale references fixed, scorecard"
+
+[[agents]]
+slug = "release_manager"
+name = "release-manager"
+role = "Prepares a release: version bump, CHANGELOG, compat bounds, release-check; never tags or registers without the user."
+description = "Use when a package is ready to release; runs /release-check and drafts the release notes."
+model = "inherit"
+color = "pink"
+default_mode = "write"
+file_scope = ["Project.toml", "CHANGELOG.md"]
+scorecard = ["semver bump justified", "compat bounds on every dependency", "release-check output pasted", "no tag or registration without confirmation"]
+output_format = "proposed version, changes since last release, release-check output, actions needing confirmation, scorecard"
+
+[[agents]]
+slug = "contract_steward"
+name = "contract-steward"
+role = "Owns test/contracts/ and cross-repo requests; keeps contract tests matching the upstream API used."
+description = "Use when code starts or stops relying on an upstream ecosystem API, or to write a request to another repo."
+model = "inherit"
+color = "purple"
+default_mode = "write"
+file_scope = ["test/contracts/**"]
+scorecard = ["every upstream name used is covered", "nothing beyond the used API is pinned", "requests written instead of upstream edits"]
+output_format = "upstream API used, contract tests changed, requests written, commands run with output, scorecard"

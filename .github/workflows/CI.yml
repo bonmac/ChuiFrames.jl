@@ -1,0 +1,77 @@
+# Factory-managed (see .factory-version). Every command is a `julia scripts/ci.jl <job>` call.
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+permissions:
+  contents: read
+env:
+  ECOSYSTEM_REGISTRY_URL: ${{ vars.ECOSYSTEM_REGISTRY_URL }}
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    # ADR-0006: lts and stable block; nightly/pre is allowed to fail.
+    continue-on-error: ${{ matrix.version == 'pre' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['lts', '1', 'pre']
+        os: [ubuntu-latest]
+        include:
+          - version: '1'
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v3
+      - run: julia scripts/ci.jl setup
+      - run: julia scripts/ci.jl test
+        env:
+          CI_COVERAGE: ${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' }}
+          # :doctest and :snapshot items run on stable only (output differs across Julia versions)
+          CI_STABLE: ${{ matrix.version == '1' }}
+      - if: matrix.version == '1' && matrix.os == 'ubuntu-latest'
+        uses: julia-actions/julia-processcoverage@v1
+      - if: matrix.version == '1' && matrix.os == 'ubuntu-latest'
+        run: julia scripts/ci.jl coverage
+      - if: matrix.version == '1' && matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v7
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+  quality:
+    name: Aqua / ExplicitImports / JET (stable only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - run: julia scripts/ci.jl setup
+      - run: julia scripts/ci.jl quality
+      - run: julia scripts/ci.jl jet
+  format:
+    name: Runic
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - run: julia scripts/ci.jl format

@@ -1,0 +1,7 @@
+# ChuiFrames itself is not listed: `julia scripts/ci.jl docs` develops it into this env first
+# (it is unregistered, so a committed entry would need a path source).
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+
+[compat]
+Documenter = "1"

@@ -1,0 +1,34 @@
+# Factory-managed (see .factory-version). Generated files, ratchets, doc references, factory
+# tests, and (on pull requests) the definition of done.
+name: Guards
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - run: julia scripts/ci.jl guards
+      - if: github.event_name == 'pull_request'
+        name: Definition of done
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          PR_BODY_FILE="$RUNNER_TEMP/pr-body.md" julia scripts/ci.jl dod

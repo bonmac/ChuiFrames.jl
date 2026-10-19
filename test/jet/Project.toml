@@ -1,0 +1,8 @@
+# JET lives in its own environment: JET 0.12 needs Julia >= 1.12, so it must not be in
+# test/Project.toml (the LTS job could not resolve). Run: julia scripts/ci.jl jet (stable only).
+[deps]
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+
+[compat]
+JET = "0.12"

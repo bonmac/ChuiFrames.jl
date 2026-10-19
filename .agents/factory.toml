@@ -1,0 +1,21 @@
+# Repo-owned factory settings (seeded once per profile, then yours). T3: risk.toml protects it,
+# because it decides what bash_guard.sh allows. After editing, run `julia scripts/gen.jl`.
+# Globs use the risk.toml rule: `*` matches any characters INCLUDING `/` (so `**` = `*`).
+version = 1
+
+[bash_guard]
+# Directories (absolute or ~/...) where only read-only commands may RUN: cat, head, tail,
+# less, grep, rg, find (no -exec/-delete), ls, wc, stat, file, cd/pwd, and git
+# log/show/diff/status/blame/ls-files. Anything else whose working directory (cwd, a tracked
+# `cd`, `git -C`, `make -C`, `uv --directory/--project`, `julia --project=`) is inside one is
+# blocked. Rendered into .claude/hooks/read-only-roots.txt by scripts/gen.jl.
+read_only_roots = []
+
+[check_docs]
+# Markdown files (repo-relative) that scripts/check_docs.jl does not check.
+exclude = []
+# References that are allowed to be missing here (provided by someone else, or named on
+# purpose), e.g. "docs/agent/*" when the lead copies those files in.
+external = []
+# Skip references inside ``` fenced code blocks.
+ignore_fenced = false

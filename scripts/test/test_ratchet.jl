@@ -1,0 +1,41 @@
+@testset "ratchet.jl" begin
+    old = TOML.parse("""
+        [coverage]\nfloor = 80.0\n[bench]\ntime_tolerance = 0.10
+        [[size]]\nglob = "src/*.jl"\nmax_lines = 600\n""")
+    @test isempty(Ratchet.direction(old, old))
+    up = deepcopy(old); up["coverage"]["floor"] = 85.0; up["size"][1]["max_lines"] = 500
+    up["bench"]["time_tolerance"] = 0.05
+    @test isempty(Ratchet.direction(old, up))                       # tightening is fine
+    lo = deepcopy(old); lo["coverage"]["floor"] = 79.9
+    @test occursin("coverage.floor lowered", only(Ratchet.direction(old, lo)))
+    big = deepcopy(old); big["size"][1]["max_lines"] = 601
+    @test occursin("raised", only(Ratchet.direction(old, big)))
+    gone = deepcopy(old); gone["size"] = Any[]
+    @test occursin("removed", only(Ratchet.direction(old, gone)))
+    tol = deepcopy(old); tol["bench"]["time_tolerance"] = 0.2
+    @test occursin("time_tolerance", only(Ratchet.direction(old, tol)))
+
+    lcov = tempname()
+    write(lcov, "SF:a.jl\nDA:1,1\nLF:10\nLH:8\nend_of_record\nSF:b.jl\nLF:10\nLH:2\nend_of_record\n")
+    @test Ratchet.lcov_percent(lcov) == 50.0
+    @test DoD.globmatch("src/*.jl", "src/sub/deep.jl")              # `*` crosses `/` (sh case)
+    @test !DoD.globmatch("src/*.jl", "test/a.jl")
+
+    @testset "CLI against the merge base" begin
+        cfg = read(joinpath(ROOT, "ratchets.toml"), String)
+        d = tmp_repo(Dict("ratchets.toml" => cfg, "src/A.jl" => "x\n"))
+        sh(`git -C $d checkout -q -b feat/r`)
+        @test capture(() -> Ratchet.main(["--root", d]))[1] == 0
+        write(joinpath(d, "ratchets.toml"), replace(cfg, "max_lines = 150" => "max_lines = 151"))
+        rc, out = capture(() -> Ratchet.main(["--root", d]))
+        @test rc == 1 && occursin("CLAUDE.md", out)
+        write(joinpath(d, "ratchets.toml"), cfg)
+        write(joinpath(d, "src/A.jl"), "x\n"^601)
+        rc, out = capture(() -> Ratchet.main(["--root", d]))
+        @test rc == 1 && occursin("src/A.jl has 601 lines", out)
+        write(joinpath(d, "src/A.jl"), "x\n")
+        write(joinpath(d, "ratchets.toml"), replace(cfg, "floor = 0.0" => "floor = 60.0"))
+        @test capture(() -> Ratchet.main(["--root", d, "--lcov", lcov]))[1] == 1   # 50% < 60%
+        @test capture(() -> Ratchet.main(["--root", d]))[1] == 0                   # raising is fine
+    end
+end

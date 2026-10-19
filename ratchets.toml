@@ -1,0 +1,30 @@
+# One-way limits, checked by `julia scripts/ratchet.jl` against the merge base:
+#   coverage.floor        may only RISE    (percent of lines hit, from lcov.info)
+#   bench.time_tolerance  may only FALL    (allowed median slowdown, 0.10 = 10%)
+#   size[].max_lines      may only FALL, and a size rule may not be deleted
+# Raising a limit the wrong way fails CI; it needs an ADR and a human decision, made by
+# editing this file in a T3 change (ratchets.toml is a protected path).
+# Glob rule: `*` matches any characters including `/` (same as risk.toml).
+version = 1
+
+[coverage]
+floor = 0.0
+
+[bench]
+time_tolerance = 0.10
+
+[[size]]
+glob = "CLAUDE.md"
+max_lines = 150
+
+[[size]]
+glob = "src/*.jl"
+max_lines = 600
+
+[[size]]
+glob = ".claude/hooks/*.sh"
+max_lines = 150
+
+[[size]]
+glob = "scripts/*.jl"
+max_lines = 400
