@@ -127,7 +127,15 @@ Keep the stand-ins until the release; then switch per ADR-0014 rule 3.
   - R7: transducers and `aggregate`;
   - R9: `binding_conflicts`/`conflict_banner`. The banner stand-in scans `Main` only.
 
+## Review (2026-10-20)
+
+- Pass 1 on `d31e0bc`: APPROVE WITH CONDITIONS.
+  - M1: `case_when` stopped promoting timestamps (ADR-0021 rule 7).
+  - m1–m6, n1–n4.
+- All fixed in `e62ccdc`, except n2 (★: 2.7 % load headroom on 1.13) and n4 (performance only).
+- Pass 2 on `3945f50`: **APPROVE, FINAL**. One landing condition: the landing merge's tree
+  equals the scratch merge `f999fdf`, or `ci.jl test` runs on it.
+
 ## Next action
 
-The read-only reviewer's FINAL verdict, then the user's ★ answers (ADR-0022 acceptance first),
-then the lead's reviewed merge.
+The user's ★ answers (ADR-0022 acceptance first), then the lead's merge (condition above).
