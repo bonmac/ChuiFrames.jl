@@ -87,3 +87,83 @@ end
     @test_throws DimensionMismatch Frame(a = [1, 2], b = [1])
     @test_throws ArgumentError Frame(42)
 end
+
+@testitem "frame: content equality (isequal, ==, hash)" tags = [:unit] begin
+    using ChuiFrames: Frame, frame_equal
+    using Tables
+    a = Frame(x = [1, 2], y = ["a", "b"])
+    b = Frame(x = [1, 2], y = ["a", "b"])
+    @test a !== b && isequal(a, b) && a == b && hash(a) == hash(b)
+    # element values, not element types (as isequal on vectors and frame equality)
+    @test isequal(a, Frame(x = [1.0, 2.0], y = ["a", "b"])) && hash(a) == hash(Frame(x = [1.0, 2.0], y = ["a", "b"]))
+    @test !isequal(a, Frame(y = ["a", "b"], x = [1, 2]))          # names in order
+    @test !isequal(a, Frame(x = [1, 2], z = ["a", "b"]))
+    @test !isequal(a, Frame(x = [1, 3], y = ["a", "b"])) && a != Frame(x = [1, 3], y = ["a", "b"])
+    @test !isequal(a, Frame(x = [1], y = ["a"]))
+    # zero columns, different row counts
+    z(n) = Frame(Symbol[], ChuiFrames.AbstractColumn[], Symbol[], nothing, n)
+    @test isequal(z(2), z(2)) && !isequal(z(2), z(3)) && z(2) == z(2) && z(2) != z(3)
+    # NaN, -0.0, missing: isequal as on vectors; == three-valued as on vectors
+    n1, n2 = Frame(x = [NaN, 1.0]), Frame(x = [NaN, 1.0])
+    @test isequal(n1, n2) && hash(n1) == hash(n2) && (n1 == n2) === false
+    p, m = Frame(x = [0.0]), Frame(x = [-0.0])
+    @test !isequal(p, m) && (p == m) === true
+    u1, u2 = Frame(x = [missing, 1]), Frame(x = [missing, 1])
+    @test isequal(u1, u2) && hash(u1) == hash(u2) && ismissing(u1 == u2)
+    @test (Frame(x = [missing, 1]) == Frame(x = [missing, 2])) === false   # a definite difference wins
+    @test (Frame(x = [missing], y = [1]) == Frame(x = [missing], y = [2])) === false
+    @test (Frame(x = [missing]) == Frame(z = [missing])) === false        # structure first
+    # grouping: same grouping columns (in order) and the same drop flag
+    g = group_by(:y)(a)
+    @test !isequal(g, a) && (g == a) === false && isequal(g, group_by(:y)(b)) && hash(g) == hash(group_by(:y)(b))
+    @test !isequal(group_by(:x, :y)(a), group_by(:y, :x)(a))
+    @test !isequal(group_by(:y; drop = false)(a), g) && (group_by(:y; drop = false)(a) == g) === false
+    @test isequal(ungroup()(group_by(:y; drop = false)(a)), a)
+    # nested frames compare by content (they were identity-equal before)
+    d = (g = ["b", "a", "b"], x = [1.0, 2.0, 3.0], y = [10, 20, 30])
+    r1, r2 = nest(data = [:x, :y])(d), nest(data = [:x, :y])(d)
+    @test isequal(r1, r2) && r1 == r2 && hash(r1) == hash(r2) && frame_equal(r1, r2)
+    @test !isequal(r1, nest(data = :x)(d))
+    @test isequal(unique([r1, r2]), [r1])
+    @test length(Set([a, b, g])) == 2 && Dict(a => 1)[b] == 1
+    # a nested NaN keeps == from being true, a nested missing makes it missing
+    k(v) = nest(data = [:x])((g = [1, 1], x = v))
+    @test isequal(k([NaN, 1.0]), k([NaN, 1.0])) && (k([NaN, 1.0]) == k([NaN, 1.0])) === false
+    @test ismissing(k([missing, 1.0]) == k([missing, 1.0]))
+end
+
+@testitem "frame: equality properties (Supposition)" tags = [:property] begin
+    using ChuiFrames: Frame
+    using Tables
+    using Supposition, Supposition.Data
+    V = Union{Missing, Float64}[NaN, -NaN, 0.0, -0.0, 1.0, missing]
+    framegen = @composed function smallframe(
+            n = Data.Integers(0, 2),
+            x = Data.Vectors(Data.SampledFrom(V); min_size = 2, max_size = 2),
+            g = Data.Vectors(Data.SampledFrom(["a", "b"]); min_size = 2, max_size = 2),
+            wide = Data.Booleans(),
+            grp = Data.Integers(0, 2),
+        )
+        xs = wide ? Union{Missing, Float64}[x[1:n]...] : Any[x[1:n]...]
+        f = Frame(x = xs, g = g[1:n])
+        grp == 0 ? f : group_by(:g; drop = grp == 1)(f)
+    end
+    # isequal implies equal hashes (pairs from a tiny domain are often equal)
+    hashok(a, b) = !isequal(a, b) || hash(a) == hash(b)
+    sr = @check record = false db = false max_examples = 400 hashok(framegen, framegen)
+    @test Supposition.results(sr).ispass
+    # isequal agrees with frame equality plus the drop flag
+    agree(a, b) = isequal(a, b) == (ChuiFrames.frame_equal(a, b) && a.drop == b.drop)
+    sr = @check record = false db = false max_examples = 400 agree(framegen, framegen)
+    @test Supposition.results(sr).ispass
+    # an ungrouped frame equals its round trip through a column table
+    roundtrip(f) = (u = ungroup()(f); isequal(u, Frame(Tables.columntable(u))) && hash(u) == hash(Frame(Tables.columntable(u))))
+    sr = @check record = false db = false max_examples = 300 roundtrip(framegen)
+    @test Supposition.results(sr).ispass
+    # == is three-valued like == on the column tables (a NamedTuple of vectors), once the
+    # names, row counts, grouping columns and drop flags agree (false otherwise)
+    same(a, b) = a.names == b.names && a.nrow == b.nrow && a.groups == b.groups && a.drop == b.drop
+    eqok(a, b) = isequal(a == b, same(a, b) ? Tables.columntable(a) == Tables.columntable(b) : false)
+    sr = @check record = false db = false max_examples = 400 eqok(framegen, framegen)
+    @test Supposition.results(sr).ispass
+end

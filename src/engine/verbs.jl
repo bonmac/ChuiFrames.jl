@@ -3,7 +3,7 @@
 # ChuiFrames-owned argument (ADR-0002 rule 4).
 
 _newframe(f::Frame, names, cols; groups = f.groups) =
-    Frame(Vector{Symbol}(names), Vector{AbstractColumn}(cols), Symbol[g for g in groups if g in names], nothing, f.nrow)
+    Frame(Vector{Symbol}(names), Vector{AbstractColumn}(cols), Symbol[g for g in groups if g in names], nothing, f.nrow, f.drop)
 
 _rowsets(f::Frame) = (gi = gindex(f); gi === nothing ? [collect(1:f.nrow)] : [collect(group_rows(gi, g)) for g in 1:ngroups(gi)])
 
@@ -144,7 +144,9 @@ function apply(s::SelectStep, f::Frame)
         outnames = [missingg; outnames]
         outcols = AbstractColumn[[getcol(f, g) for g in missingg]; outcols]
     end
-    return Frame(outnames, outcols, groups, isempty(renamed) && groups == f.groups ? f.gindex : nothing, f.nrow)
+    # the index stays valid while every grouping column (renamed or not) holds the same values
+    same = all(((g, h),) -> (i = findfirst(==(h), outnames); i !== nothing && outcols[i] === getcol(f, g)), zip(f.groups, groups))
+    return Frame(outnames, outcols, groups, same ? f.gindex : nothing, f.nrow, f.drop)
 end
 
 struct RenameStep <: Step
@@ -177,7 +179,7 @@ function _renamed(f::Frame, map::Dict{Symbol, Symbol})
     names = Symbol[get(map, n, n) for n in f.names]
     allunique(names) || throw(ArgumentError("renaming would give duplicate column names: $(names)"))
     groups = Symbol[get(map, g, g) for g in f.groups]
-    return Frame(names, copy(f.columns), groups, f.gindex, f.nrow)
+    return Frame(names, copy(f.columns), groups, f.gindex, f.nrow, f.drop)
 end
 function apply(s::RenameStep, f::Frame)
     m = Dict{Symbol, Symbol}()
@@ -227,7 +229,7 @@ function _relocate(f::Frame, moving::Vector{Int}, before, after)
         0
     end
     order = [rest[1:pos]; moving; rest[(pos + 1):end]]
-    return Frame(f.names[order], f.columns[order], copy(f.groups), f.gindex, f.nrow)
+    return Frame(f.names[order], f.columns[order], copy(f.groups), f.gindex, f.nrow, f.drop)
 end
 
 # =============================================================================================
@@ -305,7 +307,7 @@ function apply(s::MutateStep, f0::Frame)
                     cols[i] = col
                 end
             end
-            cur = Frame(names, cols, copy(f.groups), gi, f.nrow)
+            cur = Frame(names, cols, copy(f.groups), gi, f.nrow, f.drop)
         end
     end
     if s.keep !== :all
@@ -313,7 +315,7 @@ function apply(s::MutateStep, f0::Frame)
         keepit(n) = n in f.groups || n in created || !(n in orig) ? true :
             s.keep === :used ? n in used : s.keep === :unused ? !(n in used) : false
         sel = [i for (i, n) in enumerate(names) if keepit(n) || (n in orig && any(o -> o isa Pair && o.first == n, s.outs))]
-        cur = Frame(names[sel], cols[sel], copy(f.groups), gi, f.nrow)
+        cur = Frame(names[sel], cols[sel], copy(f.groups), gi, f.nrow, f.drop)
     end
     if (s.before !== nothing || s.after !== nothing) && !isempty(created)
         moving = [i for (i, n) in enumerate(cur.names) if n in created]
