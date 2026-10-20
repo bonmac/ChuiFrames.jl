@@ -30,7 +30,11 @@
 - CSV over CSV.jl 1.x with readr-style `read_csv`/`read_tsv`/`write_csv`/`write_tsv`;
   divergences from readr 2.1.6 are documented and tested (ADR-0019).
 - Parquet with `using ChuiFrames, Parquet2`: one row group per partition, with statistics
-  (ADR-0020).
+  (ADR-0020). Columns of µs/ns timestamps raise an `ArgumentError` naming the unit instead of
+  being truncated to milliseconds, until the `ArrowTimestamp` ADR (ADR-0001 rule 6).
+- Verb outputs (`mutate`, `summarise`, `reframe`, the window and rank helpers) take their
+  element type from the expression's static type, so all-`missing` groups and empty-group
+  neutral values keep writable, typed columns.
 - A PrecompileTools workload (frame, a core-verb pipeline, printing, Arrow and CSV round trip).
 - Frames print tibble-style: `# A Frame: n × m` and `# Groups:` lines, a type row (`<i64>`,
   `<f64?>`, `<str>`, `<list[i64]>`, …; `?` marks nullable columns), numbers to 3 significant
