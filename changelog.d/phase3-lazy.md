@@ -20,7 +20,9 @@
 ### Changed
 - Every source partition is read with the source's declared column types (`conform_types`), in
   `read_source` as in the lazy engine, so a source whose partitions differ in type (e.g. `Int`
-  in one, `Float64` in another) reads the same either way.
+  in one, `Float64` in another) reads the same either way. A declared type a column cannot be
+  converted to exactly (an abstract `Any`, `Date` values under a declared `DateTime`) leaves that
+  column as read.
 - `vcat_columns` concatenates primitive columns of one element type, and dictionary columns
   sharing one dictionary, without boxing; the latter stay dictionary columns.
 - **Breaking:** `var` and `std` of fewer than two values (with `corrected = false`: of no values)
