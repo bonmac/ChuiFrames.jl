@@ -102,8 +102,8 @@ each copy's diff against its scope and applied the files here; the reviewer shou
   alone or no seconds); documented in the divergence list.
 - `complete(; fill)` on an all-`missing` column takes the fill's type (tidyr: logical);
   documented.
-- Merge: this branch's commits each build on their own (checked for the engine commit), so a
-  squash merge is optional here; the earlier branch's advice to squash still stands for it.
+- Merge: the engine commit `679ad8c` was checked to build and pass on its own; the other
+  commits were not checked separately, so a squash merge stays the safe default.
 - The NITs: `glimpse` prints no trailing newline; `isempty(c.x)` is silently `false`; `take` on
   LargeUtf8 gives back Int32 offsets; LZ4/Zstd output size is not capped; `Not(...)` prints as
   `InvertedIndex{Symbol}(:b)` in verb `show`.
