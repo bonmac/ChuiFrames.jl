@@ -88,10 +88,15 @@ end
     q = (group_by(:g) ⨟ summarise(m = mean(c.y)))(lazy(t))
     @test any(startswith("projection pushdown: the scan reads 2 of 4 columns"), fired(q))
     @test agrees(group_by(:g) ⨟ summarise(m = mean(c.y)), t)
-    # limit pushdown with every predicate translated
-    q = (filter(c.y .> 1) ⨟ head(2))(lazy(t))
+    # limit pushdown with every predicate translated and handed to the source (a FrameSource is
+    # handed no filter, so there only a bare head is pushed)
+    src = ChuiFrames.TablesSource(Tables.partitioner([(y = [1, 2, 3],), (y = [4, 5],)]))
+    q = (filter(c.y .> 1) ⨟ head(2))(lazy(src))
     @test any(startswith("limit pushdown"), fired(q))
     @test col(collect(q; morsel = 1), :y) == [2, 3]
+    @test !any(startswith("limit pushdown"), fired((filter(c.y .> 1) ⨟ head(2))(lazy(t))))
+    @test any(startswith("limit pushdown"), fired(head(2)(lazy(t))))
+    @test col(collect((filter(c.y .> 1) ⨟ head(2))(lazy(t)); morsel = 1), :y) == [2, 3]
     # projection through a rename above a non-pushed step (found by the p3-prop properties:
     # the rename branch built a Set{Any})
     for p in (filter_out(c.y .> 2) ⨟ rename(yy = :y) ⨟ select(:yy), mutate(z = c.y .* 2) ⨟ rename(yy = :y) ⨟ select(:yy))
@@ -174,12 +179,10 @@ end
         end
         @test err isa ChuiFrames.MorselError && err.index == 3
     end
-    # partitions whose column types differ run the stage on the concatenation
+    # partitions whose column types differ are read with the declared types on both paths
     src = ChuiFrames.TablesSource(Tables.partitioner([(x = [1, 2],), (x = Union{Missing, Int}[3, missing],)]))
-    st = ChuiFrames.ExecStats()
     ph = ChuiFrames.physical(ChuiFrames.optimize(mutate(y = c.x .+ 1)(lazy(src))).plan)
-    r = ChuiFrames.execute(ph; morsel = 2, stats = st)
-    @test st.fallback
+    r = ChuiFrames.execute(ph; morsel = 2)
     @test isequal(col(r, :y), [2, 3, 4, missing])
     @test eq(r, mutate(y = c.x .+ 1)(ChuiFrames.read_source(src)))
     # an empty source, and every partition filtered away

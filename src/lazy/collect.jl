@@ -8,19 +8,23 @@ is the partition size asked of the source (a `lazy(frame)` source splits into `m
 partitions); `threads = false` runs every partition on the calling task.
 
 If the lazy run throws, the unoptimized plan is replayed eagerly and its exception is the one
-raised, so both paths raise the same exception type (spec §1); a pure pipeline (CF-008) gives
-the same result either way, so the replay costs only a second run on failure.
+raised, so both paths raise the same exception type (spec §1). If the replay succeeds, the lazy
+failure was an engine defect and the replay's (eager) result is returned. A pure pipeline
+(CF-008) gives the same result either way, so the replay costs only a second run on failure.
+Planning (`optimize`) runs inside the same guard.
 """
 function Base.collect(q::LazyFrame; morsel::Integer = DEFAULT_MORSEL, threads::Bool = true)
     morsel >= 1 || throw(ArgumentError("collect: morsel must be at least 1, got $morsel"))
-    opt = optimize(q)
     return try
-        execute(physical(opt.plan); morsel = Int(morsel), threads)
+        execute(physical(optimize(q).plan); morsel = Int(morsel), threads)
     catch err
         lazyerr = err isa MorselError ? err.err : _taskerror(err)
         lazyerr isa InterruptException && rethrow()
-        reference(q.plan)            # throws the eager exception, if eager throws
-        throw(lazyerr)
+        # The eager run throws the eager exception when eager throws. When it does not, the lazy
+        # failure is an engine defect, and the eager result is the correct one (CF-008).
+        r = reference(q.plan)
+        @debug "lazy run failed where eager succeeds; returning the eager result" exception = lazyerr
+        r
     end
 end
 

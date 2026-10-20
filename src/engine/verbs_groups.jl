@@ -30,7 +30,7 @@ dplyr's `head` and tidyr do); and
 and a `summarise` that keeps groups carry it on. `ungroup()` resets it. Differences from dplyr:
 - groups stay in CF-008's ascending order of the key values, not in level order;
 - `mutate`/`filter` do not evaluate empty groups (they have no rows), so a `maximum` there does
-  not raise, where dplyr evaluates and warns;
+  not raise, where dplyr evaluates and warns.
 
 The default `drop = nothing` inherits the input's flag, as dplyr's
 `.drop = group_by_drop_default(.data)`: a `group_by` on a `drop = false` frame stays

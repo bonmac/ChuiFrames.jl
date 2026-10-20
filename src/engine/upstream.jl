@@ -403,7 +403,7 @@ struct _Ana{C, E} <: Function
     embed::E
 end
 (a::_Ana)(seed) = a.embed(fmap(a, a.coalg(seed)))
-"`ana(coalg, seed; embed)`: unfold; `embed = identity` builds a tree of bare layers."
+"`ana(coalg, seed; embed)`: unfold; `embed` (required here: the stand-in has no `Fix`) wraps each built layer, and `embed = identity` builds a tree of bare layers."
 ana(coalg, seed; embed) = _Ana(coalg, embed)(seed)
 
 end # module Upstream

@@ -156,6 +156,7 @@ Facts ([grammar.md](../research/grammar.md); [lane-checks.md](../research/lane-c
     - *Note (2026-10-20, user at the ChuiFrames phase-2c ★):* `var` and `std` of fewer than two
       values return `missing` (with `corrected = false`: of no values), where
       `Statistics.var` gives NaN. This matches dplyr's NA and the null of Polars and DuckDB.
+      The pipe form `c.x |> var` calls `Statistics.var` itself (CF-006) and keeps its NaN.
 
 **Semantics**
 11. **`filter`.**

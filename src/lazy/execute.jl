@@ -33,7 +33,9 @@ struct Physical
     limit::Union{Nothing, Int}
     stop_early::Bool
     rest::Vector{Step}
+    engine::Vector{Node}   # the scan's predicates the source is not handed (applied by the engine)
 end
+Physical(scan, stage, limit, stop, rest) = Physical(scan, stage, limit, stop, rest, enginepreds(scan))
 
 function physical(plan)
     scan, steps = linearize(plan)
@@ -86,17 +88,23 @@ mutable struct ExecStats
     read::Int
     parallel::Bool
     tasks::Int
-    fallback::Bool
 end
-ExecStats() = ExecStats(0, 0, 0, false, 0, false)
+ExecStats() = ExecStats(0, 0, 0, false, 0)
 
+
+# A `FrameSource` is handed no filter: its residual would apply it through Tables.jl's generic
+# row path, slower than the engine's own `filter` on the same in-memory columns.
+_pushesfilters(::Source) = true
+_pushesfilters(::FrameSource) = false
 
 "The `Tables.Scan` the scan node pushes to its source (ADR-0004 rules 1, 3)."
 function pushed_scan(n::ScanNode)
     sch = scan_schema(ScanNode(n.source, nothing, Node[], nothing, n.groups, n.drop))
     filt = nothing
     allpushed = true
-    if sch !== nothing
+    if !_pushesfilters(n.source)
+        allpushed = isempty(n.preds)
+    elseif sch !== nothing
         types = _typedict(sch)
         for p in n.preds
             t = to_scan(p, types)
@@ -112,6 +120,22 @@ function pushed_scan(n::ScanNode)
     sel = n.select === nothing ? Tables.Scan().select : Tables.Scan(; select = n.select).select
     limit = allpushed ? n.limit : nothing
     return Tables.Scan(; select = sel, filter = filt, limit = limit)
+end
+
+"""
+    enginepreds(n::ScanNode) -> Vector{Node}
+
+The scan predicates that do not translate to `Tables.Scan` (spec §4): the engine applies them
+after the residual. Translated ones reach the source, which applies them or returns them in
+the residual (CF-012); either way they are applied exactly once.
+"""
+function enginepreds(n::ScanNode)
+    isempty(n.preds) && return Node[]
+    _pushesfilters(n.source) || return copy(n.preds)
+    sch = scan_schema(ScanNode(n.source, nothing, Node[], nothing, n.groups, n.drop))
+    sch === nothing && return copy(n.preds)
+    types = _typedict(sch)
+    return Node[p for p in n.preds if to_scan(p, types) === nothing]
 end
 
 function _pruned(n::ScanNode, h)
@@ -135,10 +159,10 @@ end
 
 # One partition: read it and apply the residual; then the engine's re-applied scan predicates
 # and the streamed stage.
-_readpart(ph::Physical, residual::Tables.Scan, h) = apply_scan(_read(ph.scan.source, h), residual)
+_readpart(ph::Physical, residual::Tables.Scan, h) =
+    apply_scan(conform_types(_read(ph.scan.source, h), source_schema(ph.scan.source)), residual)
 function _runstage(ph::Physical, f::Frame)
-    preds = ph.scan.preds
-    isempty(preds) || (f = apply(FilterStep(preds, false), f))
+    isempty(ph.engine) || (f = apply(FilterStep(ph.engine, false), f))
     for s in ph.stage
         f = apply(s, f)
     end
@@ -203,7 +227,7 @@ function _gather(frames::Vector{Frame}, empty::Function)
     nonempty = Frame[f for f in frames if f.nrow > 0]
     isempty(nonempty) && return isempty(frames) ? empty() : first(frames)
     length(nonempty) == 1 && return only(nonempty)
-    return vcat_frames(nonempty)
+    return _concat(nonempty)      # keeps the row count of zero-column frames (review B1)
 end
 
 """
@@ -220,26 +244,19 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     src = scan.source
     handles, residual = plan_partitions(src, pushed_scan(scan); morsel)
     stats.planned = length(handles)
-    kept = [h for h in handles if !_pruned(scan, h)]
-    stats.pruned = length(handles) - length(kept)
-    # Partitions of a FrameSource share the frame's column types. Any other source may hand back
-    # partitions whose types differ; the stage then runs on the concatenation instead (spec §6),
-    # so its static types are the eager path's.
-    uniform = src isa FrameSource
-    types = Vector{Any}(nothing, length(kept))
+    pruned = Threads.Atomic{Int}(0)
+    # Each morsel is pruned (from its statistics) when it is reached, so a stopped scan computes
+    # no statistics for the morsels it never reads. Every partition is read with the declared
+    # column types (`conform_types`, as `read_source` does), so the stage sees the eager types.
     function part(i)
-        f = _readpart(ph, residual, kept[i])
-        uniform || (types[i] = _coltypes(f))
-        return _runstage(ph, f)
+        if _pruned(scan, handles[i])
+            Threads.atomic_add!(pruned, 1)
+            return _process_empty(ph)
+        end
+        return _runstage(ph, _readpart(ph, residual, handles[i]))
     end
-    frames = _run(ph, part, length(kept), threads, stats)
-    if !uniform && !_sametypes(types)
-        stats.fallback = true
-        inputs = Frame[_readpart(ph, residual, h) for h in kept]
-        whole = vcat_frames(inputs)
-        ranges = first(plan_partitions(FrameSource(whole), Tables.Scan(); morsel))
-        frames = _run(ph, i -> _runstage(ph, take(whole, collect(ranges[i]))), length(ranges), threads, stats)
-    end
+    frames = _run(ph, part, length(handles), threads, stats)
+    stats.pruned = pruned[]
     out = _gather(frames, () -> _process_empty(ph))
     ph.limit === nothing || (out = apply(HeadStep(ph.limit), out))
     for s in ph.rest
@@ -251,8 +268,11 @@ end
 # The stage's output on no rows: the declared schema through the scan's projection and the stage.
 function _process_empty(ph::Physical)
     scan = ph.scan
-    sch = source_schema(scan.source)
-    f = apply_scan(empty_frame(sch), scan.select === nothing ? Tables.Scan() : Tables.Scan(; select = scan.select))
+    sel = scan.select === nothing ? Tables.Scan() : Tables.Scan(; select = scan.select)
+    # a frame's own empty slice keeps its column kinds (a dictionary column keeps its levels,
+    # review B4); any other source gives the declared schema
+    src = scan.source
+    f = apply_scan(src isa FrameSource ? take(src.frame, Int[]) : empty_frame(source_schema(src)), sel)
     isempty(scan.groups) || (f = regroup(f, scan.groups; drop = scan.drop))
     isempty(scan.preds) || (f = apply(FilterStep(scan.preds, false), f))
     for s in ph.stage
@@ -291,14 +311,4 @@ function _run(ph::Physical, part, n::Int, threads::Bool, stats::ExecStats)
     end
     stats.read = n
     return UP.foldxl(push!, xf, 1:n; init = Frame[])
-end
-
-function _sametypes(types::Vector{Any})
-    ref = nothing
-    for t in types
-        t === nothing && continue
-        ref === nothing && (ref = t; continue)
-        t == ref || return false
-    end
-    return true
 end

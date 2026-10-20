@@ -28,7 +28,8 @@ raise different exception types. When the lazy path throws, the executor first f
 original exception of the first failing morsel in morsel order (ADR-0003 rule 7: it unwraps
 `TaskFailedException`/`CompositeException`), then **replays the unoptimized plan eagerly** (read
 the source, apply the steps). If the replay throws, its exception propagates; that is the eager
-exception by construction. If it does not, the lazy exception is rethrown. Pure pipelines only
+exception by construction. If it does not, the lazy failure was an engine defect and the
+replay's result is returned (review pass 1, M1: planning runs inside the guard too). Pure pipelines only
 (CF-008), so replay changes no result; it costs a second run only on failure. (★: an ADR-0003
 note.)
 

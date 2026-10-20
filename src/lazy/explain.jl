@@ -44,11 +44,12 @@ function _printphysical(io::IO, ph::Physical)
     q = pushed_scan(scan)
     q.filter === nothing || println(io, "    pushed to the source: ", q.filter)
     q.limit === nothing || println(io, "    pushed limit: ", q.limit, " rows per partition")
-    if isempty(ph.stage) && isempty(scan.preds)
+    q.filter === nothing && q.limit === nothing || println(io, "    the source applies these, or returns them in its residual")
+    if isempty(ph.stage) && isempty(ph.engine)
         println(io, "  streamed stage: none")
     else
         parts = String[]
-        isempty(scan.preds) || push!(parts, "filter(" * join(string.(scan.preds), ", ") * ") (re-applied scan predicates)")
+        isempty(ph.engine) || push!(parts, "filter(" * join(string.(ph.engine), ", ") * ") (scan predicates the engine applies)")
         append!(parts, string.(ph.stage))
         println(io, "  streamed stage, per morsel: ", join(parts, " ⨟ "))
     end

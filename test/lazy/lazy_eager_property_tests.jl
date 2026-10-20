@@ -38,7 +38,7 @@
         filter((c.x .> 0.0) .| (c.y .< 0)), filter(c.y .>= 0, c.x .< 3.0),
         filter_out(c.y .> 0), filter_out(c.x .> 0.0),
         select(:g, :x, :y), select(:x, :g), select(:g, xx = c.x), select(:y, :s, w = c.y .+ 1), select(:g, :y),
-        rename(yy = :y), rename(xx = :x), relocate(:s), relocate(:x, :y),
+        rename(yy = :y), rename(xx = :x), rename(x = :y), relocate(:s), relocate(:x, :y),
         mutate(z = c.y .* 2), mutate(x = c.x .+ 1), mutate(y = c.y .- 1), mutate(p = parse.(Int, c.s)),
         mutate(r = sqrt.(c.y)), mutate(xc = case_when(c.x .> 0.0 => "pos"; default = "other")), mutate(s = nothing),
     ]
@@ -46,7 +46,8 @@
     const REST = Any[
         filter(c.y .> mean(c.y)), filter(c.s .|> v -> v .!= "x"),
         mutate(w = c.y .- mean(c.y)), mutate(xm = c.x .- mean(c.x)),
-        group_by(:g), group_by(:g, :y), ungroup(),
+        group_by(:g), group_by(:g, :y), group_by(:g; drop = false), ungroup(),
+        summarise(n = n_rows()), mutate(k = n_rows()), select(:k),
         summarise(n = n_rows(), sy = sum(c.y), mx = mean(c.x)), summarise(mx = maximum(c.y), v = var(c.y)),
         summarise(sx = sum(skipmissing(c.x))),
         arrange(c.x), arrange(desc(c.y), c.g),
@@ -130,9 +131,19 @@ end
 @testitem "lazy property: lazy == eager on random pipelines (CF-008)" tags = [:property] setup = [LazyProp] begin
     nerr = Ref(0)
     nok = Ref(0)
-    function lazy_eq(t, grouped, steps, m, th)
+    # input kinds: 0 the table; 1 grouped by g; 2 g as a dictionary column (one unused level);
+    # 3 that, grouped with drop = false (review pass 1, M3)
+    function input_of(t, kind)
+        kind == 0 && return t
+        kind == 1 && return group_by(:g)(Frame(t))
+        lv = ["a", "b", "c", "zz"]
+        g = ChuiFrames.DictColumn(UInt8[findfirst(==(v), lv) for v in t.g], ChuiFrames.column(lv))
+        f = Frame(g = g, x = t.x, y = t.y, s = t.s)
+        return kind == 2 ? f : group_by(:g; drop = false)(f)
+    end
+    function lazy_eq(t, kind, steps, m, th)
         checktime()
-        input = grouped ? group_by(:g)(Frame(t)) : t
+        input = input_of(t, kind)
         p = pipe(steps)
         e = outcome(() -> run_eager(p, input))
         l = outcome(() -> run_lazy(p, input; morsel = m, threads = th))
@@ -142,7 +153,7 @@ end
     end
     deadline!(300)
     t0 = time()
-    sr = @check record = false db = false max_examples = 3000 lazy_eq(tablegen, Data.Booleans(), stepsgen, morselgen, threadgen)
+    sr = @check record = false db = false max_examples = 3000 lazy_eq(tablegen, Data.Integers(0, 3), stepsgen, morselgen, threadgen)
     elapsed = time() - t0
     show_failure(sr)
     @test Supposition.results(sr).ispass

@@ -135,6 +135,7 @@ _probe(names::Vector{Symbol}, types::Vector{Type}) =
 function scan_schema(n::ScanNode)
     isempty(n.groups) || return nothing
     sch = source_schema(n.source)
+    sch.types === nothing && return nothing        # no declared types: nothing is total
     names = collect(Symbol, sch.names)
     types = schema_types(sch)
     n.select === nothing && return (names, types)
@@ -195,7 +196,8 @@ _typedict(sch) = Dict{Symbol, Type}(zip(sch[1], sch[2]))
 
 A frame as a [`Source`](@ref): row-range partitions of `morsel` rows over the frame's own
 columns, so every partition has the frame's exact column types. A grouped frame is one
-partition, the whole frame, grouping kept. Thread-safe (reads are views of immutable columns),
+partition, the whole frame, grouping kept. Thread-safe (reads copy rows out of the frame and
+never write to it),
 with exact row counts and exact per-partition statistics of plain numeric, string and
 timestamp columns.
 """
@@ -206,22 +208,37 @@ source_schema(s::FrameSource) = Tables.schema(s.frame)
 source_label(s::FrameSource) = "Frame $(s.frame.nrow)×$(length(s.frame.names))"
 isthreadsafe(::FrameSource) = true
 row_count(s::FrameSource) = (s.frame.nrow, true)
+# Handles are `(rows, cols)`: a row range and the pushed projection (`nothing`: every column,
+# `pushed_columns`), so a morsel copies only the columns the query reads. The residual is the
+# whole request, valid over that subset.
 function plan_partitions(s::FrameSource, scan::Tables.Scan; morsel::Int = DEFAULT_MORSEL)
     morsel >= 1 || throw(ArgumentError("morsel must be at least 1, got $morsel"))
     n = s.frame.nrow
-    isgrouped(s.frame) && return (UnitRange{Int}[1:n], scan)
-    return (UnitRange{Int}[i:min(i + morsel - 1, n) for i in 1:morsel:max(n, 1) if i <= n], scan)
+    isgrouped(s.frame) && return ([(1:n, nothing)], scan)
+    cols = pushed_columns(scan, s.frame.names)
+    return ([(i:min(i + morsel - 1, n), cols) for i in 1:morsel:max(n, 1) if i <= n], scan)
 end
-read_partition(s::FrameSource, r::UnitRange{Int}) =
-    (isgrouped(s.frame) || r == 1:s.frame.nrow) ? s.frame : take(s.frame, collect(r))
-partition_row_count(::FrameSource, r::UnitRange{Int}) = (length(r), true)
+function read_partition(s::FrameSource, (r, cols)::Tuple{UnitRange{Int}, Any})
+    f = s.frame
+    (isgrouped(f) || (cols === nothing && r == 1:f.nrow)) && return f
+    cs = cols === nothing ? f.columns : AbstractColumn[getcol(f, c) for c in cols]
+    names = cols === nothing ? copy(f.names) : copy(cols)
+    idx = collect(r)
+    return Frame(names, AbstractColumn[r == 1:f.nrow ? c : take(c, idx) for c in cs], Symbol[], nothing, length(r))
+end
+partition_row_count(::FrameSource, (r, _)::Tuple{UnitRange{Int}, Any}) = (length(r), true)
 
-function partition_stats(s::FrameSource, r::UnitRange{Int}, col::Symbol)
+function partition_stats(s::FrameSource, (r, _)::Tuple{UnitRange{Int}, Any}, col::Symbol)
     hascolumn(s.frame, col) || return nothing
     c = getcol(s.frame, col)
     T = nonmissingtype(eltype(c))
     (T <: Union{Real, AbstractString, Dates.TimeType, ArrowTimestamp} && !(T <: Bool) && isconcretetype(T)) || return nothing
-    lo = hi = nothing
+    return _colstats(c, r, T)
+end
+# A function barrier: the column's concrete type and `T` are known here.
+function _colstats(c, r::UnitRange{Int}, ::Type{T}) where {T}
+    lo, hi = Ref{T}(), Ref{T}()
+    seen = false
     nnull = nnan = 0
     for i in r
         x = c[i]
@@ -229,10 +246,13 @@ function partition_stats(s::FrameSource, r::UnitRange{Int}, col::Symbol)
             nnull += 1
         elseif x isa AbstractFloat && isnan(x)
             nnan += 1
+        elseif !seen
+            lo[] = hi[] = x
+            seen = true
         else
-            lo = lo === nothing || isless(x, lo) ? x : lo
-            hi = hi === nothing || isless(hi, x) ? x : hi
+            isless(x, lo[]) && (lo[] = x)
+            isless(hi[], x) && (hi[] = x)
         end
     end
-    return (; lo, hi, nnull, nnan, ndistinct = nothing)
+    return (; lo = seen ? lo[] : nothing, hi = seen ? hi[] : nothing, nnull, nnan, ndistinct = nothing)
 end

@@ -185,7 +185,9 @@ function _need_in(s::Step, need::Union{Nothing, AbstractSet{Symbol}})
     elseif s isa RenameStep
         need === nothing && return nothing
         back = Dict{Symbol, Symbol}(p.first => p.second for p in s.pairs)
-        return union!(Set{Symbol}(get(back, c, c) for c in need), Symbol[p.second for p in s.pairs])
+        # the old names must exist, and the new names too when they already exist: `rename`
+        # raises on the duplicate, so dropping either would hide eager's error (review B2)
+        return union!(Set{Symbol}(get(back, c, c) for c in need), Symbol[p.second for p in s.pairs], Symbol[p.first for p in s.pairs])
     elseif s isa MutateStep
         (need === nothing || s.keep !== :all || s.before !== nothing || s.after !== nothing) && return nothing
         by = _plainnames(s.by)
@@ -261,6 +263,7 @@ function _limit_rule(n, log::OptLog)
     scan = n.child
     (isempty(scan.groups) && scan.limit === nothing) || return n
     if !isempty(scan.preds)
+        _pushesfilters(scan.source) || return n
         sch = scan_schema(ScanNode(scan.source))
         sch === nothing && return n
         types = _typedict(sch)

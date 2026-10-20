@@ -41,6 +41,35 @@ function _override(c::AbstractColumn, ::Type{T}) where {T}
     return column(E[ismissing(x) ? missing : convert(T, x) for x in c])
 end
 
+"""
+    conform_types(part, schema::Tables.Schema) -> Frame
+
+The partition `part` as a frame whose columns that `schema` declares have the declared element
+types ([`conform_column`](@ref); an `ArgumentError` when a value cannot be converted exactly).
+Columns already of the declared type, and columns `schema` does not name, are kept as they are.
+Both the eager source reader and the lazy engine read partitions through it, so every partition
+reaches the verbs with the declared types (a source's partitions may differ, e.g. `Int` in one
+and `Float64` in another), and lazy and eager see the same types (CF-008).
+"""
+function conform_types(part, sch::Tables.Schema)
+    f = _as_frame(part)
+    sch.types === nothing && return f
+    names = sch.names
+    types = sch.types
+    cols = nothing
+    for (j, n) in enumerate(f.names)
+        i = findfirst(==(n), names)
+        i === nothing && continue
+        E = types[i]
+        c = f.columns[j]
+        eltype(c) === E && continue
+        cols === nothing && (cols = copy(f.columns))
+        cols[j] = conform_column(n, c, E)
+    end
+    cols === nothing && return f
+    return Frame(copy(f.names), cols, copy(f.groups), nothing, f.nrow, f.drop)
+end
+
 "The element types of a schema as a vector (`Tables.Schema.types` may be `nothing`)."
 function schema_types(sch::Tables.Schema)
     ts = sch.types
@@ -90,8 +119,9 @@ function read_source(s::Source; scan::Tables.Scan = Tables.Scan(), morsel::Integ
     handles, residual = plan_partitions(s, pushed; morsel = Int(morsel))
     frames = Frame[]
     total = 0
+    sch = source_schema(s)
     for p in handles
-        f = apply_scan(_read(s, p), residual)
+        f = apply_scan(conform_types(_read(s, p), sch), residual)
         push!(frames, f)
         total += f.nrow
         n !== nothing && total >= k + n && break   # later partitions cannot reach the window

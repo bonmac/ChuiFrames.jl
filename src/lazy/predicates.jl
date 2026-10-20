@@ -67,7 +67,9 @@ end
 # A representative value of `T` (one of `_TOTAL_FAMILIES`, concrete); throws when none is known.
 _sample(::Type{T}) where {T <: Number} = zero(T)
 _sample(::Type{String}) = ""
-_sample(::Type{T}) where {T <: AbstractString} = convert(T, "")
+# Any string compares with a literal the same way, whatever its concrete type (a frame's string
+# columns hold `StringView`s, which `convert` cannot build from a `String`; review M2).
+_sample(::Type{T}) where {T <: AbstractString} = ""
 _sample(::Type{Dates.Date}) = Dates.Date(2000)
 _sample(::Type{Dates.DateTime}) = Dates.DateTime(2000)
 _sample(::Type{ArrowTimestamp{U, TZ}}) where {U, TZ} = ArrowTimestamp{U, TZ}(0)
