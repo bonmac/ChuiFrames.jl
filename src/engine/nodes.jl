@@ -244,7 +244,7 @@ function _aggregator(r::Reduce)
     elseif f === :mean
         isempty(r.pre) ? UP.Mean() : UP.MapM(r.pre[1], UP.Mean())
     elseif f === :var || f === :std
-        UP.Moments(f === :std, get(r.kw, :corrected, true))
+        Spread(UP.Moments(f === :std, get(r.kw, :corrected, true)))
     elseif f === :median
         Holistic(Statistics.median, "median")
     elseif f === :quantile

@@ -88,7 +88,7 @@ julia scripts/evidence.jl diff-polars-duckdb-item -- julia scripts/ci.jl test --
 | `summarise_x_skip` (`skipmissing`) | `min` NaN, `max` NaN where the group has a NaN | `min` -Inf, `max` 3.0 (NaN ignored) | `min` -Inf, `max` NaN | Julia's `minimum`/`maximum` propagate NaN. Polars' `min`/`max` ignore NaN. DuckDB orders NaN last, so its `min` skips it and its `max` returns it. `sum` and `mean` agree (NaN). | yes |
 | `summarise_x_nanprop` | as above | **exact** with `nan_min`/`nan_max` | **exact** with `CASE WHEN bool_or(isnan(x)) …` | the equivalent spelling exists in both engines | n/a |
 | `summarise_empty` (no rows, ungrouped) | `n = 0, s = 0, m = NaN` | `m = null` | `s = NULL, m = NULL` | Julia: `sum([]) = 0`, `mean([]) = NaN`, as in dplyr. SQL `SUM` of no rows is NULL. Polars' sum is 0 and its mean null. | yes |
-| `summarise_singleton` `var/std` of one value | `NaN` | `null` | `NULL` | `Statistics.var` of one value is NaN (n-1 = 0). **dplyr gives NA here** (`var(5)` is NA in R). | **flag**: matches neither engine nor dplyr (see "Findings") |
+| `summarise_singleton` `var/std` of one value | `missing` (since 2026-10-20; was `NaN`) | `null` | `NULL` | Was `Statistics.var`'s NaN (n-1 = 0). The user decided at the phase-2c ★ (2026-10-20) that `var`/`std` of fewer than two values are `missing`, as dplyr's NA (ADR-0002 rule 10 note). | **exact** since 2026-10-20 (see "Findings") |
 | `mutate_native_mod` (native operators) | `mod.(y, 3)` floors, `div.(y, 2)` truncates | `%` floors (matches `mod`), `//` floors (≠ `div`, = `fld`) | `%` truncates (≠ `mod`, = `rem`), `//` truncates (matches `div`) | the operator names mean different things. `mutate_intdiv` spells `div/fld/mod/rem` in each engine and is exact. | yes |
 | `pivot_longer` vs plain `UNPIVOT` | keeps `missing` values (8 rows) | `unpivot` keeps nulls | `UNPIVOT` drops NULLs by default (5 rows; NaN kept) | tidyr keeps NA unless `values_drop_na = true`. `UNPIVOT INCLUDE NULLS` is exact (`pivot_longer_include_nulls`), and so is `values_drop_na = true` against plain `UNPIVOT`. | yes |
 | `duckdb_arrow_pushdown` `x > 1` on the **Arrow view** | 12 rows | +4 NaN rows | **exact (12 rows)** | DuckDB pushes a `WHERE` on a registered Arrow table into the Arrow scan (`EXPLAIN`: `ARROW_SCAN … Filters: x>1.0`), which compares IEEE-style. The same predicate in a projection, or on a native table, is true on NaN. | n/a (DuckDB inconsistency, recorded) |
@@ -136,7 +136,10 @@ julia scripts/evidence.jl diff-polars-duckdb-item -- julia scripts/ci.jl test --
 
 ## Findings
 
-1. **`var`/`std` of a single value is NaN, not `missing`.** dplyr gives NA, and Polars and DuckDB
+1. **`var`/`std` of a single value was NaN, not `missing`.** *Resolved 2026-10-20:* the user
+   decided at the phase-2c ★ that `var`/`std` of fewer than two values return `missing` (ADR-0002
+   rule 10 note), and `summarise_singleton` is now `:exact` for both engines. The original
+   finding follows. dplyr gives NA, and Polars and DuckDB
    give null. ChuiFrames returns `Statistics.var`'s NaN. Repro:
 
    ```julia
