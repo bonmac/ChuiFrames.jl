@@ -3,3 +3,8 @@
   return `missing`, as dplyr's NA and the null of Polars and DuckDB, instead of
   `Statistics.var`'s NaN. Their result type is now always nullable (`Union{Missing, Float64}`).
   User decision at the phase-2c ★ (ADR-0002 rule 10 note, 2026-10-20).
+- **Breaking:** `group_by`'s `drop` keyword defaults to `nothing`, which inherits the input's flag,
+  as dplyr's `.drop = group_by_drop_default(.data)`. A `group_by` on a `drop = false` frame now
+  stays `drop = false` (it used to reset to `true`). An explicit `drop = true`/`false` wins, and an
+  ungrouped frame still gives `true`. `show` prints an explicit `drop = true` too. User decision
+  at the phase-2c ★ (2026-10-20).
