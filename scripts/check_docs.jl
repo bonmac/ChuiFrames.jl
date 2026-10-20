@@ -7,7 +7,8 @@
 #   - relative Markdown links [text](path) resolve, relative to the file;
 #   - backticked repo paths (tokens starting with a known top-level directory such as
 #     `scripts/`, `docs/`, `.claude/`) exist, relative to the repo root.
-# Skipped: URLs, anchors, and tokens with placeholders (< > * { } $ YYYY ...).
+# Skipped: URLs, anchors, Documenter cross-references (`[x](@ref)`, `[x](@ref Target)`; 0.2.7),
+# and tokens with placeholders (< > * { } $ YYYY ...).
 # A reference to a gitignored path (`git check-ignore`) never counts as stale: such a path is
 # machine-local, present in a dev checkout and absent in a fresh clone or CI (0.2.5).
 # --external lists paths provided by someone else (e.g. the lead copies docs/agent/*.md).
@@ -40,6 +41,10 @@ module CheckDocs
     )
 
     placeholder(t) = occursin(r"[<>*{}$|]|YYYY|\.\.\.", t)
+    # Documenter cross-references, resolved by Documenter at docs build time, not paths (0.2.7):
+    # `[x](@ref)` and `[x](@ref Target)`. The link regex stops at whitespace, so `(@ref Target)`
+    # never reaches here, but the bare `@ref` does; only the exact word counts (`@refs.md` is a path).
+    documenter_ref(t) = t == "@ref"
 
     """
     True when `rel` (relative to the checkout `root`) is a path git ignores, as a file or as a
@@ -92,7 +97,7 @@ module CheckDocs
             end
             for m in eachmatch(r"\]\(([^)\s]+)\)", line)
                 t = m.captures[1]
-                (occursin(r"^[a-z]+:", t) || startswith(t, "#") || placeholder(t)) && continue
+                (occursin(r"^[a-z]+:", t) || startswith(t, "#") || placeholder(t) || documenter_ref(t)) && continue
                 t = split(t, '#')[1]
                 rel = normpath(joinpath(dirname(mdrel), t))
                 exists(rstrip(rel, '/')) || push!(bad, (n, t))

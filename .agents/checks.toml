@@ -81,7 +81,7 @@ rule = "Coverage floor only rises, size budgets and benchmark tolerance only fal
 prevented_by = "scripts/ratchet.jl"
 runs_in = ["ci Guards", "ci CI (coverage, with --lcov)", "local scripts/ci.jl guards"]
 test = "scripts/test/test_ratchet.jl"
-blind_spots = ["compares with the merge base only, not every parent of a merge", "files not matched by any size glob", "coverage of code that is never loaded"]
+blind_spots = ["compares with the merge base only, not every parent of a merge", "files not matched by any size glob", "coverage of code that is never loaded", "with no merge base (the base resolves neither as given nor, for `origin/<b>`, as a local `<b>`; 0.2.7) the direction check is NOT RUN and says so; sizes and coverage still run", "it checks only that bench.time_tolerance falls, not what `scripts/bench.jl` measures: the tolerance only means something on a quiet runner (a loaded machine gave false regressions of 1.12-1.20x on identical trees, 0.2.7), and the Benchmark workflow is warning-only (ADR-0011)"]
 
 [[checks]]
 id = "check_docs"
@@ -89,7 +89,7 @@ rule = "Markdown links and backticked repo paths point at files that exist"
 prevented_by = "scripts/check_docs.jl"
 runs_in = ["ci Guards", "local scripts/ci.jl guards"]
 test = "scripts/test/test_check_docs.jl"
-blind_spots = ["paths outside the known prefixes", "anchors (#section)", "command flags named in docs", "the CONVENTIONS list in check_docs.jl is trusted even where a repo never creates those paths", "files excluded and references allowed by .agents/factory.toml [check_docs] (and fenced blocks when ignore_fenced = true)", "in a checkout holding the factory, a path in factory/*.md that exists only in factory/template/ passes even if it was meant as a repo path", "a reference to an untracked path that a tracked .gitignore ignores passes whether or not it exists (it is machine-local: present in a dev checkout, absent in a fresh clone), so a typo that still matches an ignore pattern is not caught: a glob (`*.parquet`), or an unanchored directory (`dev/` matches a dev folder at any depth); outside a git checkout nothing counts as ignored"]
+blind_spots = ["paths outside the known prefixes", "anchors (#section)", "command flags named in docs", "the CONVENTIONS list in check_docs.jl is trusted even where a repo never creates those paths", "files excluded and references allowed by .agents/factory.toml [check_docs] (and fenced blocks when ignore_fenced = true)", "in a checkout holding the factory, a path in factory/*.md that exists only in factory/template/ passes even if it was meant as a repo path", "a reference to an untracked path that a tracked .gitignore ignores passes whether or not it exists (it is machine-local: present in a dev checkout, absent in a fresh clone), so a typo that still matches an ignore pattern is not caught: a glob (`*.parquet`), or an unanchored directory (`dev/` matches a dev folder at any depth); outside a git checkout nothing counts as ignored", "a link target that is exactly `@ref` (Documenter: `[x](@ref)`; `[x](@ref Target)` is never read as a link, 0.2.7) is not checked, so a Documenter cross-reference to a missing docstring or heading is left to the Documenter build"]
 
 [[checks]]
 id = "contract_usage"
@@ -108,12 +108,20 @@ test = "scripts/test/test_ci.jl"
 blind_spots = ["workflow steps that are not ci.jl calls (setup, cache, upload, TagBot)", "the upstream-main contract run is UNVERIFIED end to end", "a skip's kind (0.2.4) is decided from the checkout: a package is `profile = package` in .factory-version or a root Project.toml; deleting both makes the package jobs `not applicable` (exit 0)", "`waiting` skips (no upstreams, no benchmark/ directory) exit 0 with a NOT RUN notice and a GitHub warning; deleting the whole benchmark/ directory turns `bench` from missing into waiting"]
 
 [[checks]]
+id = "ci_timeout"
+rule = "A bounded run (`ci.jl <job> --timeout S` or CI_TIMEOUT) leaves no process behind: on expiry the command's whole process group, Pkg.test's child julia included, is killed and ci.jl exits 124"
+prevented_by = "scripts/ci.jl"
+runs_in = ["local", "ci (where a workflow passes --timeout or sets CI_TIMEOUT)"]
+test = "scripts/test/test_ci.jl"
+blind_spots = ["a process that leaves the group (calls setsid itself, or is daemonized) escapes", "Ctrl-C (SIGINT to ci.jl) kills the group and exits 130 (review B2); any OTHER signal that ends ci.jl (SIGTERM from `timeout` or a CI cancel, SIGALRM from `perl -e alarm`, SIGKILL, SIGHUP) leaves the detached group running: nothing is left to kill it, so bound runs with --timeout, not an outer alarm", "Windows: only the leader process is killed", "without --timeout or CI_TIMEOUT nothing is bounded, as before 0.2.7", "the limit is for the whole job, checked every 0.1 s, plus up to 10 s of SIGTERM grace", "when the command finishes in time, whatever it left running in its group is SIGKILLed too, on success as well"]
+
+[[checks]]
 id = "lane_tool"
 rule = "Worktree lanes live at <repo>/.worktrees/<lane>, within the cap, and are removed only when clean and merged; `lane audit` fails a lane whose changes leave its owned globs or differ from its reported files"
 prevented_by = "scripts/lane.jl"
 runs_in = ["local scripts/lane"]
 test = "scripts/test/test_lane.jl"
-blind_spots = ["`--allow-ignored` deletes ignored files the caller did not copy out", "worktrees made with plain git worktree add", "EnterWorktree lanes under .claude/worktrees/", "`lane audit` checks only the lane's own worktree: a write a lane made into ANOTHER checkout (the main checkout, a sibling lane, a nested repo) is not in its diff, and the owned globs are whatever `--owns` recorded (the lane's branch config is not tamper-proof)", "`audit` runs only when /change-review runs it (it is not a CI job)", "`branch.<b>.lane-base` and `lane-owns` live in the repo's git config: a lane that rewrites them to another real branch or to wider globs passes the audit (a base equal to the lane's branch, or not a commit, fails); the audit prints the base and owns it used so the reviewer can compare them with the brief", "the merge base uses the LOCAL `<base>` when it contains `origin/<base>` (0.2.6, also dod.jl and ratchet.jl): commits on the local base that were never reviewed or pushed are not counted as the lane's (`--base origin/<base>` audits against the remote); run ON the base branch itself (after a local merge) the gates compare it with itself and see nothing, so audit a merged lane with `--base origin/<base>`; when local and origin have diverged, origin still wins", "`lane new` copies `.agents/factory.local.toml` once: a later change to the main checkout's copy does not reach open lanes (copy it again and run `julia scripts/gen.jl` there)"]
+blind_spots = ["`--allow-ignored` deletes ignored files the caller did not copy out", "worktrees made with plain git worktree add", "EnterWorktree lanes under .claude/worktrees/", "`lane audit` checks only the lane's own worktree: a write a lane made into ANOTHER checkout (the main checkout, a sibling lane, a nested repo) is not in its diff, and the owned globs are whatever `--owns` recorded (the lane's branch config is not tamper-proof)", "`audit` runs only when /change-review runs it (it is not a CI job)", "`branch.<b>.lane-base` and `lane-owns` live in the repo's git config: a lane that rewrites them to another real branch or to wider globs passes the audit (a base equal to the lane's branch, or not a commit, fails); the audit prints the base and owns it used so the reviewer can compare them with the brief", "the merge base uses the LOCAL `<base>` when it contains `origin/<base>` (0.2.6, also dod.jl and ratchet.jl): commits on the local base that were never reviewed or pushed are not counted as the lane's (`--base origin/<base>` audits against the remote); run ON the base branch itself (after a local merge) the gates compare it with itself and see nothing, so audit a merged lane with `--base origin/<base>`; when local and origin have diverged, origin still wins; where `origin/<base>` does not resolve (no remote, a pruned tracking ref; 0.2.7) the local `<base>` stands in, with a printed note, in lane audit, dod.jl, ratchet.jl and bench.jl, so `--base origin/<base>` then audits against the LOCAL base: lane audit fails when that local base already contains the lane's tip (it would see nothing); dod.jl and ratchet.jl do not check this, so run on the base branch after a local merge they still see nothing", "`lane new` copies `.agents/factory.local.toml` once: a later change to the main checkout's copy does not reach open lanes (copy it again and run `julia scripts/gen.jl` there)"]
 
 [[checks]]
 id = "sync_factory"
@@ -133,7 +141,7 @@ blind_spots = ["numbers without a marker (only `required` keys must have one)", 
 
 [[checks]]
 id = "evidence"
-rule = "Test counts and other reported numbers come from a file that records the commit, a dirty flag, the command, its exit code, the time and the full output"
+rule = "Test counts and other reported numbers come from a file that records the commit, a dirty flag, the command, its exit code and termination signal (a signalled run exits 128 + the signal and is not a pass), the time and the full output"
 prevented_by = "scripts/evidence.jl"
 runs_in = ["local"]
 test = "scripts/test/test_evidence.jl"

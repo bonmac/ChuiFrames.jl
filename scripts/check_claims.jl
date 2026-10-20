@@ -94,6 +94,9 @@ module CheckClaims
         path = name === nothing ? Evidence.latest(root, "tests") :
             joinpath(Evidence.evidence_dir(root), endswith(name, ".txt") ? name : name * ".txt")
         (path === nothing || !isfile(path)) && return nothing, something(name, "tests evidence for HEAD")
+        # 0.2.7: a run killed by a signal printed partial totals at best; it is no evidence of them
+        sig = get(something(Evidence.header(path), Dict{String, String}()), "termsignal", "0")
+        sig == "0" || return nothing, "$(relpath(path, root)) (the run was killed by signal $sig)"
         tt = Evidence.test_totals(Evidence.output(path))
         return tt, relpath(path, root)
     end

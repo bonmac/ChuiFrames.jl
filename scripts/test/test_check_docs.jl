@@ -11,6 +11,18 @@
     @test [b[2] for b in bad] == ["missing.md", "scripts/ghost.jl"]
     @test isempty(CheckDocs.stale(d, "docs/index.md", "`docs/agent/X.md`"; external = Set(["docs/agent/X.md"])))
 
+    @testset "Documenter cross-references are not paths (0.2.7)" begin
+        # factory-027 item 2: 0.2.6 reported `[x](@ref)` in docs/src/*.md as a stale relative path `@ref`
+        refs = """
+        See [`foo`](@ref), [`Mod.bar`](@ref) and [the guide](@ref Guide), [baz](@ref "Baz section"),
+        [x](@ref Mod.f(::Int)) and [y](@ref)…
+        """
+        @test isempty(CheckDocs.stale(d, "docs/src/index.md", refs))
+        # only the exact word: a real path that starts with @ref, or an @ref link next to a stale one, is still checked
+        @test [b[2] for b in CheckDocs.stale(d, "docs/src/index.md", "[a](@refs.md) [b](@ref) [c](gone.md)")] == ["@refs.md", "gone.md"]
+        @test [b[2] for b in CheckDocs.stale(d, "docs/src/index.md", "[b](./@ref) [c](@ref/x.md)")] == ["./@ref", "@ref/x.md"]
+    end
+
     @testset "external globs, fenced blocks" begin
         ext = Set(["docs/agent/*", "test/*"])
         @test isempty(CheckDocs.stale(d, "x.md", "`docs/agent/BRIEF.md` and `test/contracts/` and `test/`"; external = ext))

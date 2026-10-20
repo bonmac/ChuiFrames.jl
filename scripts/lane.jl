@@ -166,15 +166,25 @@ module Lane
         owns = haskey(opts, "--owns") ? split_globs(opts["--owns"]) :
             split_globs(something(git(repo, "config", "branch.$(l.branch).lane-owns"), ""))
         if haskey(opts, "--base")   # 0.2.6: audit against another base, never one that already holds the lane's own commits
-            ahead = something(git(wt, "rev-list", "--count", "$(l.base)..HEAD"), "0")
-            git(wt, "merge-base", "--is-ancestor", "HEAD", opts["--base"]) !== nothing && ahead != "0" &&
+            # bases as base_ref resolves them (0.2.7 review B1: the raw name made `git` fail and the check pass)
+            ahead = something(git(wt, "rev-list", "--count", "$(base_ref(wt, l.base))..HEAD"), "0")
+            git(wt, "merge-base", "--is-ancestor", "HEAD", base_ref(wt, opts["--base"])) !== nothing && ahead != "0" &&
                 return (println(io, "lane audit $name: [FAIL] --base $(opts["--base"]) already contains the lane's tip ($ahead commits past $(l.base)): it would audit nothing\nlane audit: FAILED (1)"); 1)
             l = merge(l, (; base = opts["--base"]))
         end
         # the review: a lane-base rewritten to the lane's own branch (or to a missing ref) audits nothing
         l.base == l.branch && return (println(io, "lane audit $name: [FAIL] its base is its own branch ($(l.base)): branch.$(l.branch).lane-base was rewritten\nlane audit: FAILED (1)"); 1)
-        git(wt, "rev-parse", "--verify", "--quiet", "$(l.base)^{commit}") === nothing &&
+        rb = base_ref(wt, l.base)   # an `origin/<b>` that does not resolve here is the local `<b>` (0.2.7)
+        git(wt, "rev-parse", "--verify", "--quiet", "$rb^{commit}") === nothing &&
             return (println(io, "lane audit $name: [FAIL] its base `$(l.base)` is not a commit here\nlane audit: FAILED (1)"); 1)
+        note = base_note(wt, l.base)
+        if note !== nothing
+            println(io, note)
+            # 0.2.7 review B1: `--base origin/<b>` audits a lane merged locally against the remote; when the
+            # local `<b>` stands in for it and already holds the lane's tip, the audit would see nothing
+            git(wt, "merge-base", "--is-ancestor", "HEAD", rb) !== nothing &&
+                return (println(io, "lane audit $name: [FAIL] the local `$rb` standing in for `$(l.base)` already contains the lane's tip (merged locally, or the lane has no commits yet): it would audit nothing. Fetch the remote, or pass --base <the commit before the merge>\nlane audit: FAILED (1)"); 1)
+        end
         mb = merge_base(wt, l.base)
         mb === nothing && return (println(stderr, "lane: no merge base between $(l.base) and $(l.branch)"); 2)
         lines(x) = String.(filter!(!isempty, split(something(x, ""), '\n')))

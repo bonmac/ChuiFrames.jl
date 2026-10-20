@@ -6,8 +6,9 @@
 #
 # Writes .lanes/evidence/<kind>-<sha7>.txt (gitignored; a rerun at the same commit replaces it):
 # the head sha, a dirty flag (uncommitted changes when it ran), the command, its exit code, the
-# seconds it took and its full output (stdout and stderr, interleaved). Exit = the command's exit
-# code. A test count written in HANDOFF.md or a CHANGELOG cites this file instead of being typed
+# signal that killed it (`termsignal`, 0 when none; 0.2.7), the seconds it took and its full output
+# (stdout and stderr, interleaved). Exit = the command's exit code, or 128 + the signal for a run a
+# signal killed (Julia reports exitcode 0 for those; 0.2.6 recorded `exit: 0`). A test count written in HANDOFF.md or a CHANGELOG cites this file instead of being typed
 # from memory, and scripts/check_claims.jl reads `tests_*` claims from it (`evidence_totals`).
 # `latest` falls back to the newest file of that kind whose commit is an ancestor of HEAD.
 module Evidence
@@ -110,17 +111,20 @@ module Evidence
         mkpath(evidence_dir(root))
         tmp = tempname()
         t0 = time()
-        code = open(tmp, "w") do f
+        code, sig = open(tmp, "w") do f
             p = run(pipeline(ignorestatus(Cmd(Cmd(cmd); dir = root)); stdout = f, stderr = f); wait = true)
-            p.exitcode
+            Int(p.exitcode), Int(p.termsignal)
         end
+        # 0.2.7: a run killed by a signal has exitcode 0 in Julia; it never passed. Record the signal
+        # and exit 128 + signal, as a shell reports it (SIGTERM: 143).
+        sig == 0 || (code = 128 + sig)
         secs = round(time() - t0; digits = 1)
         out = read(tmp, String)
         rm(tmp; force = true)
         path = joinpath(evidence_dir(root), "$kind-$(first(head, 7)).txt")
         open(path, "w") do f
             println(f, "# evidence: written by scripts/evidence.jl. Cite this file; do not retype its numbers.")
-            println(f, "kind: $kind\nhead: $head\ndirty: $dirty\ncmd: ", join(cmd, ' '), "\nexit: $code\nseconds: $secs")
+            println(f, "kind: $kind\nhead: $head\ndirty: $dirty\ncmd: ", join(cmd, ' '), "\nexit: $code\ntermsignal: $sig\nseconds: $secs")
             println(f, "date: ", Dates.format(Dates.now(Dates.UTC), "yyyy-mm-ddTHH:MM:SS"), "Z")
             tt = test_totals(out)
             tt === nothing || println(f, "tests: ", join(("$k=$(tt[k])" for k in ("pass", "fail", "error", "broken", "total")), ' '))
@@ -128,7 +132,8 @@ module Evidence
             print(f, out)
         end
         print(io, out)
-        println(io, "evidence.jl: exit $code in $(secs) s$(dirty ? " (DIRTY tree)" : ""); wrote ", relpath(path, root))
+        killed = sig == 0 ? "" : " (KILLED by signal $sig: not a pass)"
+        println(io, "evidence.jl: exit $code$killed in $(secs) s$(dirty ? " (DIRTY tree)" : ""); wrote ", relpath(path, root))
         return code
     end
 
