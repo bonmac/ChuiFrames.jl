@@ -1,6 +1,8 @@
 # ADR-0021: Timestamps that `DateTime` cannot hold are `ArrowTimestamp{U,TZ}` values compared by exact instant; zones are display metadata
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-2b ★): exact Parquet timestamps
+  through Parquet2 internals (fail closed; switch when a public exact mode exists); TimeZones.jl
+  deferred; `DateTime(t)` floors sub-millisecond digits.
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the next ChuiFrames ★ checkpoint (the lead carries it)
 - **Scope:** ChuiFrames.jl. **Amends** ADR-0001 rule 6: values compare by instant, not by raw
