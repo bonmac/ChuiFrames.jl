@@ -8,7 +8,10 @@ makedocs(;
     sitename = "ChuiFrames.jl",
     modules = [ChuiFrames],
     format = Documenter.HTML(; prettyurls = get(ENV, "CI", "false") == "true"),
-    pages = ["Home" => "index.md"],
+    pages = ["Home" => "index.md", "API" => "api.md"],
+    # Only the API (exported names) must be in the manual; internal docstrings stay in the
+    # source (phase-2 review B2).
+    checkdocs = :exports,
     # No git remote yet (pushing waits for the user), so no source links; set `repo` then.
     remotes = nothing,
 )

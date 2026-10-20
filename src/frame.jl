@@ -22,7 +22,7 @@ group_rows(g::GroupIndex, k::Int) = view(g.perm, g.starts[k]:(g.starts[k + 1] - 
     Frame(; name = vector, ...)
     Frame(table)
 
-ChuiFrames' eager frame: an immutable, ordered set of named [`AbstractColumn`](@ref)s of equal
+ChuiFrames' eager frame: an immutable, ordered set of named columns (`ChuiFrames.AbstractColumn`) of equal
 length, optionally grouped. `Frame(table)` converts any Tables.jl source (CF-001); keyword
 arguments build one from vectors. Column element types come from the input's declared types
 (ADR-0001 rule 1).

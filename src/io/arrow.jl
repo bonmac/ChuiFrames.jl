@@ -457,7 +457,7 @@ read_arrow(bytes::Vector{UInt8}) = read_source(ArrowSource(bytes))
     write_arrow(x, path; format = :auto, append = false, compress = nothing, large = false) -> path
 
 Write any Tables.jl table as Arrow IPC: the file format by default, the stream format for
-`.arrows` paths, `format = :stream` or `append = true` (see [`ChuiFrames.ArrowSink`](@ref)).
+`.arrows` paths, `format = :stream` or `append = true` (see the internal `ChuiFrames.ArrowSink`).
 """
 function write_arrow(x, path::AbstractString; kw...)
     write_source(ArrowSink(path; kw...), x)
