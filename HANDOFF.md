@@ -5,127 +5,125 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- **Branch:** `feat/phase2b-tidyr`, in worktree `.worktrees/phase2b-tidyr`, from `main` `1a2f1eb`.
-  **Not merged**; the lead merges after review.
-- **Phase:** phase 2 (eager frame), second milestone, items 1–3 of the plan
-  (`docs/superpowers/plans/2026-10-20-phase2b-tidyr.md`):
-  - **ADR-0021, `ArrowTimestamp{U,TZ}`** (Proposed; critic: no blockers). Timestamps in
-    s/ms/µs/ns, naive or zoned, read and round-trip exactly through Arrow IPC.
-    - Polars', R arrow's and DuckDB's µs defaults now read.
-    - Parquet reads every unit exactly; CSV reads sub-ms digits exactly.
-    - It also fixes Parquet ms timestamps on `main`, which are 1 ms off for about 1 value in
-      170 on read and 1 in 110 on write (TS-12).
-  - **tidyr reshaping:** pivots, `separate_*`, `unite`, `nest`/`unnest*`, `pack`/`unpack`,
-    `fill`, `expand`/`nesting`/`complete`.
-  - **The ranking tail:** `percent_rank`, `cume_dist`, `ntile`, `when_any`/`when_all`,
-    `slice_sample(weight_by)`, `group_by(drop = false)`, `arrange(locale = "C")`, and
-    `typed(T, f)`.
-- **Upstream:** unchanged. ChuiCore and ChuiTypes are not released; the stand-ins stay in
-  `src/engine/upstream.jl` (ADR-0014).
-- **Remote:** `origin/main` is stale. Run `dod.jl` and `lane audit` with `--base 1a2f1eb` as well
-  as `--base main`.
+- **Branch:** `feat/phase2c-perf`, in worktree `.worktrees/phase2c-perf`, from `main` `038f286`.
+  **Not merged**; the lead merges after review. `main` has since gained 3 commits (vendored
+  contracts, a Parquet2 research note). `git merge-tree` shows they merge cleanly.
+- **Phase:** phase 2 (eager frame), last milestone (plan
+  `docs/superpowers/plans/2026-10-20-phase2c-perf.md`, spec
+  `docs/superpowers/specs/2026-10-20-phase2c-perf-design.md`):
+  - **Performance:** ADR-0022 (**Proposed**). `benchmark/` holds the `SUITE` (47 entries),
+    `run.jl --check`, `ttfx.jl --check` and `budgets.toml` (1.13 and 1.10 tables).
+    `docs/src/performance.md` has ratios against DataFrames.jl, Polars and DuckDB, losses
+    included.
+  - **Differentials:** Polars 2.0.0 and DuckDB 1.5.6 (`test -- polars_duckdb`), 56/56 cases each.
+    Every divergence is documented in `docs/research/differentials-polars-duckdb.md`.
+  - **Leftovers:**
+    - the `drop` flag is stored on `Frame`, and the `@test_broken` is gone;
+    - content `isequal`/`==`/`hash` for `Frame`;
+    - `case_when`'s element type comes from types, not data;
+    - exact Parquet timestamp statistics.
+- **Upstream:** unchanged. ChuiCore and ChuiTypes are not released; the stand-ins stay
+  (ADR-0014).
 
 ## Open lanes
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| phase2b-tidyr | the phase-2b lane (lead's teammate) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2b-tidyr.md`, `JuliaTestItems.toml`, `.gitignore` | items 1–3 done; see the lead report | to the lead |
+| phase2c-perf | the phase-2c lane (lead's teammate) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2c-perf.md`, `JuliaTestItems.toml`, `.gitignore` | done; in review | to the lead |
 
-The sub-lanes `tidyr-pivot`, `tidyr-nest`, `rank-tail` and `ts-corpus` are closed. Each built in
-a scratch copy of this worktree (the guard hooks block sibling worktrees). This lane audited
-each copy's diff against its scope and applied the files here; the reviewer should diff them.
+Sub-lanes, all closed:
+- `p2c-frame`, `p2c-parquet`, `p2c-diff` and `p2c-bench` each ran in a real worktree (factory
+  0.2.6).
+- `lane audit` passed on each before its `--no-ff` merge here.
+- Their worktrees are removed; the branches are kept.
 
-## Evidence (clean tree at `a5afed9`)
+## Evidence (`.lanes/evidence/`, clean tree `fd30b98` unless noted)
 
-- Test counts: `.lanes/evidence/tests-a5afed9.txt` (1.13.2: 4420 pass, 3 broken) and
-  `tests-all-a5afed9.txt` (`-- all`: 5439 pass, 3 broken). LTS 1.10.12 from a `git archive`
-  export of `a5afed9`: 4420 pass, 3 broken (log in the lane's scratch; not an evidence file).
-- LTS needs its own manifest: an empty, gitignored `Manifest-v1.10.toml` makes `julia +lts`
-  resolve separately (the 1.13 manifest pins PrecompileTools 1.3.4, which needs Julia 1.11).
-- quality, jet, format, guards, docs: OK. `dod.jl --base 1a2f1eb`: DONE (82 files, T2).
-  `--base main` resolves to the stale `origin/main` `d778f93` and is not meaningful.
-- Merge result with `main` `7e39416` (scratch clone, merge `387ea94`): `-- all` 5439 pass /
-  3 broken, quality, guards, docs OK.
-- Load time (ADR-0005 rule 5, warm runs, M3 Pro): 0.361 s on 1.13.2 (median of 3; budget
-  0.5 s), 0.551 s on 1.10.12 (2 warm runs after one precompiling run; budget 0.8 s).
-- Differentials: tidyr pivots 50/50, tidyr nest/complete 41/41, ranking tail 14/14 plus dplyr
-  43/43; the IPC corpus regenerates byte for byte (88 files).
+- Tests:
+  - `tests-fd30b98.txt` (1.13.2): 4785 pass, 2 broken.
+  - `tests-lts-fd30b98.txt` (1.10.12): 4785 pass, 2 broken.
+  - `tests-all-fd30b98.txt` (`-- all`): 6439 pass, 2 broken.
+- quality, jet, format, guards, docs: OK (`<job>-fd30b98.txt`).
+- Budgets on the merged tree `30c36b8` (only docs uncommitted):
+  - `bench-check-113-30c36b8.txt` and `bench-check-110-30c36b8.txt`: 47/47 within budget.
+  - `ttfx-check-113-30c36b8.txt`: load 486.6 ms against a 500 ms budget, at load average
+    10.6–12.2.
+  - `ttfx-check-110-30c36b8.txt`: load 688.7 ms against an 800 ms budget, at load average
+    15.7–20.0.
+  - All four ran on a loaded, shared machine. No budget was tightened from them.
+- Base-commit measurements: `bench-11{3,0}-6250cad.txt`, `ttfx-*-6250cad.txt`.
+  - The bench lane's earlier `ttfx-check-113-7f0d685.txt` failed on load: 508.9 ms against
+    500 ms, under load.
+- Differentials: `diff-polars-duckdb-723cf0e.txt`.
 
 ## Checks NOT run, and why
 
-- `ci.jl contracts`: no upstream release exists (NOT RUN, waiting).
-- `-t 4` runs: phase 2 is single-threaded (morsel parallelism is phase 3, ADR-0003 rule 18).
-- Benchmarks and the performance ADR: not started (item 4, next branch).
-- Verb differential tests against Polars and DuckDB (item 5, next branch). Only dplyr, tidyr,
-  readr, pyarrow, Polars/R arrow (IPC corpus) were run.
-- A Parquet file with nested timestamp columns: Parquet2 cannot open one.
+- `ci.jl contracts`: no upstream release exists (waiting).
+- `-t 4`: phase 2 is single-threaded.
+- A quiet-machine baseline: the load average was 8–89 throughout.
+- The DataFrames.jl and Polars comparison on the LTS.
+- A profile of the per-row allocations. The interpreter appears to box each element (PF-11);
+  this is UNVERIFIED.
+- AirspeedVelocity: 0.6.6 cannot resolve the benchmark environment. Its JSON3 caps Parsers at
+  2.8.8, and CSV 1.x needs Parsers 3 (PF-12). `scripts/bench.jl` is the regression gate meanwhile.
+  It shows ±20 % noise on this machine (PF-13).
+- JET does not load Parquet2, so the extension is not analysed.
 
-## Remaining in phase 2 (next branch)
+## Open decisions (★, in the lead report)
 
-- The performance ADR and benchmarks (ADR-0003 consequences): TTFX, per-verb overhead, ratios
-  against Polars/DuckDB/dplyr. Set budgets from measurements; report losses too.
-- Verb differential tests against Polars and DuckDB (`uv`).
-- `group_by(drop = false)`: store the flag on `Frame`, so that `filter`/`arrange`/slices keep
-  empty groups as dplyr does (a `@test_broken` marks it). This changes the frame struct (T2).
-- `Frame` has no structural `==`/`isequal` (identity only). `frame_equal` on frames that hold
-  nested `Frame`s (from `nest`) is therefore always false. Decide whether frames compare by
-  content.
-- Parquet timestamp statistics: decode the raw bounds exactly, to bring back row-group pruning
-  on timestamps (they report none now).
-- The ★ questions in the lead report: Parquet2 internals, TimeZones.jl, and lossy `DateTime(t)`.
+ADR-0022's policy items:
+- the time multiplier;
+- the allocation multiplier;
+- the one-way rule;
+- where the checks run;
+- the benchmark CI job (a T3 workflow draft is in the report);
+- the load budget values.
 
-## Review (2026-10-20)
+Other decisions:
+- `group_by` inheriting the drop flag (dplyr does);
+- the flag in `isequal` vs `frame_equal`;
+- `==` semantics;
+- `case_when` type errors (an ADR-0002 rule 10 line);
+- `var`/`std` of one value (NaN here, NA in dplyr);
+- the deprecated Parquet `min`/`max` fields.
 
-- The read-only reviewer's first pass, on `adf0811`, requested changes. There were no blockers.
-  - M1: CSV `T` turned sub-ms digits into `missing`.
-  - M2: work in progress was uncommitted.
-  - M3: ADR-0021 is Proposed.
-  - Also 6 minors and 2 nits.
-- All were fixed in `bcdf10d`, `b85b0eb` and `a5afed9`, except M3, which is the user's ★.
-- Second pass, on `adf0811..b85b0eb`: **APPROVE**, with conditions:
-  - green gates (met at `a5afed9`, above);
-  - review of this HANDOFF diff;
-  - a gate run on the merge result (met, above);
-  - ADR-0021 accepted by the user before anything that depends on it lands.
+## Remaining (phase 3 and later)
 
-## Minors left open (from earlier reviews, unchanged)
+- Pruning: nothing in `src/` reads `partition_stats` yet (lazy pruning is phase 3). The exact
+  timestamp statistics are ready for it.
+- The losses of ADR-0022's rule 7 table (large-frame verbs 3.5–43× slower than DataFrames.jl) are
+  phase-4 engine work (codegen, typed kernels).
+- The PrecompileTools workload buys almost nothing for the first call (PF-05); why is UNVERIFIED.
 
-- `case_when`'s element type depends on whether its default fires.
-- The Parquet µs/ns check now reads every top-level timestamp column exactly. Parquet2 cannot
-  open files with nested timestamp columns at all (critic probe).
+## Minors left open (unchanged unless noted)
+
+- The Parquet µs/ns check reads every top-level timestamp column exactly. Parquet2 cannot open
+  files with nested timestamp columns.
 - No property test for the zero-null-slot invariant across verbs.
 - Parquet writes one row group per partition (ADR-0020 rule 1; phase 3).
-- The ExplicitImports ignore list matches by name, not by module, which its API does not
-  support. It now also lists Parquet2 internals (`Column`, `SchemaNode`, `ParqInt64`,
-  `encodevalue`) and Arrow.jl's `Timestamp`/`Meta`/`TimeUnit` (ADR-0021 rules 10-11).
-- `read_csv` `T`/`DateTime` needs full `yyyy-mm-ddTHH:MM:SS` text (readr also takes a date
-  alone or no seconds); documented in the divergence list.
-- `complete(; fill)` on an all-`missing` column takes the fill's type (tidyr: logical);
-  documented.
-- Merge: the engine commit `679ad8c` was checked to build and pass on its own; the other
-  commits were not checked separately, so a squash merge stays the safe default.
+- The ExplicitImports ignore list matches by name, not module (unchanged; phase 2c added no
+  qualified internals).
+- `read_csv` `T`/`DateTime` needs full `yyyy-mm-ddTHH:MM:SS` text.
+- `complete(; fill)` on an all-`missing` column takes the fill's type.
 - The NITs: `glimpse` prints no trailing newline; `isempty(c.x)` is silently `false`; `take` on
   LargeUtf8 gives back Int32 offsets; LZ4/Zstd output size is not capped; `Not(...)` prints as
   `InvertedIndex{Symbol}(:b)` in verb `show`.
+- Done in 2c: `case_when`'s element type, timestamp statistics, the drop flag, frame equality.
 
 ## Upstream notes for phase 3 (ChuiCore main b4f1ca3, NOT released)
 
 Keep the stand-ins until the release; then switch per ADR-0014 rule 3.
 - **First n rows:** keep `head`/limits on `Take` or `foldxl`, never an accumulator-dependent
-  `Reduced` from `op` under `foldparts` (ChuiCore S1). Phase 2 complies: `head` is a direct
-  `take`, and `Reduced` appears only inside the `Take` stand-in.
+  `Reduced` from `op` under `foldparts` (ChuiCore S1). Phase 2 complies.
 - **Plan nodes:** use `Any`-typed child fields; parametric child fields recompile per tree shape.
 - **Instances:** type the style argument (`ap(::IsApplicative, …)`, ChuiCore rule N5). ChuiFrames
   defines no instances yet.
-- **Available on ChuiCore main:** R6 `cata`/`ana`/`para` over an own node type with a
-  registered `fmap`, plus `Fix`; R7 transducers and `aggregate` (`isstateless` fail-closed); R9
-  `binding_conflicts`/`conflict_banner` (`CHUI_QUIET_CONFLICTS`). The banner stand-in
-  (`src/show/banner.jl`) differs in one point: it scans modules bound in `Main`, while R9 also
-  scans `Base.loaded_modules`. It takes an extra optional `others` argument. The difference
-  disappears at the switch.
+- **Available on ChuiCore main:**
+  - R6: `cata`/`ana`/`para` and `Fix`;
+  - R7: transducers and `aggregate`;
+  - R9: `binding_conflicts`/`conflict_banner`. The banner stand-in scans `Main` only.
 
 ## Next action
 
-The user's ★ answers (ADR-0021 acceptance, Parquet2 internals, TimeZones.jl, lossy
-`DateTime(t)`), then the lead's reviewed merge. ADR-0021 must be Accepted before this branch
-lands on `main`.
+The read-only reviewer's FINAL verdict, then the user's ★ answers (ADR-0022 acceptance first),
+then the lead's reviewed merge.
