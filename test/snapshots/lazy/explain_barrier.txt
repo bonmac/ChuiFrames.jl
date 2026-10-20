@@ -1,0 +1,20 @@
+== logical plan ==
+  filter((c.v .> 0))
+  mutate(v = (c.y .- mean(c.y)))
+  scan Frame 6×4
+== optimized plan ==
+  filter((c.v .> 0))
+  mutate(v = (c.y .- mean(c.y)))
+  scan Frame 6×4
+== rules fired ==
+  none
+== physical plan ==
+  scan: Frame 6×4
+  streamed stage: none
+  execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential
+  then materialize (concatenate in morsel order)
+  then eagerly: mutate(v = (c.y .- mean(c.y))) ⨟ filter((c.v .> 0))
+== pruning ==
+  no scan predicates: every partition is read
+== rendered kernel ==
+  none (no streamed stage)

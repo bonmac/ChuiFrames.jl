@@ -59,6 +59,9 @@
 3. **The per-verb overhead budget** (ADR-0003 rule 2) is the `n=10` rows of rule 2. Every
    single eager verb on a 10-row frame **must** stay within its row; the largest single-verb row
    is 200 μs (`mutate` on 1.13.2, measured 36 μs), and the 3-verb pipeline's is 100 μs.
+   - *Note (2026-10-20, user at the ChuiFrames phase-3 ★):* the lazy `lazy/*` rows (planning and
+     morsel execution, phase 3) follow rule 2's formula, not this rule's eager cap. So the
+     `lazy/filter, mutate, select/n=10` row is 200 μs (measured 52–58 μs).
 4. **Load and TTFX budgets** (warm medians of `--runs` fresh processes, `benchmark/ttfx.jl
    --check`; `using` timed inside the process, Julia's startup excluded):
    | Measure | 1.13 (stable) | 1.10 (LTS, and other versions) |

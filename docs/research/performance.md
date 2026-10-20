@@ -190,6 +190,8 @@ caps Parsers at 2.8.8, and CSV 1.1.0 needs Parsers 3. Reproduced without ChuiFra
 `Pkg.add(["CSV", "JSON3"])` resolves CSV 0.10.17, and `Pkg.add(name = "CSV", version = "1.1")`
 then fails with the same conflict. So AirspeedVelocity cannot benchmark ChuiFrames (or any
 package that needs CSV 1.x) until it drops JSON3 or JSON3 widens its Parsers bound.
+Documented and not filed (user decision, 2026-10-20):
+[upstream-airspeedvelocity-json3.md](upstream-airspeedvelocity-json3.md).
 Its conventions, read from the 0.6.6 source (so no longer UNVERIFIED for ADR-0011): the script is
 `benchmark/benchmarks.jl` and must define `SUITE::BenchmarkGroup`, included inside a module
 `AirspeedVelocityRunner`; `benchmark/Project.toml` is copied into the environment when present;

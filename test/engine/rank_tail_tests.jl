@@ -238,10 +238,16 @@ end
     @test ungroup()(gd).drop && sn((ungroup() ⨟ group_by(:f))(gd)) == [1, 2]
     # partial ungroup keeps the flag (R group_by_drop_default(ungroup(gd2, g)) -> FALSE)
     @test !ungroup(:g)(gd2).drop && sn((ungroup(:g) ⨟ filter(c.x .> 1))(gd2)) == [1, 1, 0, 0]
-    # A fresh group_by takes its own `drop` (default true). Difference from dplyr: R's
-    # group_by(gd, f) inherits .drop = FALSE (`.drop = group_by_drop_default(.data)`), so
-    # sn(group_by(gd, f) |> filter(x > 1)) is c0 b1 a1 d0 there, [1, 1] here.
-    @test group_by(:f)(gd).drop && sn((group_by(:f) ⨟ filter(c.x .> 1))(gd)) == [1, 1]
+    # A fresh group_by inherits the input's flag, as dplyr's `.drop = group_by_drop_default(.data)`
+    # (user decision, 2026-10-20): R sn(group_by(gd, f) |> filter(x > 1)) -> c0 b1 a1 d0
+    @test !group_by(:f)(gd).drop && sn((group_by(:f) ⨟ filter(c.x .> 1))(gd)) == [1, 1, 0, 0]
+    # R group_by(gd, g) |> group_by_drop_default() -> FALSE; add = TRUE too
+    @test !group_by(:g)(gd).drop && !group_by(:g; add = true)(gd).drop
+    # an explicit `drop` wins: R group_by(gd, f, .drop = TRUE) |> filter(x > 1) -> b1 a1
+    @test group_by(:f; drop = true)(gd).drop && sn((group_by(:f; drop = true) ⨟ filter(c.x .> 1))(gd)) == [1, 1]
+    # an ungrouped frame has drop = true, so the default stays dplyr's TRUE there
+    @test group_by(:f)(df).drop && (ungroup() ⨟ group_by(:f))(gd).drop
+    @test sprint(show, group_by(:f)) == "group_by(:f)" && sprint(show, group_by(:f; drop = true)) == "group_by(:f; drop = true)"
 end
 
 @testitem "group_by(drop = false): empty groups of non-dictionary keys survive row verbs" tags = [:unit] setup = [RT] begin

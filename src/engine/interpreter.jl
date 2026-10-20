@@ -389,7 +389,8 @@ function static_type(x::Reduce, ctx::SelectCtx)
         S = nonmissingtype(T)
         isempty(x.pre) && isconcretetype(S) && S <: Number && S !== Bool || return Any
         R = f === :sum || f === :prod ? promote_type(S, Int) : Float64
-        return _nullable(T) ? Union{Missing, R} : R
+        # var/std are `missing` on too few values (Spread), so always nullable
+        return _nullable(T) || f === :var || f === :std ? Union{Missing, R} : R
     end
     return Any
 end

@@ -67,6 +67,19 @@ for n in SIZES
     SUITE["pipeline"]["filter, mutate, select"][sz] = @benchmarkable(
         $f |> filter(c.y .> 0.5) |> mutate(z = c.x .* 2) |> select(:id, :z), seconds = secs(n),
     )
+    # The lazy engine (phase 3): the same pipeline planned, optimized (the filter is pushed into
+    # the scan, the projection to 3 columns) and run over 65 536-row morsels; at 10 rows this is
+    # the planning overhead. `head` after a pushed filter stops the scan early. (Skipped against a
+    # base without the lazy engine.)
+    isdefined(ChuiFrames, :lazy) || continue
+    SUITE["lazy"]["filter, mutate, select"][sz] = @benchmarkable(
+        collect(lazy($f) |> filter(c.y .> 0.5) |> mutate(z = c.x .* 2) |> select(:id, :z)), seconds = secs(n),
+    )
+    n == 10 || (
+        SUITE["lazy"]["filter, head 10"][sz] = @benchmarkable(
+            collect(lazy($f) |> filter(c.y .> 0.5) |> head(10)), seconds = secs(n),
+        )
+    )
 end
 
 # I/O: one mid-size frame (10^5 rows; Int, Float64 and String columns). The files read are written

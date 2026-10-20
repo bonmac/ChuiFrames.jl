@@ -280,7 +280,7 @@
             (
                 "summarise_singleton", "d", filter(c.id .<= 3) ⨟ group_by(:id) ⨟ summarise(v = var(c.y), sd = std(c.y), md = median(c.y)),
                 "df.filter(pl.col('id') <= 3).group_by('id').agg(v = pl.col('y').var(), sd = pl.col('y').std(), md = pl.col('y').median()).sort('id')",
-                "SELECT id, var_samp(y) AS v, stddev_samp(y) AS sd, median(y) AS md FROM d WHERE id <= 3 GROUP BY id ORDER BY id", (:cols, [:v, :sd]), (:cols, [:v, :sd]),
+                "SELECT id, var_samp(y) AS v, stddev_samp(y) AS sd, median(y) AS md FROM d WHERE id <= 3 GROUP BY id ORDER BY id", :exact, :exact,
             ),
             # grouped windows
             (

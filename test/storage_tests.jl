@@ -118,6 +118,8 @@ end
     @test !isequal(g, a) && (g == a) === false && isequal(g, group_by(:y)(b)) && hash(g) == hash(group_by(:y)(b))
     @test !isequal(group_by(:x, :y)(a), group_by(:y, :x)(a))
     @test !isequal(group_by(:y; drop = false)(a), g) && (group_by(:y; drop = false)(a) == g) === false
+    # the contract's frame_equal is weaker: it ignores the drop flag (user decision, 2026-10-20)
+    @test ChuiFrames.frame_equal(group_by(:y; drop = false)(a), g) && hash(group_by(:y; drop = false)(a)) != hash(g)
     @test isequal(ungroup()(group_by(:y; drop = false)(a)), a)
     # nested frames compare by content (they were identity-equal before)
     d = (g = ["b", "a", "b"], x = [1.0, 2.0, 3.0], y = [10, 20, 30])

@@ -28,6 +28,30 @@ end
     @test desc(:x) == desc(c.x)
 end
 
+@testitem "var/std of fewer than two values are missing (dplyr NA, Polars/DuckDB null)" tags = [:unit] setup = [Reg] begin
+    # user decision at the phase-2c ★ (2026-10-20); ADR-0002 note of that date.
+    # R: var(5) -> NA; sd(5) -> NA; var(numeric(0)) -> NA
+    r = summarise(v = var(c.y), s = std(c.y))((y = [5],))
+    @test ismissing(col(r, :v)[1]) && ismissing(col(r, :s)[1])
+    r = summarise(v = var(c.y), s = std(c.y))((y = Float64[],))
+    @test ismissing(col(r, :v)[1]) && ismissing(col(r, :s)[1])
+    # grouped: a one-row group is missing, a two-row group is a number
+    g = (group_by(:g) ⨟ summarise(v = var(c.y), s = std(c.y)))((g = ["a", "b", "b"], y = [1.0, 2.0, 4.0]))
+    @test isequal(col(g, :v), [missing, 2.0]) && isequal(col(g, :s), [missing, sqrt(2.0)])
+    @test eltype(col(g, :v)) === Union{Missing, Float64}
+    # two or more values still match Statistics
+    @test col(summarise(v = var(c.y))((y = [1.0, 2.0, 4.0],)), :v)[1] ≈ var([1.0, 2.0, 4.0])
+    # skipmissing: one non-missing value is too few
+    @test ismissing(col(summarise(v = var(skipmissing(c.y)))((y = [missing, 3.0],)), :v)[1])
+    # windows too: R mutate(group_by(d, g), v = var(y))$v -> NA, 2, 2
+    w = (group_by(:g) ⨟ mutate(v = var(c.y)))((g = ["a", "b", "b"], y = [1.0, 2.0, 4.0]))
+    @test isequal(col(w, :v), [missing, 2.0, 2.0])
+    # corrected = false (population variance, ddof 0) of one value is 0, as Polars var(ddof=0)
+    # and DuckDB var_pop; of none it is missing
+    @test col(summarise(v = var(c.y; corrected = false))((y = [5.0],)), :v)[1] == 0.0
+    @test ismissing(col(summarise(v = var(c.y; corrected = false))((y = Float64[],)), :v)[1])
+end
+
 @testitem "regression 4: count is Bool-only, like Base" tags = [:unit] setup = [Reg] begin
     @test_throws TypeError summarise(n = count(c.x))((x = [1, 2, 3],))
     @test col(summarise(n = count(c.b))((b = [true, false, true],)), :n) == [2]

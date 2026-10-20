@@ -576,6 +576,13 @@ kinds or value types go through [`column`](@ref) on the promoted values.
 function vcat_columns(cols::AbstractVector)
     isempty(cols) && throw(ArgumentError("vcat_columns needs at least one column"))
     length(cols) == 1 && return cols[1]
+    # Fast paths (the lazy engine gathers morsels): primitive columns of one type concatenate
+    # their buffers, unboxed; dictionary columns over one shared dictionary concatenate codes
+    # and stay dictionary columns, so every level survives (`group_by(drop = false)`).
+    c1 = cols[1]
+    val() = all(c -> validity(c) === nothing, cols) ? nothing : reduce(vcat, (something(validity(c), trues(length(c))) for c in cols))
+    c1 isa PrimitiveColumn && all(c -> c isa typeof(c1), cols) && return PrimitiveColumn(reduce(vcat, (c.values for c in cols)), val())
+    c1 isa DictColumn && all(c -> c isa typeof(c1) && c.dict === c1.dict, cols) && return DictColumn(reduce(vcat, (c.codes for c in cols)), c1.dict, val())
     # A Union of the inputs' element types, not `promote_type`: `column` then promotes small
     # numeric unions only when lossless (ADR-0001 rule 12), so Int + Float64 never rounds.
     E = Union{map(eltype, cols)...}

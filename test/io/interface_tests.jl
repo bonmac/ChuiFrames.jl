@@ -89,11 +89,13 @@ end
     # A filter and a projection, through the source executor, equal Tables.scan on the whole table.
     q = Tables.Scan(; select = [:y], filter = Tables.colcmp(>, Tables.col(:x), 2))
     @test frame_equal(read_source(s; scan = q), Frame(Tables.scan(IOFixtures.concatenated(), q)))
-    # The lazy entry point and grouped summaries belong to sub-lane p2-engine.
-    if isdefined(ChuiFrames, :lazy)
-        @test_broken false   # p2-engine: replace with the lazy filter/select/summarise checks
-    else
-        @test_skip "needs the phase-3 lazy entry points: lazy filter, select and grouped summary over a Source"
+    # Through the lazy entry point: a filter, a select and a grouped summary, frame-equal to the
+    # same pipeline run eagerly on the concatenated table (phase 3).
+    grouped = ChuiFrames.Upstream.:⨟(group_by(:y), summarise(n = n_rows(), s = sum(c.x)))
+    for p in (filter(c.x .> 1), select(:y), grouped)
+        for m in (1, 2, 65_536)
+            @test frame_equal(collect(p(lazy(s)); morsel = m), p(eager))
+        end
     end
     # A partitioned Tables.jl input is a Source, and plans the same partitions twice.
     parts = Tables.partitioner([(x = [1, 2],), (x = [3],), (x = Int[],)])
@@ -187,12 +189,21 @@ end
     t = IOFixtures.StatsSource(parts, nothing)
     @test_throws ErrorException ChuiFrames.partition_stats(t, 1, :f)
     @test read_source(t).nrow == 6
-    # Statistics-based pruning in the lazy engine belongs to sub-lane p2-engine.
-    if isdefined(ChuiFrames, :lazy)
-        @test_broken false   # p2-engine: filter(.!(c.f .<= 2.0)) / filter(c.f .!= 1.0) lazily, frame-equal to eager
-    else
-        @test_skip "needs the phase-3 lazy entry points: lazy pruning with these statistics"
+    # The lazy engine prunes with these statistics and still keeps every NaN row: lazy equals
+    # eager for both predicates, and for sources with a `missing` bound or throwing statistics.
+    for p in (filter(.!(c.f .<= 2.0)), filter(c.f .!= 1.0), filter(c.f .> 3.0))
+        for src in (s, t)
+            got = collect(p(lazy(src)); morsel = 1)
+            @test frame_equal(got, p(Frame(whole)))
+        end
     end
+    @test count(isnan, collect(collect(filter(c.f .!= 1.0)(lazy(s))).columns[1])) == 2
+    # `c.f .> 3.0` can be false on NaN, so partitions 1 and 2 (hi <= 2.0) are pruned; partition 3's
+    # `missing` lower bound does not matter for `>`, its upper bound 5.0 keeps it.
+    out = sprint(explain, filter(c.f .> 3.0)(lazy(s)))
+    @test occursin("partitions: 1 of 3 kept, 2 pruned by statistics", out)
+    @test occursin("partitions: 3 of 3 kept, 0 pruned", sprint(explain, filter(c.f .> 3.0)(lazy(t))))
+    @test occursin("partitions: 3 of 3 kept, 0 pruned", sprint(explain, filter(c.f .!= 1.0)(lazy(s))))
 end
 
 @testitem "CF-014 transactional sinks" tags = [:unit] setup = [IOFixtures] begin
@@ -245,6 +256,7 @@ end
     write_file(x, joinpath(dir, "t.csv"))
     @test frame_equal(read_file(joinpath(dir, "t.csv")), x)
     @test frame_equal(ChuiFrames.read_source(ChuiFrames.scan_file(joinpath(dir, "t.csv"))), x)
+    @test frame_equal(collect(ChuiFrames.scan_file(joinpath(dir, "t.csv"))), x)   # CF-016's example
     write_file(x, joinpath(dir, "t.arrow"))
     @test isfile(joinpath(dir, "t.arrow"))
     @test frame_equal(read_file(joinpath(dir, "t.arrow")), x)

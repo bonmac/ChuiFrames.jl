@@ -6,10 +6,10 @@ struct GroupByStep <: Step
     keys::Vector{Any}
     computed::Vector{Pair{Symbol, Any}}
     add::Bool
-    drop::Bool
+    drop::Union{Nothing, Bool}   # nothing: inherit the input's flag
 end
 """
-    group_by(keys...; add = false, drop = true)
+    group_by(keys...; add = false, drop = nothing)
 
 Group by columns (names, `c.x`, selectors) or computed keys (`:k => expr`, `k = expr`). The
 frame carries a group index: groups in ascending key order, NaN/-NaN one group, ±0.0 one group
@@ -30,11 +30,14 @@ dplyr's `head` and tidyr do); and
 and a `summarise` that keeps groups carry it on. `ungroup()` resets it. Differences from dplyr:
 - groups stay in CF-008's ascending order of the key values, not in level order;
 - `mutate`/`filter` do not evaluate empty groups (they have no rows), so a `maximum` there does
-  not raise, where dplyr evaluates and warns;
-- a later `group_by` uses its own `drop` (default `true`), where dplyr's `.drop` defaults to
-  the input's (`group_by_drop_default`).
+  not raise, where dplyr evaluates and warns.
+
+The default `drop = nothing` inherits the input's flag, as dplyr's
+`.drop = group_by_drop_default(.data)`: a `group_by` on a `drop = false` frame stays
+`drop = false`, and on an ungrouped frame (always `drop = true`) it is `true`. An explicit
+`drop = true` or `drop = false` wins.
 """
-function group_by(keys...; add::Bool = false, drop::Bool = true, kw...)
+function group_by(keys...; add::Bool = false, drop::Union{Nothing, Bool} = nothing, kw...)
     ks = Any[]
     comp = Pair{Symbol, Any}[]
     for k in keys
@@ -54,14 +57,14 @@ end
 function Base.show(io::IO, s::GroupByStep)
     opts = String[]
     s.add && push!(opts, "add = true")
-    s.drop || push!(opts, "drop = false")
+    s.drop === nothing || push!(opts, "drop = $(s.drop)")
     return print(io, "group_by(", join([_selrepr(k) for k in s.keys], ", "), isempty(opts) ? "" : "; " * join(opts, ", "), ")")
 end
 function apply(s::GroupByStep, f::Frame)
     isempty(s.computed) || (f = apply(MutateStep(_outs(s.computed), nothing, :all, nothing, nothing), f))
     keys = isempty(s.keys) ? Symbol[] : Symbol[f.names[i] for i in resolve(s.keys, f)]
     s.add && (keys = unique!([f.groups; keys]))
-    return regroup(f, keys; drop = s.drop)
+    return regroup(f, keys; drop = something(s.drop, f.drop))
 end
 
 struct UngroupStep <: Step

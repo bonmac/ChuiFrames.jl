@@ -22,6 +22,29 @@ UP.iscommutative(m::SkipMissingAgg) = UP.iscommutative(m.inner)
 UP.neutral(m::SkipMissingAgg) = UP.neutral(m.inner)
 Base.show(io::IO, m::SkipMissingAgg) = print(io, "SkipMissingAgg(", m.inner, ")")
 
+"""
+    Spread(inner::Upstream.Moments)
+
+`var`/`std` with dplyr's small-sample rule: `missing` when there are no more values than the
+degrees of freedom removed (fewer than two values for the default `corrected = true`, none for
+`corrected = false`), where `Statistics.var` gives NaN. dplyr gives NA and Polars and DuckDB
+null (user decision at the phase-2c ★, 2026-10-20; ADR-0002 note of that date). Otherwise the
+upstream `Moments` result.
+"""
+struct Spread <: UP.Aggregator
+    inner::UP.Moments
+end
+UP.init(m::Spread) = UP.init(m.inner)
+UP.partial(m::Spread, acc, chunk) = UP.partial(m.inner, acc, chunk)
+UP.combine(m::Spread, a, b) = UP.combine(m.inner, a, b)
+function UP.final(m::Spread, acc)
+    acc === UP.novalue && return missing
+    acc[1] <= (m.inner.corrected ? 1 : 0) && return missing
+    return UP.final(m.inner, acc)
+end
+UP.iscommutative(m::Spread) = UP.iscommutative(m.inner)
+Base.show(io::IO, m::Spread) = print(io, "Spread(", m.inner, ")")
+
 # Key canonicalisation (ADR-0003 rule 8): NaN and -NaN one key, -0.0 and 0.0 one key.
 @inline _canon(x) = x
 @inline _canon(x::AbstractFloat) = isnan(x) ? oftype(x, NaN) : (iszero(x) ? zero(x) : x)

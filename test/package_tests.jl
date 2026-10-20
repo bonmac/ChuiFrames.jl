@@ -23,7 +23,7 @@ end
         :istable, :columnaccess, :rowaccess, :columns, :rows, :columnnames, :getcolumn,
         :schema, :Schema, :partitions, :Scan, :columntable, :rowtable, :rowcount, :Partitioner,
         # Tables.Scan's pushdown vocabulary (Tables 1.14 docs; LC-10, ADR-0004 rule 1)
-        :Col, :ScanExpr, :filtermask, :resolve,
+        :Col, :ScanExpr, :filtermask, :resolve, :colcmp, :isnull,
         # Arrow.jl's documented writer API (ADR-0010; the adapter is its only caller)
         :write, :append, :Writer,
         # Arrow.jl storage types for Date32/Timestamp(ms), so no JuliaLang.* extension type is
@@ -34,6 +34,9 @@ end
         :Timestamp, :Meta, :TimeUnit,
         # Dates' documented abstract type (Dates manual, "Dates.AbstractDateTime")
         :AbstractDateTime,
+        # `Meta.lower`, documented in the Julia manual (Metaprogramming / Base.Meta), lowers the
+        # rendered kernel for `code_lowered` (ADR-0003 rule 13); not marked `public` in 1.13
+        :lower,
         # Parquet2's documented reader/writer API, used by ext/ChuiFramesParquet2Ext.jl (ADR-0020);
         # checked only when a test has loaded Parquet2 (e.g. `ci.jl test -- all`)
         :Dataset, :FileWriter, :ColumnStatistics, :load, :writetable!, :finalize!,

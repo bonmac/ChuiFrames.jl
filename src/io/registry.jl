@@ -85,8 +85,10 @@ end
 
 The [`Source`](@ref) for the file at `path`, through the format registry (CF-016). `format =
 :auto` picks the format from the extension (`.arrow`, `.feather`, `.ipc`, `.arrows`, `.csv`,
-`.tsv`; `.parquet` once `Parquet2` is loaded). `kw` are format options (PROVISIONAL). Phase 2
-returns the source itself; the lazy entry points will wrap it in a query (PROVISIONAL).
+`.tsv`; `.parquet` once `Parquet2` is loaded). `kw` are format options (PROVISIONAL). A verb
+applied to the source starts a lazy query (`scan_file(path) |> filter(c.x .> 1) |> collect`),
+and `collect(scan_file(path))` reads it through the lazy engine; `lazy(scan_file(path))` is the
+same query with no verbs.
 """
 scan_file(path::AbstractString; format::Symbol = :auto, kw...) = _entry(path, format).source(path; kw...)
 
