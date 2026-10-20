@@ -36,6 +36,20 @@ include("show/show.jl")
 
 export Frame, groupcols, isgrouped
 
+# The Source/Sink interface and the format registry (chui-frames.md CF-011 to CF-016) are
+# public but not exported: the contract writes them qualified (`ChuiFrames.Source`). `public` is
+# a ParseError on Julia 1.10, hence the version gate.
+@static if VERSION >= v"1.11"
+    eval(
+        Meta.parse(
+            "public Source, Sink, TablesSource, source_schema, source_label, plan_partitions, " *
+                "read_partition, partition_stats, row_count, partition_row_count, source_ordering, " *
+                "source_groups, isthreadsafe, source_boundedness, open_sink, write_partition!, " *
+                "close_sink!, abort_sink!, register_format!, scan_file"
+        )
+    )
+end
+
 # TTFX workload (ADR-0011; ADR-0010 rule 4: one small Arrow write). It covers the common first
 # calls: building a frame, one pipeline of the core verbs, printing, and an Arrow and CSV round
 # trip in a temporary directory.

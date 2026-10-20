@@ -31,6 +31,14 @@ end
         :DATE, :DATETIME,
         # Dates' documented abstract type (Dates manual, "Dates.AbstractDateTime")
         :AbstractDateTime,
+        # Parquet2's documented reader/writer API, used by ext/ChuiFramesParquet2Ext.jl (ADR-0020);
+        # checked only when a test has loaded Parquet2 (e.g. `ci.jl test -- all`)
+        :Dataset, :FileWriter, :ColumnStatistics, :load, :writetable!, :finalize!,
+        # ChuiFrames internals used by its own Parquet2 extension (same package, not an API)
+        :DEFAULT_MORSEL, :_tryclose, :_tryrm, :column, :isnullable, :schema_types,
+        :AbstractColumn, :BinaryColumn, :DictColumn, :ListColumn, :StrView, :StringColumn,
+        :StructColumn, :check_writable, :conform_column, :conform_partition, :empty_frame,
+        :pushed_columns, :temp_path_for,
         # DataAPI generics (README: "functions to be extended")
         :refarray, :refpool, :refvalue, :nrow, :ncol,
         # DataAPI selector types, re-exported as the same bindings (ADR-0002 rule 7)
