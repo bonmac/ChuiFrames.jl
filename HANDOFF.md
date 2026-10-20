@@ -59,26 +59,28 @@ removed; the branches are kept.
 - **Review:** reviewer passes 1 (REQUEST CHANGES), 2 (APPROVE WITH CONDITIONS) and 3 (**APPROVE,
   FINAL**, at `0734789`).
 
-## ★ questions (in the lane report)
+## Decisions at the phase-3 ★ (2026-10-20)
 
-- Exception replay as CF-008's exception-type mechanism (an ADR-0003 rule 7 note). When only lazy
-  fails, collect returns the eager result.
-- R-total: filters never move past a `mutate`.
-- Grouped summaries and windows run eagerly on the gathered frame until phase 4.
-- The `-t 4` CI job (T3, a draft is in the lane report).
-- Which ADR-0022 rule caps the lazy `n=10` row.
+- **Eager replay** is CF-008's exception-type mechanism, including returning the eager result
+  when only the lazy run fails. Lead's decision; recorded as a dated note on ADR-0003 rule 7.
+- **R-total** is accepted for v0 (user). Moving filters past provably total `mutate`s is a
+  later optimization.
+- **Grouped summaries and window sinks** are deferred to phase 4 (user).
+- **A `-t 4` CI job** is approved (user). The lead makes it as a separate T3 change; this lane
+  does not edit CI.
+- **Lazy budget rows** follow ADR-0022 rule 2's formula, not rule 3's eager cap (user). Recorded
+  as a dated note on ADR-0022 rule 3.
 
-## Remaining (phase 3 and later)
+## Phase 4 (and later)
 
-- Hash-aggregate and grouped-window sinks with parallel partial aggregation (`foldparts`).
-  Grouped summaries and windows run on the gathered frame, through the eager operators.
-- The adaptive group-by, radix partitioning, joins, codegen kernels and the 10⁵ threshold
-  (phase 4).
+- Hash-aggregate and grouped-window sinks, with parallel partial aggregation (`foldparts`).
+  Until then, grouped summaries and windows run on the gathered frame through the eager
+  operators.
+- The adaptive group-by, radix partitioning, joins, codegen kernels and the 10⁵ threshold.
+- Pushing filters past provably total `mutate`s (a later optimization under R-total).
 - `source_ordering` is not used to skip sorts yet (ADR-0004 rule 6).
-- Filters never move past a `mutate` (R-total). Pushing past provably total `mutate`s is future
-  work.
-- No `-t 4` CI job yet: the workflow is T3, and a draft is in the lane report.
+- `test -- all` and ttfx on a quiet machine, both re-run by the lead.
 
 ## Next action
 
-The reviewer's FINAL verdict, then the lead's merge.
+The lead's merge (reviewer pass 3: APPROVE, FINAL).

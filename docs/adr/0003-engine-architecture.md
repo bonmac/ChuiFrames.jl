@@ -127,6 +127,15 @@ machine, so compare ratios within a run):
    reduction, on every path, goes through the adapter's aggregators (CC-006/CC-007 exception
    types), never through Base reductions directly. So `maximum` over an empty group is an
    `ArgumentError` on 1.10 and 1.13, in both modes.
+   - *Note (2026-10-20, lead's decision at the ChuiFrames phase-3 ★):* evaluation order differs
+     between the paths: a fused stage runs every step on one morsel before the next, while eager
+     runs one step on every row first. So when a lazy run throws (planning included), `collect`
+     replays the unoptimized plan eagerly. The replay's exception is the one raised, which
+     makes CF-008's same exception type hold by construction. If the replay succeeds, the lazy
+     failure was an engine defect and the replay's result is returned. Spec
+     `docs/superpowers/specs/2026-10-20-phase3-lazy-design.md` §1, which also states the
+     R-total rule: a rewrite skips a step on some rows only when that step cannot throw (user,
+     accepted for v0).
 
 **Group-by and joins**
 8. **Key equality.** It applies to **every key-based operator**: group-by, joins, `distinct`,
