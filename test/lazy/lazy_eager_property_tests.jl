@@ -105,24 +105,17 @@
         event!("lazy", l[1] === :err ? l : (:ok, Tables.columntable(l[2])))
         return false
     end
-    # KNOWN ENGINE BUG (reported by lane p3-prop; reproduced as `@test_broken` in the last item):
-    # projection pushdown's `_need_in(::RenameStep, need)` returns a `Set{Any}` (`union` of a
-    # `Set{Symbol}` with a generator), so any step below a `rename` that sits under a
-    # projection-making step (`select`, `summarise`, ...) hits a MethodError in `optimize`, which
-    # `collect` raises without the eager replay. The properties skip (and count) exactly those
-    # plans, so they keep checking everything else; delete this guard when the bug is fixed.
-    const SKIPPED = Ref(0)
-    function known_bug(q)
-        try
-            ChuiFrames.optimize_plan(q.plan)
-            return false
-        catch err
-            (err isa MethodError && err.f === ChuiFrames._need_in) || rethrow()
-            SKIPPED[] += 1
-            return true
-        end
-    end
     lazyq(p, t) = p === nothing ? lazy(t) : p(lazy(t))
+    # Partitions pruned by one run of `q` (0 when the run throws).
+    function npruned(q; morsel, threads)
+        st = ChuiFrames.ExecStats()
+        try
+            ChuiFrames.execute(ChuiFrames.physical(ChuiFrames.optimize(q).plan); morsel, threads, stats = st)
+        catch
+            return 0
+        end
+        return st.pruned
+    end
 
     # Print the shrunk counterexample (with its events) when a check fails.
     show_failure(sr) = Supposition.results(sr).ispass ||
@@ -135,7 +128,6 @@ end
     function lazy_eq(t, grouped, steps, m, th)
         input = grouped ? group_by(:g)(Frame(t)) : t
         p = pipe(steps)
-        known_bug(lazyq(p, input)) && return true
         e = outcome(() -> run_eager(p, input))
         l = outcome(() -> run_lazy(p, input; morsel = m, threads = th))
         e[1] === :err ? (nerr[] += 1) : (nok[] += 1)
@@ -147,7 +139,7 @@ end
     elapsed = time() - t0
     show_failure(sr)
     @test Supposition.results(sr).ispass
-    @info "lazy == eager" examples_ok = nok[] examples_err = nerr[] skipped_known_bug = SKIPPED[] seconds = round(elapsed; digits = 1) nthreads = Threads.nthreads()
+    @info "lazy == eager" examples_ok = nok[] examples_err = nerr[] seconds = round(elapsed; digits = 1) nthreads = Threads.nthreads()
     @test nok[] > 0 && nerr[] > 0           # both outcomes are exercised
     @test elapsed < 600
 end
@@ -157,7 +149,6 @@ end
         input = grouped ? group_by(:g)(Frame(t)) : t
         p = pipe(steps)
         q = lazyq(p, input)
-        known_bug(q) && return true
         plan, log = ChuiFrames.optimize_plan(q.plan)
         isempty(log.capped) || (event!("capped", log.capped); return false)
         plan2, log2 = ChuiFrames.optimize_plan(plan)
@@ -189,10 +180,9 @@ end
     function sound(t, pre, rest, m, th)
         steps = Any[pre; rest]
         p = pipe(steps)
-        known_bug(lazyq(p, t)) && return true
         e = outcome(() -> run_eager(p, t))
         l = outcome(() -> run_lazy(p, t; morsel = m, threads = th))
-        ChuiFrames._LAST_STATS[] isa ChuiFrames.ExecStats && (pruned[] += ChuiFrames._LAST_STATS[].pruned)
+        pruned[] += npruned(lazyq(p, t); morsel = m, threads = th)
         outcomes_agree(e, l; approx = any(reduces, steps)) && return true
         return explain_failure(steps, e, l)
     end
@@ -233,7 +223,7 @@ end
         s = out ? filter_out(preds...) : filter(preds...)
         e = outcome(() -> s(ChuiFrames.read_source(src)))
         l = outcome(() -> collect(s(lazy(src)); morsel = m, threads = th))
-        ChuiFrames._LAST_STATS[] isa ChuiFrames.ExecStats && (blind_pruned[] += ChuiFrames._LAST_STATS[].pruned)
+        blind_pruned[] += npruned(s(lazy(src)); morsel = m, threads = th)
         outcomes_agree(e, l) && return true
         return explain_failure(Any[s], e, l)
     end
@@ -251,7 +241,6 @@ end
     @test length(STREAMABLE) == length(STREAMED)
     function kernel_eq(t, steps)
         p = pipe(steps)
-        known_bug(p(lazy(t))) && return true
         e = outcome(() -> run_eager(p, t))
         ph = ChuiFrames.physical(ChuiFrames.optimize(p(lazy(t))).plan)
         isempty(ph.rest) && ph.limit === nothing || (event!("not streamed", pipestr(steps)); return false)
@@ -353,14 +342,12 @@ end
     @test time() - t0 < 600
 end
 
-@testitem "lazy: known bug: projection pushdown through a rename above another step" tags = [:unit] setup = [LazyProp] begin
-    # KNOWN ENGINE BUG (found by the lazy == eager property): eager gives (yy = [1, 2],); lazy
-    # raises `MethodError: no method matching _need_in(::FilterStep, ::Set{Any})` from
-    # `optimize` (the rename's `_need_in` builds a Set{Any}), and collect does not replay it.
-    # Flip these to @test and drop the `known_bug` guard in LazyProp once src is fixed.
+@testitem "lazy: regression: projection pushdown through a rename above another step" tags = [:unit] setup = [LazyProp] begin
+    # Found by the lazy == eager property (lane p3-prop): the rename's `_need_in` built a
+    # Set{Any}, and `optimize` raised a MethodError. Fixed in 5d108a2.
     t = (y = [1, 2, 3],)
     for p in (filter_out(c.y .> 2) ⨟ rename(yy = :y) ⨟ select(:yy), mutate(z = c.y .* 2) ⨟ rename(yy = :y) ⨟ select(:yy))
         @test outcome(() -> p(t))[1] === :ok
-        @test_broken outcomes_agree(outcome(() -> p(t)), outcome(() -> collect(p(lazy(t)))))
+        @test outcomes_agree(outcome(() -> p(t)), outcome(() -> collect(p(lazy(t)))))
     end
 end
