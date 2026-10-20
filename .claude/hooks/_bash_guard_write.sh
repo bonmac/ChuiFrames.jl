@@ -56,7 +56,7 @@ is_checkout() {
 # here (the shell would expand it); a brace list and anything below a `.git` directory are denied.
 t3_check() {
     [ "${FACTORY_ALLOW_T3:-}" != 1 ] || return 0
-    case $1 in "$ROOT" | "$ROOT"/*) _rt=$ROOT ;; "$ROOT_P" | "$ROOT_P"/*) _rt=$ROOT_P ;; *) return 0 ;; esac
+    case $1 in "$ROOT" | "$ROOT"/*) _rt=$ROOT ;; "$ROOT_P" | "$ROOT_P"/*) _rt=$ROOT_P ;; *) in_main "$1" || return 0; _rt=$IN_MAIN ;; esac
     case $1 in *'{'*','*'}'*) deny "a brace list in a write target inside the repo is not checked: $1. Spell the paths out." ;; esac
     case $1 in *[*?[]*)
         set +f
@@ -72,7 +72,8 @@ t3_check() {
     if [ "$1" != "$_rt" ]; then
         _d=${1%/*}
         while [ "$_d" != "$_rt" ] && [ -n "$_d" ]; do
-            if is_checkout "$_d"; then _repo=$_d; break; fi
+            if is_checkout "$_d"; then _repo=$_d; break; fi # 0.2.6: a lane root counts before it exists (`lane new x && cp f .worktrees/x/`)
+            case ${_d%/*} in "$_rt"/.worktrees | "$_rt"/.claude/worktrees) _repo=$_d; break ;; esac
             _d=${_d%/*}
         done
     fi

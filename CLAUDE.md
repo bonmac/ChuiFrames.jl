@@ -86,8 +86,14 @@ julia scripts/dod.jl --base main    # definition of done for the current branch
 
 - `@testitem` (TestItemRunner) with tags `:unit :laws :property :contract :differential
   :snapshot :doctest :slow :quality`; `:snapshot`/`:doctest` run on stable only. Select tags with `julia scripts/ci.jl test -- laws`.
+- `JuliaTestItems.toml` keeps `.worktrees/` and `.lanes/` out of test-item discovery (TestItemRunner
+  >= 1.3.2): a stale `@testmodule` in a lane worktree would shadow the real one.
 - Write the failing test first. Every typeclass instance gets law tests.
 - Snapshot files live in `test/snapshots/`; update only with the documented env var.
+- Supposition properties: `sr = @check record=false db=false prop(gen)`, then
+  `@test Supposition.results(sr).ispass` (why: `test/runtests.jl`). Never commit a SuppositionDB directory.
+- Testing on the LTS locally: give it its own gitignored manifest (`touch Manifest-v1.10.toml`, then
+  `julia +lts --project -e 'using Pkg; Pkg.resolve()'`); a 1.13-resolved `Manifest.toml` may not load on 1.10.
 
 ## Style
 

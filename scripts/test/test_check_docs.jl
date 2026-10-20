@@ -113,6 +113,10 @@
         @test !CheckDocs.gitignored(r, "scripts/gone.jl") && !CheckDocs.gitignored(r, "t.cov")
         sh(`git -C $r rm -q --cached .gitignore`)                              # an untracked .gitignore: not CI's
         @test !CheckDocs.gitignored(r, "scripts/x.cov")
+        # 0.2.6: a root that is a subdirectory of its repo (factory/template in the coordinator): git names the
+        # source .gitignore from the repo's top, which 0.2.5 looked up from the root (never tracked: always false)
+        t = tmp_repo(Dict("sub/.gitignore" => "/test/SuppositionDB/\n", "sub/README.md" => "x\n"))
+        @test CheckDocs.gitignored(joinpath(t, "sub"), "test/SuppositionDB") && !CheckDocs.gitignored(joinpath(t, "sub"), "test/other")
     end
 
     if IN_FACTORY

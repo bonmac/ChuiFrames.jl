@@ -11,7 +11,13 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
 - Give the agent its brief, its scope, and the output format from its registry entry.
 - Worktree lanes: `scripts/lane new <name> --owns '<globs>' [--base main]` creates
   `.worktrees/<name>` and records the globs the lane may touch (`changelog.d/<name>.md` is
-  added). The brief's file scope and `--owns` are the same list.
+  added). The brief's file scope and `--owns` are the same list. It copies the machine-local,
+  gitignored `.agents/factory.local.toml` into the lane and runs `scripts/gen.jl` there (the
+  user's own file; without it a repo that requires read-only roots blocks every Bash call in the lane).
+- Sub-lanes: `scripts/lane new` run inside a lane creates a SIBLING, `<repo>/.worktrees/<sub>`.
+  A session rooted in a lane worktree may write the repo's other lane worktrees (`.worktrees/*`,
+  `.claude/worktrees/*`) and `<repo>/.lanes/reports/`, not the main checkout; T3 paths stay
+  blocked there. Do not work in scratch copies. The parent lane still owns the merge.
 - The brief says: change files with Edit/Write only, never `sed -i`, redirects or heredocs.
 - Each lane records its change in `changelog.d/<name>.md`, never in `CHANGELOG.md`.
 - The cap is `[lanes] max_open` (default 4). `dispatch_limit.sh` refuses the next spawn.
@@ -27,7 +33,11 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
 
 **Close**
 - Before a lane lands, `scripts/lane audit <name> --reported <file>` (the changed files the lane
-  reported) must pass; a path outside `--owns` is a finding, not a formality.
+  reported) must pass; a path outside `--owns` is a finding, not a formality. It diffs against
+  the local base when that contains `origin/<base>` (local merges not yet pushed are not the
+  lane's); `--base B` audits against another base.
+- A lane's report: SendMessage, or `.lanes/reports/<name>.md` in its worktree or the repo root
+  (`teammate_idle` reads both).
 - Close the agent (TaskStop) in the same step as reading its report. A listing is not proof of
   closure. Before recording a lane as `no_report`, check once more for a late message: a report
   can arrive after the stop.

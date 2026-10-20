@@ -59,7 +59,9 @@ module CheckDocs
             m === nothing && continue
             src, pat = m.captures
             (startswith(pat, "!") || isabspath(src) || basename(src) != ".gitignore") && continue
-            git(root, "ls-files", "--error-unmatch", "--", src) === nothing || return true
+            # `src` is relative to the top of the repo, which is not `root` when root is a subdirectory
+            # (factory/template in the coordinator; 0.2.6): `:(top)` reads it from there
+            git(root, "ls-files", "--error-unmatch", "--", ":(top)" * src) === nothing || return true
         end
         return false
     end

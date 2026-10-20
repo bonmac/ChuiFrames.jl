@@ -15,6 +15,16 @@
         write(joinpath(root, ".lanes/reports/gamma.md"), "report\n")
         @test hook("teammate_idle.sh", idle("gamma"), root)[1] == 0          # report on disk
         @test hook("teammate_idle.sh", "{}", root)[1] == 0
+        # 0.2.6 (factory-026 item 5): a lane's session (root = its worktree) writes the report there; it counts
+        for wt in (".worktrees/delta", ".claude/worktrees/epsilon")
+            n = basename(wt)
+            @test hook("teammate_idle.sh", idle(n), root)[1] == 2
+            mkpath(joinpath(root, wt, ".lanes/reports")); write(joinpath(root, wt, ".lanes/reports/$n.md"), "report\n")
+            @test hook("teammate_idle.sh", idle(n * "x"), root)[1] == 2      # another teammate's report does not count
+            rc, _, _ = hook("teammate_idle.sh", replace(idle(n), "s1" => "s9"), root)
+            @test rc == 0 || (println("teammate_idle ignored $wt/.lanes/reports/$n.md"); false)
+        end
+        # write_guard letting a lane's session write <main>/.lanes/reports/ is tested in test_bash_guard.jl (outside /tmp)
     end
 
     @testset "lane_ledger + dispatch_limit" begin

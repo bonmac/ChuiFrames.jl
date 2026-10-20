@@ -85,7 +85,7 @@ check_cmd() {
             last="" _srcs=""
             for tok in "$@"; do case $tok in -*) ;; *) [ -z "$last" ] || _srcs="$_srcs $last"; last=$tok ;; esac; done
             [ "$name" != mv ] || for tok in $_srcs; do outside "$tok"; done # mv removes its sources
-            if [ "$name" != rsync ] && [ -n "$_srcs" ] && [ -d "$(abspath "$last" "$cwd")" ]; then
+            if [ "$name" != rsync ] && [ -n "$_srcs" ] && { case $last in */) ;; *) [ -d "$(abspath "$last" "$cwd")" ] ;; esac; }; then # DIR/: a directory even before it exists (0.2.6)
                 for tok in $_srcs; do outside "${last%/}/${tok##*/}"; done
             else outside "$last"; fi
             [ "$name" = rsync ] || optw " -t --target-directory " "$@"

@@ -108,3 +108,61 @@ end
     end
     @test rc == 0 && occursin("warning: JULIA_LOAD_PATH=/elsewhere", out)
 end
+
+@testset "merge_base: the local base wins when it contains origin/<base> (0.2.6)" begin
+    # factory-026 item 3: origin/main behind local main made lane audit and dod.jl count work merged locally, not pushed
+    base_ref, merge_base = Lane.base_ref, Lane.merge_base                       # _common.jl, as lane.jl and dod.jl include it
+    d = tmp_repo(Dict(".gitignore" => "/.worktrees/\n/.lanes/\n", "README.md" => "x\n"))
+    @test base_ref(d, "main") == "main"                                         # no origin at all
+    o = joinpath(mktempdir(), "origin.git")
+    sh(`git clone -q --bare $d $o`); sh(`git -C $d remote add origin $o`); sh(`git -C $d fetch -q origin`)
+    @test base_ref(d, "main") == "main"                                         # equal
+    lane(args...) = capture(() -> Lane.main([args..., "--repo", d]))
+    commit!(d, Dict("side.md" => "merged locally, not pushed\n"), "side")       # local ahead of origin/main
+    @test base_ref(d, "main") == "main" && base_ref(d, "origin/main") == "origin/main"
+    @test lane("new", "z", "--owns", "docs/*")[1] == 0
+    wt = joinpath(d, ".worktrees/z")
+    commit!(wt, Dict("docs/z.md" => "z\n"), "z")
+    rc, out = lane("audit", "z")
+    @test rc == 0 && !occursin("side.md", out) || (print(out); false)          # 0.2.5: FAIL outside owns: side.md
+    @test merge_base(wt, "main") == readchomp(`git -C $d rev-parse main`)
+    rc, out = lane("audit", "z", "--base", "origin/main")                       # --base overrides the recorded base
+    @test rc == 1 && occursin("outside owns: side.md", out)
+    for b in ("feat/z", "HEAD", "feat/z~0")                                     # the review: a base holding the lane's tip audits nothing
+        rc, out = lane("audit", "z", "--base", b)
+        @test rc == 1 && occursin("already contains the lane's tip", out) || (println("--base $b: ", out); false)
+    end
+    # the review: an expression or SHA is taken as given, never rewritten to origin/<expr>
+    @test base_ref(wt, "HEAD~1") == "HEAD~1" && base_ref(wt, "feat/z~1") == "feat/z~1"
+    @test merge_base(wt, "HEAD~1") == readchomp(`git -C $wt rev-parse "HEAD~1"`)
+    sh(`git -C $d push -q origin main`); sh(`git -C $d fetch -q origin`)
+    @test base_ref(d, "main") == "main"                                         # pushed: equal again
+    # local behind origin (someone pushed): origin wins
+    c = joinpath(mktempdir(), "c"); sh(`git clone -q $o $c`)
+    sh(`git -C $c config user.email t@example.com`); sh(`git -C $c config user.name test`); sh(`git -C $c config commit.gpgsign false`)
+    commit!(c, Dict("up.md" => "u\n"), "upstream"); sh(`git -C $c push -q origin main`); sh(`git -C $d fetch -q origin`)
+    @test base_ref(d, "main") == "origin/main"
+    # review round 2 (N1): with origin/HEAD set and origin ahead, 6fa430d rewrote HEAD~1 to origin/HEAD~1
+    sh(`git -C $d remote set-head origin main`)
+    @test base_ref(d, "HEAD~1") == "HEAD~1" && merge_base(d, "HEAD~1") == readchomp(`git -C $d rev-parse "HEAD~1"`)
+    sh(`git -C $d branch -q -m main old`)                                       # no local main: origin
+    @test base_ref(d, "main") == "origin/main" && merge_base(d, "main") !== nothing
+end
+
+@testset "lane new: the machine-local file reaches the lane (0.2.6)" begin
+    # factory-026 item 1: .agents/factory.local.toml is gitignored, so a new worktree lacked it and a repo with
+    # require_read_only_roots = true failed closed on every Bash call there
+    d = tmp_repo(Dict(".gitignore" => "/.worktrees/\n/.lanes/\n/.agents/factory.local.toml\n/out.txt\n", "scripts/gen.jl" => "write(\"out.txt\", read(\".agents/factory.local.toml\"))\n"))
+    mkpath(joinpath(d, ".agents")); write(joinpath(d, ".agents/factory.local.toml"), "[bash_guard]\nread_only_roots = [\"/x\"]\n")
+    rc, out = capture(() -> Lane.main(["new", "loc", "--owns", "x", "--repo", d]))
+    wt = joinpath(d, ".worktrees/loc")
+    @test rc == 0 && occursin("copied .agents/factory.local.toml", out) && occursin("ran scripts/gen.jl", out)
+    @test read(joinpath(wt, ".agents/factory.local.toml"), String) == read(joinpath(d, ".agents/factory.local.toml"), String)
+    @test isfile(joinpath(wt, "out.txt"))                                       # gen.jl ran in the lane
+    commit!(d, Dict("scripts/gen.jl" => "exit(3)\n"), "broken gen")
+    rc, out = capture(() -> Lane.main(["new", "bad", "--owns", "x", "--repo", d]))
+    @test rc == 0 && occursin("warning: scripts/gen.jl failed", out)            # warns; the lane exists
+    rm(joinpath(d, ".agents/factory.local.toml"))
+    rc, out = capture(() -> Lane.main(["new", "none", "--owns", "x", "--repo", d]))
+    @test rc == 0 && !occursin("copied", out) && !isfile(joinpath(d, ".worktrees/none/.agents/factory.local.toml"))
+end

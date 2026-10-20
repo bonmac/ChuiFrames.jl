@@ -10,6 +10,34 @@ ROOT=${CLAUDE_PROJECT_DIR:-$(pwd)}
 ROOT=${ROOT%/}
 ROOT_P=$(CDPATH='' cd -- "$ROOT" 2>/dev/null && pwd -P || printf '%s' "$ROOT")
 PAYLOAD=$(cat)
+# MAIN (0.2.6): when ROOT is a linked worktree (a lane: its .git is a file `gitdir: <main>/.git/worktrees/<n>`),
+# the main checkout, also as MAIN_P (symlinks resolved) and MAIN_L (ROOT minus /.worktrees/<n>, if the same
+# directory). Its lane worktrees and .lanes/reports/ count as in-repo (`allowed`): sub-lanes are siblings.
+MAIN="" MAIN_P="" MAIN_L=""
+if [ -f "$ROOT/.git" ] && read -r _gl <"$ROOT/.git" 2>/dev/null; then
+    _gd=${_gl#gitdir: } _back=""
+    case $_gl in "gitdir: /"*/.git/worktrees/?*) read -r _back <"$_gd/gitdir" 2>/dev/null || _back="" ;; esac
+    # trusted only when the main repo's record of this worktree points back at this root (a crafted .git file does not)
+    case $_back in "$ROOT/.git" | "$ROOT_P/.git")
+        MAIN=${_gd%/.git/worktrees/*}
+        MAIN_P=$(CDPATH='' cd -- "$MAIN" 2>/dev/null && pwd -P) || MAIN_P=$MAIN
+        case $ROOT in */.claude/worktrees/?*) _ml=${ROOT%/.claude/worktrees/*} ;; */.worktrees/?*) _ml=${ROOT%/.worktrees/*} ;; *) _ml="" ;; esac
+        [ -z "$_ml" ] || [ "$(CDPATH='' cd -- "$_ml" 2>/dev/null && pwd -P)" != "$MAIN_P" ] || MAIN_L=$_ml
+        ;;
+    esac
+fi
+# in_main ABS: ABS is in a lane worktree of MAIN (.worktrees/<n>/, .claude/worktrees/<n>/) or MAIN/.lanes/reports/;
+# sets IN_MAIN to that MAIN spelling. MAIN's own files stay outside: a lane writes only its repo's lanes and reports.
+# shellcheck disable=SC2034 # IN_MAIN is read by t3_check (_bash_guard_write.sh)
+in_main() {
+    IN_MAIN=""
+    [ -n "$MAIN" ] || return 1
+    for _m in "$MAIN" "$MAIN_P" "$MAIN_L"; do
+        [ -n "$_m" ] || continue
+        case $1 in "$_m"/.worktrees/?* | "$_m"/.claude/worktrees/?* | "$_m"/.lanes/reports/?*) IN_MAIN=$_m; return 0 ;; esac
+    done
+    return 1
+}
 
 have_jq() { command -v jq >/dev/null 2>&1; }
 need_jq() { have_jq || deny "jq not found on PATH; this guard fails closed. Install jq."; }
@@ -93,8 +121,9 @@ abspath() {
     normpath "$_p"
 }
 
-# allowed ABS: true if ABS is inside the repo root or a scratch location.
+# allowed ABS: true if ABS is inside the repo root, a lane worktree or the reports of its main checkout (in_main), or a scratch location.
 allowed() {
+    in_main "$1" && return 0
     case $1 in
         "$ROOT" | "$ROOT"/* | "$ROOT_P" | "$ROOT_P"/*) return 0 ;;
         /dev/null | /dev/stdout | /dev/stderr | /dev/tty | /dev/fd/*) return 0 ;;

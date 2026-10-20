@@ -3,7 +3,7 @@
 #
 #   scripts/lane new <name> [--repo DIR] [--base BRANCH] [--prefix feat|fix|chore|docs|test] [--owns GLOBS]
 #   scripts/lane list [--repo DIR]
-#   scripts/lane audit <name> [--repo DIR] [--owns GLOBS] [--reported FILE]
+#   scripts/lane audit <name> [--repo DIR] [--base B] [--owns GLOBS] [--reported FILE]
 #   scripts/lane remove <name> [--repo DIR] [--allow-ignored]
 #
 # new     refuses past the cap ([lanes] max_open in the repo's .agents/agent-registry.toml,
@@ -11,8 +11,12 @@
 #         records the base in git config branch.<branch>.lane-base and the owned file globs
 #         (--owns, comma or space separated, risk.toml glob rule; `changelog.d/<name>.md` is
 #         always added) in branch.<branch>.lane-owns, and appends a `lane-new` line to the ledger.
+#         (0.2.6) Copies the gitignored .agents/factory.local.toml into the lane and runs
+#         scripts/gen.jl there. Run from inside a lane, it still creates <repo>/.worktrees/<name>
+#         (a sibling, which that lane's hooks treat as in-repo since 0.2.6).
 #         Warns when JULIA_PROJECT, JULIA_LOAD_PATH or JULIA_DEPOT_PATH leak in from the parent.
-# audit   (0.2.4) fails when the lane's changes since the merge base with its base (commits,
+# audit   (0.2.4) fails when the lane's changes since the merge base with its base (--base
+#         overrides the recorded one; the local base wins when it contains origin/<base>, 0.2.6) (commits,
 #         uncommitted and untracked files) touch a path outside its owned globs, when no globs
 #         are recorded, or, with --reported FILE (one path per line, as the lane reported its
 #         changed files), when the two lists differ. /change-review runs it before a lane lands.
@@ -76,9 +80,41 @@ module Lane
         git(repo, "config", "branch.$branch.lane-owns", join(owns, ' '))
         ledger_line(repo, "lane-new"; lane = name, branch, base, owns)
         println(io, "lane: created $wt on $branch (base $base); $(n + 1)/$cap lanes open; owns: ", join(owns, ' '))
+        local_setup(repo, wt; io)
         haskey(opts, "--owns") || println(io, "lane: no --owns given: `scripts/lane audit $name` will fail until the owned globs are recorded")
         foreach(w -> println(io, "lane: warning: ", w), env_warnings())
         return 0
+    end
+
+    """
+        local_setup(repo, wt; io) -> Bool
+
+    Factory 0.2.6: a new worktree gets the repo's machine-local, gitignored `.agents/factory.local.toml`
+    (the user's own file: copying it is the intended setup, not a T3 edit), then `scripts/gen.jl` runs
+    there to render `.claude/hooks/read-only-roots.txt`. Without them a repo with
+    `require_read_only_roots = true` fails closed on every Bash call in the lane. Warns, never fails.
+    """
+    function local_setup(repo, wt; io = stdout)
+        src = joinpath(repo, FACTORY_LOCAL)
+        isfile(src) || return true
+        try
+            mkpath(dirname(joinpath(wt, FACTORY_LOCAL)))
+            cp(src, joinpath(wt, FACTORY_LOCAL); force = true)
+        catch e
+            println(io, "lane: warning: could not copy $FACTORY_LOCAL into the lane: ", sprint(showerror, e))
+            return false
+        end
+        println(io, "lane: copied $FACTORY_LOCAL (machine-local, gitignored) into the lane")
+        gen = joinpath(wt, "scripts", "gen.jl")
+        isfile(gen) || (println(io, "lane: warning: no scripts/gen.jl in the lane; render its local files yourself"); return false)
+        cmd = Cmd(`$(Base.julia_cmd()) --startup-file=no $gen`; dir = wt, ignorestatus = true)
+        out = IOBuffer()
+        ok = success(pipeline(cmd; stdout = out, stderr = out))
+        println(
+            io, ok ? "lane: ran scripts/gen.jl in the lane: " * strip(String(take!(out))) :
+                "lane: warning: scripts/gen.jl failed in the lane (bash_guard may fail closed there); run it: cd $wt && julia scripts/gen.jl\n" * String(take!(out))
+        )
+        return ok
     end
 
     "Append one JSON line to the repo's lane ledger (.lanes/ledger.jsonl); never fails the command."
@@ -129,6 +165,12 @@ module Lane
         wt = joinpath(lanes_dir(repo), name)
         owns = haskey(opts, "--owns") ? split_globs(opts["--owns"]) :
             split_globs(something(git(repo, "config", "branch.$(l.branch).lane-owns"), ""))
+        if haskey(opts, "--base")   # 0.2.6: audit against another base, never one that already holds the lane's own commits
+            ahead = something(git(wt, "rev-list", "--count", "$(l.base)..HEAD"), "0")
+            git(wt, "merge-base", "--is-ancestor", "HEAD", opts["--base"]) !== nothing && ahead != "0" &&
+                return (println(io, "lane audit $name: [FAIL] --base $(opts["--base"]) already contains the lane's tip ($ahead commits past $(l.base)): it would audit nothing\nlane audit: FAILED (1)"); 1)
+            l = merge(l, (; base = opts["--base"]))
+        end
         # the review: a lane-base rewritten to the lane's own branch (or to a missing ref) audits nothing
         l.base == l.branch && return (println(io, "lane audit $name: [FAIL] its base is its own branch ($(l.base)): branch.$(l.branch).lane-base was rewritten\nlane audit: FAILED (1)"); 1)
         git(wt, "rev-parse", "--verify", "--quiet", "$(l.base)^{commit}") === nothing &&
@@ -195,7 +237,7 @@ module Lane
     end
 
     function main(args)
-        usage = "usage: scripts/lane new <name> [--repo DIR] [--base B] [--prefix P] [--owns GLOBS] | list [--repo DIR] | audit <name> [--repo DIR] [--owns GLOBS] [--reported FILE] | remove <name> [--repo DIR] [--allow-ignored]"
+        usage = "usage: scripts/lane new <name> [--repo DIR] [--base B] [--prefix P] [--owns GLOBS] | list [--repo DIR] | audit <name> [--repo DIR] [--base B] [--owns GLOBS] [--reported FILE] | remove <name> [--repo DIR] [--allow-ignored]"
         opts, pos = try
             parse_args(args, ("--allow-ignored",), ("--repo", "--base", "--prefix", "--owns", "--reported"))
         catch e

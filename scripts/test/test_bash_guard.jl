@@ -233,4 +233,73 @@
         rc, _, err = hook("write_guard.sh", write_payload("$r2/a.jl"), r2; hooks = h2)
         @test rc == 2 && occursin("missing", err)
     end
+
+    @testset "lane worktrees: T3 paths under .worktrees/*/ and .claude/worktrees/*/ (0.2.6)" begin
+        # factory-026 item 2: `scripts/lane new y && cp .agents/factory.local.toml .worktrees/y/.agents/` was rc 0:
+        # the worktree did not exist yet when the hook ran, so the path was matched against the root's globs only
+        r = tmp_repo(Dict(".gitignore" => "/.worktrees/\n/.claude/worktrees/\n", "README.md" => "x\n"))
+        mkpath(joinpath(r, ".claude/hooks"))
+        write(joinpath(r, ".claude/hooks/protected-paths.txt"), "T3 .agents/factory.local*\nT3 scripts/dod.jl\nT3 risk.toml\n")
+        rv(c; root = r, cwd = r) = hook("bash_guard.sh", bash(c; cwd), root)
+        for c in (
+                "scripts/lane new y && cp .agents/factory.local.toml .worktrees/y/.agents/",
+                "scripts/lane new y && cp .agents/factory.local.toml .worktrees/y/.agents/factory.local.toml",
+                "git worktree add .claude/worktrees/w && cp .agents/factory.local.toml .claude/worktrees/w/.agents/",
+                "scripts/lane new y && echo x > .worktrees/y/scripts/dod.jl", "printf x > .worktrees/y/risk.toml",
+                "cd .worktrees/y && cp ../../.agents/factory.local.toml .agents/", "mv /tmp/x .claude/worktrees/w/risk.toml",
+            )
+            rc, _, err = rv(c)
+            @test (rc == 2 && occursin("T3", err)) || (println("not blocked (lane T3): $c rc=$rc"); false)
+        end
+        for c in ("scripts/lane new y && cp /tmp/notes.md .worktrees/y/docs/", "echo x > .worktrees/y/notes.md", "cp a.md .worktrees/new/")
+            rc, _, err = rv(c)
+            @test rc == 0 || (println("blocked (lane T3): $c $err"); false)
+        end
+        @test hook("write_guard.sh", write_payload("$r/.worktrees/y/.agents/factory.local.toml"), r)[1] == 2
+        # item 4: a session rooted in a lane worktree may write a sibling sub-lane (`scripts/lane new` from inside a lane
+        # makes <main>/.worktrees/<sub>), but its T3 paths stay protected; MAIN is read from the lane's .git file
+        sh(`git -C $r worktree add -q -b feat/x $(joinpath(r, ".worktrees/x"))`)
+        sh(`git -C $r worktree add -q -b feat/s $(joinpath(r, ".worktrees/s"))`)
+        x, s = joinpath(r, ".worktrees/x"), joinpath(r, ".worktrees/s")
+        @test hook("write_guard.sh", write_payload("$s/notes.md"), x)[1] == 0
+        @test hook("write_guard.sh", write_payload("$s/scripts/dod.jl"), x)[1] == 2    # rc 0 before 0.2.6 (only /tmp allowed it)
+        @test rv("echo x > risk.toml"; root = x, cwd = s)[1] == 2 && rv("echo x > notes.md"; root = x, cwd = s)[1] == 0
+        # in_main: the lane worktrees and reports of MAIN are in-repo; MAIN's own files are not (both spellings)
+        lib = joinpath(TEST_HOOKS, "_lib.sh")
+        function inmain(p; root = x)
+            script = ". '$lib'; in_main '$p' && echo \"in \$IN_MAIN\" || echo out"
+            return readchomp(pipeline(addenv(`sh -c $script`, "CLAUDE_PROJECT_DIR" => root); stdin = devnull))
+        end
+        @test inmain("$r/.worktrees/s/a.md") == "in $r" && inmain("$r/.claude/worktrees/w/a.md") == "in $r"
+        @test inmain("$r/.lanes/reports/x.md") == "in $r"
+        @test inmain("$r/notes.md") == "out" && inmain("$r/.lanes/ledger.jsonl") == "out" && inmain("$r/.worktrees") == "out"
+        @test inmain("$r/.worktrees/s/a.md"; root = r) == "out"                               # the main checkout's session: no MAIN
+        @test inmain("/opt/x/.worktrees/s/a.md") == "out"
+        # the review: MAIN is trusted only when git's record of the worktree points back at the root (a crafted .git file)
+        forged = realpath(mktempdir()); write(joinpath(forged, ".git"), "gitdir: $r/.git/worktrees/x\n")
+        @test inmain("$r/.worktrees/s/a.md"; root = forged) == "out"
+        fake = realpath(mktempdir()); write(joinpath(fake, ".git"), "gitdir: /opt/evil/.git/worktrees/n\n")
+        @test inmain("/opt/evil/.worktrees/n/a.md"; root = fake) == "out" && inmain("/opt/evil/.lanes/reports/a.md"; root = fake) == "out"
+        # end to end OUTSIDE the scratch dirs (every path below /tmp or \$TMPDIR is allowed anyway): a repo under
+        # this checkout's gitignored .lanes/, skipped when the checkout itself is in a scratch dir (a /tmp clone)
+        nt = joinpath(ROOT, ".lanes", "nontmp-$(getpid())")
+        scratch = ("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/", rstrip(get(ENV, "TMPDIR", "/nonexistent"), '/') * "/")
+        if any(p -> startswith(nt, p), scratch)
+            @info "lane-worktree write_guard tests outside /tmp skipped: this checkout is in a scratch dir ($nt)"
+        else
+            try
+                mkpath(nt); sh(`git -C $nt init -q -b main`); sh(`git -C $nt -c user.email=t@e -c user.name=t commit -q --allow-empty -m init`)
+                sh(`git -C $nt worktree add -q -b feat/x $(joinpath(nt, ".worktrees/x"))`)
+                sh(`git -C $nt worktree add -q -b feat/s $(joinpath(nt, ".worktrees/s"))`)
+                wg(p) = hook("write_guard.sh", write_payload(p), joinpath(nt, ".worktrees/x"))[1]
+                @test wg("$nt/.worktrees/s/docs/a.md") == 0 && wg("$nt/.claude/worktrees/w/a.md") == 0   # item 4: rc 2 in 0.2.5
+                @test wg("$nt/.lanes/reports/x.md") == 0                                                 # item 5: rc 2 in 0.2.5
+                @test wg("$nt/notes.md") == 2 && wg("$nt/.lanes/ledger.jsonl") == 2 && wg("$nt/.worktrees/s/scripts/dod.jl") == 2
+                @test hook("bash_guard.sh", bash("touch docs/a.md"; cwd = "$nt/.worktrees/s"), joinpath(nt, ".worktrees/x"))[1] == 0
+                @test hook("bash_guard.sh", bash("touch ../../notes.md"; cwd = "$nt/.worktrees/s"), joinpath(nt, ".worktrees/x"))[1] == 2
+            finally
+                sh(`git -C $nt worktree prune`); rm(nt; recursive = true, force = true)
+            end
+        end
+    end
 end
