@@ -184,7 +184,7 @@ grouped_df (see `take_gindex`).
 """
 function take(f::Frame, idx::AbstractVector{<:Integer})
     cols = AbstractColumn[take(c, idx) for c in f.columns]
-    gi = f.drop ? nothing : take_gindex(gindex(f), idx)
+    gi = f.drop ? nothing : take_gindex(gindex(f)::GroupIndex, idx)   # drop = false implies grouped
     return Frame(copy(f.names), cols, copy(f.groups), gi, length(idx), f.drop)
 end
 
