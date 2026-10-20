@@ -1,0 +1,14 @@
+# A Frame: 25 × 3
+       a b     c
+   <i64> <str> <bool>
+ 1     1 a     true
+ 2     2 b     false
+ 3     3 c     true
+ 4     4 d     false
+ 5     5 e     true
+ 6     6 f     false
+ 7     7 g     true
+ 8     8 h     false
+ 9     9 i     true
+10    10 j     false
+# ℹ 15 more rows

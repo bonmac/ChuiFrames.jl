@@ -1,0 +1,8 @@
+Rows: 3
+Columns: 5
+Groups: n [3]
+$ x <f64?>      1.23457, missing, -1.0e6
+$ s <str?>      "a", "a very long strin…
+$ l <list[i64]> [1, 2], [3], []
+$ d <date>      2024-01-01, 2024-01-02,…
+$ n <i64>       1, 2, 3

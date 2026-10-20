@@ -1,0 +1,2 @@
+# A Frame: 0 × 2
+# ℹ 2 variables: x <i64>, y <str>

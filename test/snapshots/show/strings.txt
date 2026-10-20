@@ -1,0 +1,5 @@
+# A Frame: 2 × 6
+  var"my col" 日本             s     t                     u                   v
+        <f64> <str>            <str> <str>                 <str>           <i64>
+1           1 日本語のテキスト x     "long text long text… "other text ot…     1
+2           2 ok               y     "short"               "line\nbreak"       2

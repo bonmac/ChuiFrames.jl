@@ -1,0 +1,7 @@
+Rows: 3
+Columns: 5
+$ x <f64?>      1.23457, missing, -1.0e6
+$ s <str?>      "a", "a very long string that goes on and on", missing
+$ l <list[i64]> [1, 2], [3], []
+$ d <date>      2024-01-01, 2024-01-02, 2024-01-03
+$ n <i64>       1, 2, 3
