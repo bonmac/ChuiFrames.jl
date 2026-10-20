@@ -17,14 +17,10 @@
     @test eltype(f.columns[6]) == DateTime && f.columns[6][2] == DateTime(2024, 1, 2, 3, 4, 5, 250)
     @test eltype(f.columns[7]) == Union{Missing, Bool}            # all missing: logical, as readr
     @test isequal(collect(f.columns[3]), ["x", missing])
-    # A timestamp with sub-millisecond digits raises instead of truncating.
+    # A timestamp with sub-millisecond digits reads exactly as an ArrowTimestamp (ADR-0021 rule 12).
     write(p, "t\n2024-01-02T03:04:05.123456\n")
-    err = try
-        read_csv(p)
-    catch e
-        e
-    end
-    @test err isa ArgumentError && occursin("sub-millisecond", sprint(showerror, err))
+    @test eltype(read_csv(p).columns[1]) === ArrowTimestamp{Dates.Nanosecond, nothing}
+    @test Dates.value(read_csv(p).columns[1][1]) == 1_704_164_645_123_456_000
     @test collect(read_csv(p; col_types = (t = String,)).columns[1]) == ["2024-01-02T03:04:05.123456"]
 end
 

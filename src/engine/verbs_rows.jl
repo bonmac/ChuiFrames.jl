@@ -5,16 +5,30 @@
 struct ArrangeStep <: Step
     keys::Vector{Node}
     by_group::Bool
+    locale::Union{Nothing, String}
 end
+ArrangeStep(keys::Vector{Node}, by_group::Bool) = ArrangeStep(keys, by_group, nothing)
 """
-    arrange(keys...; by_group = false)
+    arrange(keys...; by_group = false, locale = nothing)
 
 Sort rows, stably: non-NaN, non-`missing` values first (`-0.0` and `0.0` tied), then NaN and
 `missing` as one tie class in input order, in both directions; `desc(x)` reverses only the first
 part (ADR-0002 rule 13). Grouping is ignored unless `by_group = true`.
+
+Strings sort by code point (Julia's `isless`, the same as byte order of UTF-8): the `"C"`
+locale, which is also dplyr 1.2.0's default (`.locale = NULL` means `"C"` unless the
+`dplyr.legacy_locale` option is set). `locale` accepts `nothing` or `"C"`; any other locale is
+an `ArgumentError`, because ChuiFrames has no ICU collation (dplyr uses stringi for those).
 """
-arrange(keys...; by_group::Bool = false) = ArrangeStep(Node[_ordnode(k) for k in keys], by_group)
-Base.show(io::IO, s::ArrangeStep) = print(io, "arrange(", join(s.keys, ", "), s.by_group ? "; by_group = true" : "", ")")
+function arrange(keys...; by_group::Bool = false, locale::Union{Nothing, AbstractString} = nothing)
+    locale === nothing || locale == "C" ||
+        throw(ArgumentError("arrange: locale = $(repr(locale)) is not supported; only locale = \"C\" (code-point order, dplyr's default) is available, because ChuiFrames has no ICU collation"))
+    return ArrangeStep(Node[_ordnode(k) for k in keys], by_group, locale === nothing ? nothing : String(locale))
+end
+Base.show(io::IO, s::ArrangeStep) = print(
+    io, "arrange(", join(s.keys, ", "), s.by_group ? "; by_group = true" : "",
+    s.locale === nothing ? "" : (s.by_group ? ", " : "; ") * "locale = $(repr(s.locale))", ")"
+)
 
 function _orderperm(keys::Vector, revs::Vector{Bool}, n::Int)
     function lt(i, j)
@@ -75,9 +89,10 @@ struct SliceStep <: Step
     na_rm::Bool
     replace::Bool
     rng::Any
+    weight::Union{Nothing, Node}
 end
-_slice(kind; n = nothing, prop = nothing, idx = Any[], order = nothing, with_ties = true, na_rm = false, replace = false, rng = nothing) =
-    SliceStep(kind, n === nothing ? nothing : Int(n), prop === nothing ? nothing : Float64(prop), idx, order, with_ties, na_rm, replace, rng)
+_slice(kind; n = nothing, prop = nothing, idx = Any[], order = nothing, with_ties = true, na_rm = false, replace = false, rng = nothing, weight = nothing) =
+    SliceStep(kind, n === nothing ? nothing : Int(n), prop === nothing ? nothing : Float64(prop), idx, order, with_ties, na_rm, replace, rng, weight)
 
 "`slice_head(; n = 1, prop)`: the first `n` rows (or fraction `prop`) of each group."
 slice_head(; n = nothing, prop = nothing) = _slice(:head; (k => v for (k, v) in zip((:n, :prop), _nprop("slice_head", n, prop)))...)
@@ -92,13 +107,25 @@ slice_min(order; n = nothing, prop = nothing, with_ties::Bool = true, na_rm::Boo
 slice_max(order; n = nothing, prop = nothing, with_ties::Bool = true, na_rm::Bool = false) =
     _slice(:max; (k => v for (k, v) in zip((:n, :prop), _nprop("slice_max", n, prop)))..., order = _ordnode(order), with_ties, na_rm)
 """
-    slice_sample(; n = 1, prop, replace = false, rng)
+    slice_sample(; n = 1, prop, replace = false, weight_by = nothing, rng)
 
 Random rows of each group. Pass `rng` (an `AbstractRNG`) for reproducible draws; the stream
 differs from R's, so only properties are comparable.
+
+`weight_by` (a column expression such as `c.w`, or a column name) gives sampling weights,
+evaluated per group; they need not sum to 1. Without replacement, rows are drawn one at a time
+with probability proportional to the remaining weights (as R's `sample.int`), so a zero-weight
+row is never drawn. As in dplyr 1.2.0 (whose errors come from `sample.int`), an `ArgumentError`
+is raised for a `missing`, NaN, infinite or negative weight, a non-numeric weight, a constant
+(one value, not one per row), and for more rows than positive weights (without replacement) or
+no positive weight (with it). A group drawing no rows checks nothing, as dplyr.
 """
-slice_sample(; n = nothing, prop = nothing, replace::Bool = false, rng = nothing) =
-    _slice(:sample; (k => v for (k, v) in zip((:n, :prop), _nprop("slice_sample", n, prop)))..., replace, rng)
+function slice_sample(; n = nothing, prop = nothing, replace::Bool = false, weight_by = nothing, rng = nothing)
+    weight_by === nothing || weight_by isa Union{Node, Symbol, AbstractString} ||
+        throw(ArgumentError("slice_sample: weight_by must be a column expression (c.w) or a column name, got $(repr(weight_by))"))
+    w = weight_by === nothing ? nothing : weight_by isa AbstractString ? Col(Symbol(weight_by)) : _ordnode(weight_by)
+    return _slice(:sample; (k => v for (k, v) in zip((:n, :prop), _nprop("slice_sample", n, prop)))..., replace, rng, weight = w)
+end
 
 function Base.show(io::IO, s::SliceStep)
     name = Dict(:head => "slice_head", :tail => "slice_tail", :slice => "slice", :min => "slice_min", :max => "slice_max", :sample => "slice_sample")[s.kind]
@@ -107,7 +134,57 @@ function Base.show(io::IO, s::SliceStep)
     s.order === nothing || push!(parts, repr(s.order))
     kws = String[]
     s.kind === :slice || (s.n === nothing ? push!(kws, "prop = $(s.prop)") : push!(kws, "n = $(s.n)"))
+    s.kind === :sample && s.replace && push!(kws, "replace = true")
+    s.weight === nothing || push!(kws, "weight_by = $(s.weight)")
     return print(io, name, "(", join(parts, ", "), isempty(kws) ? "" : "; " * join(kws, ", "), ")")
+end
+
+# Sampling weights of one group, checked as R's `sample.int` does (via dplyr 1.2.0).
+function _weights(w::Node, f::Frame, rows)
+    v = ev(w, subenv(Env(f), rows))
+    v isa Scalar && throw(ArgumentError("slice_sample: weight_by = $w gave one value; it must give one weight per row (dplyr: `weight_by` must have size n)"))
+    length(v) == length(rows) || throw(DimensionMismatch("slice_sample: weight_by = $w gave $(length(v)) weights for $(length(rows)) rows"))
+    out = Vector{Float64}(undef, length(v))
+    for (i, x) in enumerate(v)
+        ismissing(x) && throw(ArgumentError("slice_sample: weight_by = $w has a missing weight (R: NA in probability vector)"))
+        x isa Real || throw(ArgumentError("slice_sample: weight_by = $w must be numeric, got a $(typeof(x)) value"))
+        isfinite(x) || throw(ArgumentError("slice_sample: weight_by = $w has a non-finite weight $x (R: NA in probability vector)"))
+        x < 0 && throw(ArgumentError("slice_sample: weight_by = $w has a negative weight $x"))
+        out[i] = Float64(x)
+    end
+    return out
+end
+
+# `k` draws from `1:length(w)` with probability proportional to `w` (sequentially without
+# replacement: each drawn row's weight is removed).
+function _wsample(rng, w::Vector{Float64}, k::Int, replace::Bool)
+    k == 0 && return Int[]
+    unif() = rng === nothing ? Base.rand() : Base.rand(rng)
+    npos = count(>(0), w)
+    if replace
+        npos == 0 && throw(ArgumentError("slice_sample: no positive weight to draw from (R: too few positive probabilities)"))
+    else
+        npos < k && throw(ArgumentError("slice_sample: $k rows requested without replacement but only $npos positive weights (R: too few positive probabilities)"))
+    end
+    w = copy(w)
+    out = Vector{Int}(undef, k)
+    for d in 1:k
+        u = unif() * sum(w)
+        acc = 0.0
+        pick = 0
+        for i in eachindex(w)
+            w[i] > 0 || continue
+            acc += w[i]
+            if acc > u
+                pick = i
+                break
+            end
+        end
+        pick == 0 && (pick = findlast(>(0), w))   # rounding at the top end
+        out[d] = pick
+        replace || (w[pick] = 0.0)
+    end
+    return out
 end
 
 function _positions(idx::Vector{Any}, len::Int)
@@ -161,7 +238,12 @@ function apply(s::SliceStep, f::Frame)
             sn = s.n
             k = sn !== nothing ? sn : floor(Int, something(s.prop, 0.0) * len)
             k = s.replace ? max(k, 0) : _count(len, k, nothing)
-            append!(keep, rows[_sample(s.rng, len, k, s.replace)])
+            if s.weight === nothing
+                append!(keep, rows[_sample(s.rng, len, k, s.replace)])
+            elseif k > 0   # dplyr's sample_int returns integer(0) before any weight check
+                w = _weights(s.weight, f, rows)
+                append!(keep, rows[_wsample(s.rng, w, k, s.replace)])
+            end
         else
             v, rev = order
             gv = v[rows]
@@ -202,7 +284,7 @@ function apply(s::DistinctStep, f::Frame)
     isempty(comp) || (f = apply(MutateStep(_outs(comp), nothing, :all, nothing, nothing), f))
     keys = isempty(s.items) ? copy(f.names) :
         unique!([f.groups; Symbol[x isa Pair ? x.first : n for x in s.items for n in (x isa Pair ? [x.first] : f.names[resolve(x, f)])]])
-    _, firstrows = rowcodes(AbstractVector[getcol(f, k) for k in keys])
+    _, firstrows = rowcodes(AbstractVector[getcol(f, k) for k in keys], f.nrow)
     g = take(f, firstrows)
     s.keep_all && return g
     sel = [i for (i, n) in enumerate(g.names) if n in keys]

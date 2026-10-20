@@ -1,0 +1,195 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "us",
+   "type": "timestamp[us]",
+   "nullable": true
+  },
+  {
+   "name": "ns_utc",
+   "type": "timestamp[ns, tz=UTC]",
+   "nullable": true
+  },
+  {
+   "name": "ms_berlin",
+   "type": "timestamp[ms, tz=Europe/Berlin]",
+   "nullable": true
+  },
+  {
+   "name": "range",
+   "type": "timestamp[us]",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  6
+ ],
+ "num_rows": 6,
+ "columns": {
+  "us": [
+   {
+    "ts": [
+     1792497600123456,
+     "us",
+     null
+    ]
+   },
+   null,
+   {
+    "ts": [
+     -1,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     951782400000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -2208988799999999,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     9223286400000000,
+     "us",
+     null
+    ]
+   }
+  ],
+  "ns_utc": [
+   {
+    "ts": [
+     1700000000000000000,
+     "ns",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     1700000000000000001,
+     "ns",
+     "UTC"
+    ]
+   },
+   null,
+   {
+    "ts": [
+     -1,
+     "ns",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     0,
+     "ns",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     4611686018427387904,
+     "ns",
+     "UTC"
+    ]
+   }
+  ],
+  "ms_berlin": [
+   {
+    "ts": [
+     1792706400000,
+     "ms",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1792792800000,
+     "ms",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1792879200000,
+     "ms",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1792969200000,
+     "ms",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1793055600000,
+     "ms",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1793142000000,
+     "ms",
+     "Europe/Berlin"
+    ]
+   }
+  ],
+  "range": [
+   {
+    "ts": [
+     -7200000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -1800000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     3600000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     9000000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     14400000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     19800000000,
+     "us",
+     null
+    ]
+   }
+  ]
+ }
+}

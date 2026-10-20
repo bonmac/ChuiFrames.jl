@@ -61,9 +61,16 @@ function ev(x::Reduce, e::Env)
     return Scalar(UP.aggregate(_aggregator(x), UP.Map(identity), (v,)))
 end
 
+_pipecall(f, v) = f(v)
+_pipecall(t::Typed, v) = t.f(v)
+_pipecheck(::Pipe, r, ::Symbol) = nothing
+# `c.x |> typed(T, f)`: elements of a vector result in a column context, else the value (rule 11)
+_pipecheck(x::Pipe{<:Typed{T}}, r, ctx::Symbol) where {T} = _checktyped(r, T, ctx !== :summary, x)
+
 function ev(x::Pipe, e::Env)
     v = ev(x.arg, e)
-    r = x.f(_ascol(v, e.n))
+    r = _pipecall(x.f, _ascol(v, e.n))
+    _pipecheck(x, r, e.ctx)
     e.ctx === :summary && return Scalar(r)
     e.ctx === :reframe && return r isa AbstractVector ? r : Scalar(r)
     if r isa AbstractVector
@@ -78,11 +85,13 @@ function ev(x::Window, e::Env)
     k = x.kind
     if k === :row_number && isempty(x.args)
         return collect(1:e.n)
-    elseif k in (:row_number, :min_rank, :dense_rank)
+    elseif k === :ntile && isempty(x.args)
+        return Int[_ntile_bin(i, e.n, x.params[1]) for i in 1:e.n]
+    elseif k in _RANKS
         a = x.args[1]
         rev = a isa Desc
         v = _ascol(ev(rev ? a.inner : a, e), e.n)
-        return _rank(k, v, rev)
+        return _rank(k, v, rev, x.params)
     end
     cols = Any[_ascol(ev(a, e), e.n) for a in x.args]
     v = cols[1]
@@ -230,18 +239,23 @@ function eval_column(x::Node, e::Env, gi::Union{Nothing, GroupIndex})
     end
     ng = ngroups(gi)
     ng == 0 && return Vector{_emptytype(x, e)}()
-    parts = Vector{Any}(undef, ng)
+    parts = Vector{Any}(nothing, ng)
     T = Union{}
     for g in 1:ng
         rows = group_rows(gi, g)
+        # An empty group (`group_by(drop = false)`) has no rows to fill, so it is not evaluated
+        # (dplyr evaluates it and discards the result; `maximum` there only warns in R).
+        isempty(rows) && continue
         p = _fitcol(ev(x, subenv(e, rows)), length(rows))
         parts[g] = p
         T = promote_type(T, eltype(p))
     end
+    T === Union{} && return Vector{_emptytype(x, e)}()   # every group empty: no rows
     out = Vector{T}(undef, n)
     for g in 1:ng
         rows = group_rows(gi, g)
         p = parts[g]
+        p === nothing && continue
         for (k, r) in enumerate(rows)
             out[r] = p[k]
         end
@@ -266,6 +280,7 @@ end
 # Static element types from the declared schema (ADR-0002 rule 11), never from the data and
 # never from `Base.promote_op`. `Any` means "not known": a filter then checks row by row.
 
+const _RANKS = (:row_number, :min_rank, :dense_rank, :percent_rank, :cume_dist, :ntile)
 const _BOOLFUNS = Set{Any}(
     [
         ==, !=, <, <=, >, >=, isless, isequal, in, ∉, occursin, startswith, endswith, contains,
@@ -284,11 +299,16 @@ static_type(x::Lit, ::SelectCtx) = x.scalar ? typeof(x.value) : (x.value isa Abs
 static_type(::NRows, ::SelectCtx) = Int
 static_type(::Node, ::SelectCtx) = Any
 static_type(x::Desc, ctx::SelectCtx) = static_type(x.inner, ctx)
+# `c.x |> typed(T, f)`: the declared type (ADR-0002 rule 11), checked at evaluation.
+static_type(::Pipe{<:Typed{T}}, ::SelectCtx) where {T} = T
 function static_type(x::Call, ctx::SelectCtx)
     ts = Any[static_type(a, ctx) for a in x.args]
     anynull = any(_nullable, ts)
     wrap(T) = anynull ? Union{Missing, T} : T
-    if x.f in _BOOLFUNS
+    if x.f isa WhenFold
+        # values other than Bool/missing raise at evaluation, so the result is Bool or missing
+        return x.f.na_rm || all(T -> T !== Union{} && T <: Bool, ts) ? Bool : Union{Missing, Bool}
+    elseif x.f in _BOOLFUNS
         return x.f in (isequal, ismissing, isnothing) ? Bool : wrap(Bool)
     elseif x.f === (&) || x.f === (|)
         all(_isboolish, ts) && return wrap(Bool)
@@ -326,12 +346,13 @@ function static_type(x::Reduce, ctx::SelectCtx)
     return Any
 end
 function static_type(x::Window, ctx::SelectCtx)
-    if x.kind in (:row_number, :min_rank, :dense_rank)
+    if x.kind in _RANKS
         # a rank is `missing` where its argument is `missing` or NaN (as in dplyr), so it is
         # nullable exactly when the argument's declared type admits either (review B1)
-        isempty(x.args) && return Int
+        R = x.kind in (:percent_rank, :cume_dist) ? Float64 : Int
+        isempty(x.args) && return R
         mayskip(T) = T === Any || _nullable(T) || nonmissingtype(T) <: AbstractFloat || !isconcretetype(nonmissingtype(T))
-        return any(a -> mayskip(static_type(a, ctx)), x.args) ? Union{Missing, Int} : Int
+        return any(a -> mayskip(static_type(a, ctx)), x.args) ? Union{Missing, R} : R
     end
     x.kind === :consecutive_id && return Int
     return Any

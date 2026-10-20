@@ -15,32 +15,68 @@
     @test out == "$msg|$msg|false"
 end
 
-@testitem "Parquet: sub-millisecond timestamps raise (ADR-0001 rule 6; review M1)" tags = [:unit] begin
+@testitem "Parquet: timestamps read exactly, every unit (ADR-0021 rule 11; review M1)" tags = [:unit] begin
     using ChuiFrames, Tables, Dates, Parquet2
     # pyarrow-written fixture, see test/io/data/README.md
     p = joinpath(@__DIR__, "data", "timestamps_units.parquet")
-    # µs and ns timestamps wait for the ArrowTimestamp ADR: an error naming the unit, never a
-    # silent truncation to milliseconds (the Arrow reader and CSV raise too)
     s = ChuiFrames.scan_file(p)
-    for (col, unit) in ((:us, "MICRO"), (:ns, "NANO"))
-        h, _ = ChuiFrames.plan_partitions(s, Tables.Scan(; select = [col]); morsel = 10)
-        err = try
-            ChuiFrames.read_partition(s, h[1])
-            nothing
-        catch e
-            e
-        end
-        @test err isa ArgumentError
-        @test occursin(unit, uppercase(sprint(showerror, err)))
-        # truncated bounds must not drive pruning either
-        @test ChuiFrames.partition_stats(s, h[1], col) === nothing
-    end
-    @test_throws ArgumentError read_file(p)
-    # millisecond timestamps and dates still read
-    hs, _ = ChuiFrames.plan_partitions(s, Tables.Scan(; select = [:ms, :d]); morsel = 10)
-    f = ChuiFrames.read_partition(s, hs[1])
+    f = read_file(p)
+    @test eltype(Tables.getcolumn(f, :us)) <: Union{Missing, ArrowTimestamp{Dates.Microsecond, nothing}}
+    @test Dates.value(Tables.getcolumn(f, :us)[1]) == 1_704_067_200_123_456
+    @test eltype(Tables.getcolumn(f, :ns)) <: Union{Missing, ArrowTimestamp{Dates.Nanosecond, nothing}}
+    @test Dates.value(Tables.getcolumn(f, :ns)[1]) == 1_704_067_200_123_456_789
     @test collect(Tables.getcolumn(f, :ms)) == [DateTime(2024, 1, 1, 0, 0, 0, 123)]
     @test collect(Tables.getcolumn(f, :d)) == [Date(2024, 1, 2)]
+    # Parquet2 decodes timestamp bounds through its lossy Float64 path: no bounds, no pruning
+    h, _ = ChuiFrames.plan_partitions(s, Tables.Scan(); morsel = 10)
+    @test all(ChuiFrames.partition_stats(s, h[1], col) === nothing for col in (:us, :ns, :ms))
+end
+
+@testitem "Parquet: millisecond timestamps exact where Parquet2's own decoding is 1 ms off (ADR-0021 TS-12)" tags = [:unit] begin
+    using ChuiFrames, Tables, Dates, Parquet2
+    # pyarrow-written fixture (test/io/data/README.md): values Parquet2's Float64 path reads 1 ms
+    # early, naive and UTC-adjusted, ms/µs/ns, with pyarrow's ARROW:schema zone names
+    p = joinpath(@__DIR__, "data", "timestamps_exact.parquet")
+    v = [-2186259751700, -2176368591140, 1085072413093, 1704164645123]
+    f = read_file(p)
+    @test [Dates.value(x) - Dates.UNIXEPOCH for x in Tables.getcolumn(f, :ms)] == v
+    # Parquet2's own decoding really is off for these values (the reason for the raw path)
+    @test [Dates.value(x) - Dates.UNIXEPOCH for x in Parquet2.load(Parquet2.Dataset(p)[1], "ms")] != v
+    @test Dates.value.(Tables.getcolumn(f, :us)) == v .* 1000 .+ 7
+    @test eltype(Tables.getcolumn(f, :ns_utc)) <: Union{Missing, ArrowTimestamp{Dates.Nanosecond, :UTC}}
+    @test Dates.value.(Tables.getcolumn(f, :ns_utc)) == v .* 10^6 .+ 9
+    @test eltype(Tables.getcolumn(f, :us_b)) <: Union{Missing, ArrowTimestamp{Dates.Microsecond, Symbol("Europe/Berlin")}}
+    @test eltype(Tables.getcolumn(f, :ms_utc)) <: Union{Missing, ArrowTimestamp{Dates.Millisecond, :UTC}}
+    # without pyarrow's ARROW:schema, a UTC-adjusted column is :UTC (Parquet stores only the flag)
+    g = read_file(joinpath(@__DIR__, "data", "timestamps_exact_noschema.parquet"))
+    @test eltype(Tables.getcolumn(g, :us_b)) <: Union{Missing, ArrowTimestamp{Dates.Microsecond, :UTC}}
+    @test isequal(collect(Tables.getcolumn(g, :us_b)), collect(Tables.getcolumn(f, :us_b)))   # same instants
+end
+
+@testitem "Parquet: timestamp writes are exact or raise (ADR-0021 rule 11)" tags = [:unit] begin
+    using ChuiFrames, Tables, Dates, Parquet2, Random
+    const TS = ArrowTimestamp
+    rng = Random.MersenneTwister(7)
+    xs = rand(rng, (-3 * 10^12):(10^13), 5000)
+    dts = DateTime.(Dates.UTM.(xs .+ Dates.UNIXEPOCH))
+    f = Frame(dt = dts, s = TS{Dates.Second}.(fld.(xs, 1000)), m = Union{Missing, DateTime}[dts[1:(end - 1)]; missing])
+    mktempdir() do dir
+        p = joinpath(dir, "w.parquet")
+        write_file(f, p)
+        g = read_file(p)
+        @test [Dates.value(x) - Dates.UNIXEPOCH for x in Tables.getcolumn(g, :dt)] == xs    # Parquet2's writer alone is off for ~1%
+        @test isequal(collect(Tables.getcolumn(g, :m)), collect(Tables.getcolumn(f, :m)))
+        @test [Dates.value(x) - Dates.UNIXEPOCH for x in Tables.getcolumn(g, :s)] == fld.(xs, 1000) .* 1000   # s is stored as ms
+        for bad in (Frame(t = TS{Dates.Microsecond}.([1])), Frame(t = TS{Dates.Millisecond, :UTC}.([1])))
+            err = try
+                write_file(bad, joinpath(dir, "bad.parquet"))
+                nothing
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("Arrow", sprint(showerror, err))
+        end
+    end
 end
 
 @testitem "Parquet: round trip through Parquet2, one row group per partition" tags = [:unit] begin

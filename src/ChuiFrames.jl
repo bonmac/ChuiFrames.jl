@@ -18,6 +18,7 @@ using Tables: Tables
 
 # Storage and the frame (ADR-0001, ADR-0003 rule 3).
 include("columns.jl")
+include("timestamps.jl")
 include("frame.jl")
 
 # The upstream adapter, the expression grammar, the interpreter and the eager verbs
@@ -34,7 +35,7 @@ include("io/io.jl")
 # tibble-style printing and the name-conflict banner stand-in.
 include("show/show.jl")
 
-export Frame, groupcols, isgrouped
+export Frame, groupcols, isgrouped, ArrowTimestamp
 
 # The Source/Sink interface and the format registry (chui-frames.md CF-011 to CF-016) are
 # public but not exported: the contract writes them qualified (`ChuiFrames.Source`). `public` is
@@ -45,7 +46,7 @@ export Frame, groupcols, isgrouped
             "public Source, Sink, TablesSource, source_schema, source_label, plan_partitions, " *
                 "read_partition, partition_stats, row_count, partition_row_count, source_ordering, " *
                 "source_groups, isthreadsafe, source_boundedness, open_sink, write_partition!, " *
-                "close_sink!, abort_sink!, register_format!, scan_file"
+                "close_sink!, abort_sink!, register_format!, scan_file, timestamp_unit, timestamp_zone"
         )
     )
 end

@@ -1,0 +1,161 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "utc",
+   "type": "timestamp[us, tz=UTC]",
+   "nullable": true
+  },
+  {
+   "name": "naive",
+   "type": "timestamp[us]",
+   "nullable": true
+  },
+  {
+   "name": "ny",
+   "type": "timestamp[us, tz=America/New_York]",
+   "nullable": true
+  },
+  {
+   "name": "frac",
+   "type": "timestamp[us, tz=UTC]",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  5
+ ],
+ "num_rows": 5,
+ "columns": {
+  "utc": [
+   {
+    "ts": [
+     0,
+     "us",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     1700000000123456,
+     "us",
+     "UTC"
+    ]
+   },
+   null,
+   {
+    "ts": [
+     -1500000,
+     "us",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     1700000000000001,
+     "us",
+     "UTC"
+    ]
+   }
+  ],
+  "naive": [
+   {
+    "ts": [
+     0,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000000123456,
+     "us",
+     null
+    ]
+   },
+   null,
+   {
+    "ts": [
+     -1500000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000000000001,
+     "us",
+     null
+    ]
+   }
+  ],
+  "ny": [
+   {
+    "ts": [
+     1711846800000000,
+     "us",
+     "America/New_York"
+    ]
+   },
+   null,
+   {
+    "ts": [
+     250000,
+     "us",
+     "America/New_York"
+    ]
+   },
+   {
+    "ts": [
+     -86400000000,
+     "us",
+     "America/New_York"
+    ]
+   },
+   {
+    "ts": [
+     1730613600000000,
+     "us",
+     "America/New_York"
+    ]
+   }
+  ],
+  "frac": [
+   {
+    "ts": [
+     1,
+     "us",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     500000,
+     "us",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     1999999,
+     "us",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     -1,
+     "us",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     1000000000654321,
+     "us",
+     "UTC"
+    ]
+   }
+  ]
+ }
+}

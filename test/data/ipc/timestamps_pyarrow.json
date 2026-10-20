@@ -1,0 +1,680 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "s",
+   "type": "timestamp[s]",
+   "nullable": false
+  },
+  {
+   "name": "ms_utc",
+   "type": "timestamp[ms, tz=UTC]",
+   "nullable": true
+  },
+  {
+   "name": "us",
+   "type": "timestamp[us]",
+   "nullable": true
+  },
+  {
+   "name": "us_berlin",
+   "type": "timestamp[us, tz=Europe/Berlin]",
+   "nullable": false
+  },
+  {
+   "name": "ns",
+   "type": "timestamp[ns]",
+   "nullable": false
+  },
+  {
+   "name": "ns_kolkata",
+   "type": "timestamp[ns, tz=+05:30]",
+   "nullable": true
+  },
+  {
+   "name": "dict_us",
+   "type": "dictionary<values=timestamp[us], indices=int8, ordered=0>",
+   "nullable": true
+  },
+  {
+   "name": "lst_ns",
+   "type": "list<item: timestamp[ns]>",
+   "nullable": true
+  },
+  {
+   "name": "st",
+   "type": "struct<t: timestamp[us, tz=UTC]>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  6,
+  4
+ ],
+ "num_rows": 10,
+ "columns": {
+  "s": [
+   {
+    "ts": [
+     0,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -3155760000,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000000,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     253402300799,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -62135596800,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000001,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -1,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     86400,
+     "s",
+     null
+    ]
+   },
+   {
+    "ts": [
+     0,
+     "s",
+     null
+    ]
+   }
+  ],
+  "ms_utc": [
+   {
+    "ts": [
+     0,
+     "ms",
+     "UTC"
+    ]
+   },
+   null,
+   {
+    "ts": [
+     1700000000123,
+     "ms",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     -1,
+     "ms",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     1700000000124,
+     "ms",
+     "UTC"
+    ]
+   },
+   null,
+   null,
+   {
+    "ts": [
+     1,
+     "ms",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     2,
+     "ms",
+     "UTC"
+    ]
+   },
+   {
+    "ts": [
+     3,
+     "ms",
+     "UTC"
+    ]
+   }
+  ],
+  "us": [
+   null,
+   {
+    "ts": [
+     1700000000123456,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -1,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     0,
+     "us",
+     null
+    ]
+   },
+   null,
+   {
+    "ts": [
+     1700000000123457,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     2,
+     "us",
+     null
+    ]
+   },
+   null,
+   {
+    "ts": [
+     -2,
+     "us",
+     null
+    ]
+   }
+  ],
+  "us_berlin": [
+   {
+    "ts": [
+     1711846800000000,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1711850400000000,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     -86400000001,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     0,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     1700000000999999,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     2,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     3,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     4,
+     "us",
+     "Europe/Berlin"
+    ]
+   },
+   {
+    "ts": [
+     -5,
+     "us",
+     "Europe/Berlin"
+    ]
+   }
+  ],
+  "ns": [
+   {
+    "ts": [
+     1700000000000000000,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000000000000001,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -1,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -1000000000000000001,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     9223372036854775807,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -9223372036854775808,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     0,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     2,
+     "ns",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -2,
+     "ns",
+     null
+    ]
+   }
+  ],
+  "ns_kolkata": [
+   {
+    "ts": [
+     0,
+     "ns",
+     "+05:30"
+    ]
+   },
+   {
+    "ts": [
+     1,
+     "ns",
+     "+05:30"
+    ]
+   },
+   null,
+   {
+    "ts": [
+     -1,
+     "ns",
+     "+05:30"
+    ]
+   },
+   {
+    "ts": [
+     9223372036854775806,
+     "ns",
+     "+05:30"
+    ]
+   },
+   {
+    "ts": [
+     -9223372036854775807,
+     "ns",
+     "+05:30"
+    ]
+   },
+   null,
+   null,
+   {
+    "ts": [
+     5,
+     "ns",
+     "+05:30"
+    ]
+   },
+   {
+    "ts": [
+     1700000000000000000,
+     "ns",
+     "+05:30"
+    ]
+   }
+  ],
+  "dict_us": [
+   {
+    "ts": [
+     1700000000000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -1,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000000000000,
+     "us",
+     null
+    ]
+   },
+   null,
+   {
+    "ts": [
+     1700000000000001,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000000000001,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     -1,
+     "us",
+     null
+    ]
+   },
+   null,
+   {
+    "ts": [
+     1700000000000000,
+     "us",
+     null
+    ]
+   },
+   {
+    "ts": [
+     1700000000000001,
+     "us",
+     null
+    ]
+   }
+  ],
+  "lst_ns": [
+   {
+    "list": [
+     {
+      "ts": [
+       1,
+       "ns",
+       null
+      ]
+     },
+     {
+      "ts": [
+       2,
+       "ns",
+       null
+      ]
+     },
+     null
+    ]
+   },
+   {
+    "list": []
+   },
+   null,
+   {
+    "list": [
+     {
+      "ts": [
+       -9223372036854775808,
+       "ns",
+       null
+      ]
+     },
+     {
+      "ts": [
+       9223372036854775807,
+       "ns",
+       null
+      ]
+     }
+    ]
+   },
+   {
+    "list": [
+     {
+      "ts": [
+       -1,
+       "ns",
+       null
+      ]
+     }
+    ]
+   },
+   {
+    "list": [
+     {
+      "ts": [
+       1700000000000000001,
+       "ns",
+       null
+      ]
+     },
+     {
+      "ts": [
+       1700000000000000000,
+       "ns",
+       null
+      ]
+     }
+    ]
+   },
+   null,
+   {
+    "list": [
+     {
+      "ts": [
+       0,
+       "ns",
+       null
+      ]
+     }
+    ]
+   },
+   {
+    "list": [
+     {
+      "ts": [
+       -5,
+       "ns",
+       null
+      ]
+     },
+     {
+      "ts": [
+       5,
+       "ns",
+       null
+      ]
+     }
+    ]
+   },
+   {
+    "list": []
+   }
+  ],
+  "st": [
+   {
+    "struct": {
+     "t": {
+      "ts": [
+       0,
+       "us",
+       "UTC"
+      ]
+     }
+    }
+   },
+   null,
+   {
+    "struct": {
+     "t": null
+    }
+   },
+   {
+    "struct": {
+     "t": {
+      "ts": [
+       -1,
+       "us",
+       "UTC"
+      ]
+     }
+    }
+   },
+   {
+    "struct": {
+     "t": {
+      "ts": [
+       1700000000123456,
+       "us",
+       "UTC"
+      ]
+     }
+    }
+   },
+   {
+    "struct": {
+     "t": {
+      "ts": [
+       1,
+       "us",
+       "UTC"
+      ]
+     }
+    }
+   },
+   null,
+   {
+    "struct": {
+     "t": {
+      "ts": [
+       2,
+       "us",
+       "UTC"
+      ]
+     }
+    }
+   },
+   {
+    "struct": {
+     "t": null
+    }
+   },
+   {
+    "struct": {
+     "t": {
+      "ts": [
+       -3,
+       "us",
+       "UTC"
+      ]
+     }
+    }
+   }
+  ]
+ }
+}

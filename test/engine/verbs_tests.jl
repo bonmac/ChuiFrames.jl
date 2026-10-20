@@ -132,7 +132,7 @@ end
     @test groupcols(ungroup()(gb)) == Symbol[]
     @test groupcols(ungroup(:a)(group_by(:a, :b)(s))) == [:b]
     @test col((group_by(:k2 => c.b .* 10) ⨟ summarise(n = n_rows()))(s), :k2) == [10, 20]
-    @test_throws ArgumentError group_by(:a; drop = false)
+    @test groupcols(group_by(:a; drop = false)(s)) == [:a]     # no dictionary key: a no-op (rank_tail_tests.jl)
 end
 
 @testitem "summarise: groups option, empty input, by, reframe" tags = [:unit] setup = [V] begin

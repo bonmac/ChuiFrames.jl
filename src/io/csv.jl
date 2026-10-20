@@ -17,25 +17,136 @@ _csv_eltype(::Type{T}) where {T} = (S = nonmissingtype(T); S === T ? _csv_valtyp
 _csv_valtype(::Type{T}) where {T} =
     T === Union{} ? Bool :                           # an all-missing column: logical, as readr
     T <: AbstractString ? StrView :
-    (T <: Dates.AbstractDateTime && T !== DateTime) ? DateTime :
+    (T <: Dates.AbstractDateTime && T !== DateTime) ? DateTime :   # an empty batch (see _csv_schema_type)
     T
+
+# Inferred timestamps (ADR-0021 rule 12). CSV.jl infers ISO timestamps as exact
+# `Durations.Timestamp{P}` values (TS-09): a count of `P` since the Unix epoch. The first batch
+# decides the column type: `DateTime` when every value is whole milliseconds, else
+# `ArrowTimestamp{Nanosecond}`.
+_is_csv_timestamp(::Type{S}) where {S} = S <: Dates.AbstractDateTime && S !== DateTime && S !== Union{}
+
+function _csv_ts_ns(x)
+    S = typeof(x)
+    P = S isa DataType && !isempty(S.parameters) && S.parameters[1] isa Type && S.parameters[1] <: Dates.TimePeriod ? S.parameters[1] : nothing
+    P === nothing && return _instant_ns(DateTime(x))
+    return Int128(Dates.value(x)) * Int128(Dates.value(Dates.Nanosecond(P(1))))
+end
+
+const _NS_MIN, _NS_MAX = Int128(typemin(Int64)), Int128(typemax(Int64))
+function _csv_ts_type(v::AbstractVector)
+    finer = false
+    inns = true          # every value fits Int64 nanoseconds (1677-2262)
+    for x in v
+        ismissing(x) && continue
+        ns = _csv_ts_ns(x)
+        finer |= mod(ns, 1_000_000) != 0
+        inns &= _NS_MIN <= ns <= _NS_MAX
+    end
+    finer || return DateTime
+    # any digit finer than a millisecond: nanoseconds, so a later batch with finer digits than
+    # the first cannot raise; microseconds when a value lies outside the ns range (CSV.jl does the
+    # same, TS-09; critic, ADR-0021 rule 12)
+    return ArrowTimestamp{inns ? Dates.Nanosecond : Dates.Microsecond, nothing}
+end
+
+"The schema type of a CSV column from its first batch (`v`) and its CSV.jl element type."
+function _csv_schema_type(v::AbstractVector)
+    T = eltype(v)
+    S = nonmissingtype(T)
+    _is_csv_timestamp(S) || return _csv_eltype(T)
+    V = _csv_ts_type(v)
+    return S === T ? V : Union{Missing, V}
+end
 
 function _csv_column(name::Symbol, v::AbstractVector, ::Type{E}) where {E}
     S = nonmissingtype(eltype(v))
-    if S <: Dates.AbstractDateTime && S !== DateTime && S !== Union{}
-        out = Vector{Union{Missing, DateTime}}(undef, length(v))
+    V = nonmissingtype(E)
+    if (V <: ArrowTimestamp || V === DateTime) && (S <: AbstractString || S === Union{})
+        v = _parse_timestamp_column(name, v, V)      # col_types = (x = ArrowTimestamp{U,TZ},) or DateTime
+    elseif _is_csv_timestamp(S)
+        V <: Union{DateTime, ArrowTimestamp} ||
+            throw(ArgumentError("column $(repr(name)): timestamps cannot be read as $V"))
+        out = Vector{Union{Missing, V}}(undef, length(v))
         for (i, x) in enumerate(v)
-            if ismissing(x)
-                out[i] = missing
-            else
-                y = DateTime(x)
-                S(y) == x || throw(ArgumentError("column $(repr(name)): timestamp $x has sub-millisecond digits, which DateTime cannot hold; read it with col_types = ($(repr(name)) => String)"))
-                out[i] = y
-            end
+            out[i] = ismissing(x) ? missing : _csv_ts_exact(name, V, _csv_ts_ns(x), x)
         end
         v = out
     end
     return conform_column(name, v, E)
+end
+
+function _csv_ts_exact(name, ::Type{V}, ns::Int128, x) where {V}
+    U = V === DateTime ? Dates.Millisecond : timestamp_unit(V)
+    q, r = fldmod(ns, _ns_per(U))
+    lo, hi = V === DateTime ? (_DT_MIN_MS - _UNIX_EPOCH_MS, _DT_MAX_MS - _UNIX_EPOCH_MS) : (typemin(Int64), typemax(Int64))
+    if r != 0 || !(lo <= q <= hi)
+        hint = V === DateTime ? "ArrowTimestamp{Nanosecond} (ArrowTimestamp{Microsecond} outside 1677-2262)" : "a finer ArrowTimestamp, or String"
+        throw(ArgumentError("column $(repr(name)): timestamp $x has digits that $V cannot hold (the first batch set the column type); read it with col_types = ($(repr(name)) => $hint)"))
+    end
+    return V === DateTime ? _datetime_of(Int64(q) + _UNIX_EPOCH_MS) : V(Int64(q))
+end
+
+# ISO 8601 text to an exact ArrowTimestamp (ADR-0021 rule 12): `yyyy-mm-ddTHH:MM:SS`, a space
+# allowed for `T`, up to 9 fraction digits, and for zoned targets a `Z`/`±HH:MM`/`±HHMM` suffix,
+# shifted to UTC. Naive targets reject suffixes; digits the unit cannot hold raise.
+const _ISO_TS = r"^([+-]\d{5,}|\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:?\d{2})?$"
+function parse_timestamp(::Type{V}, s::AbstractString) where {V <: ArrowTimestamp}
+    ns = _iso_ns(V, s)
+    q, r = fldmod(ns, _ns_per(timestamp_unit(V)))
+    (r == 0 && typemin(Int64) <= q <= typemax(Int64)) ||
+        throw(ArgumentError("$(repr(s)) has digits that $V cannot hold"))
+    return V(Int64(q))
+end
+# An explicit `DateTime` target (`col_types = "T"`) takes the same exact path: digits finer than
+# a millisecond raise instead of becoming `missing` (review M1).
+function parse_timestamp(::Type{DateTime}, s::AbstractString)
+    ns = _iso_ns(DateTime, s)
+    q, r = fldmod(ns, Int128(1_000_000))
+    (r == 0 && _DT_MIN_MS <= q + _UNIX_EPOCH_MS <= _DT_MAX_MS) ||
+        throw(ArgumentError("$(repr(s)) has digits that DateTime cannot hold; read it as ArrowTimestamp{Nanosecond} (ArrowTimestamp{Microsecond} outside 1677-2262)"))
+    return _datetime_of(q + _UNIX_EPOCH_MS)
+end
+# nanoseconds since the Unix epoch, in UTC for a zoned target
+function _iso_ns(::Type{V}, s::AbstractString) where {V}
+    bad(why) = throw(ArgumentError("$(repr(s)) is not an ISO 8601 timestamp (yyyy-mm-ddTHH:MM:SS[.fffffffff][Z|±HH:MM])$why"))
+    m = match(_ISO_TS, s)
+    m === nothing && bad("")
+    y = parse(Int128, m.captures[1])
+    mo, d, H, M, S = (parse(Int, m.captures[k]) for k in 2:6)
+    (1 <= mo <= 12 && 1 <= d <= Dates.daysinmonth(Int(mod(y, 400)) + 2000, mo) && H <= 23 && M <= 59 && S <= 59) ||
+        bad(": a field is out of range")
+    frac = m.captures[7] === nothing ? 0 : parse(Int, rpad(m.captures[7], 9, '0'))
+    ns = ((_days_from_civil(y, mo, d) * 86_400 + H * 3600 + M * 60 + S) * Int128(1_000_000_000)) + frac
+    sfx = m.captures[8]
+    if sfx !== nothing
+        (V === DateTime || timestamp_zone(V) === nothing) &&
+            throw(ArgumentError("$(repr(s)) has a zone suffix, but $V is naive; read it as a zoned type such as ArrowTimestamp{$(V === DateTime ? Dates.Millisecond : timestamp_unit(V)), :UTC}"))
+        if sfx != "Z"
+            sign = sfx[1] == '-' ? -1 : 1
+            digits = replace(sfx[2:end], ":" => "")
+            oh, om = parse(Int, digits[1:2]), parse(Int, digits[3:4])
+            (oh <= 23 && om <= 59) || bad(": the zone offset is out of range")
+            ns -= sign * (oh * 3600 + om * 60) * Int128(1_000_000_000)
+        end
+    end
+    return ns
+end
+function _parse_timestamp_column(name, v, ::Type{V}) where {V}
+    out = Vector{Union{Missing, V}}(undef, length(v))
+    for (i, x) in enumerate(v)
+        if ismissing(x)
+            out[i] = missing
+            continue
+        end
+        try
+            out[i] = parse_timestamp(V, x)
+        catch err
+            err isa ArgumentError || rethrow()
+            throw(ArgumentError("column $(repr(name)), row $i: $(err.msg)"))
+        end
+    end
+    return out
 end
 
 """
@@ -71,6 +182,25 @@ function CSVSource(src::Union{AbstractString, Vector{UInt8}}; delim = _default_d
     for k in (:pool, :stringtype, :scan, :typemap)
         haskey(kw, k) && throw(ArgumentError("CSVSource does not take the `$k` keyword (it is fixed by ChuiFrames)"))
     end
+    # ArrowTimestamp targets, and DateTime targets without a `dateformat`, are read as text and
+    # parsed exactly by ChuiFrames (ADR-0021 rule 12); a unit-only `ArrowTimestamp{U}` means the
+    # naive type.
+    tstypes = Dict{Any, Type}()
+    if get(opts, :types, nothing) isa AbstractDict
+        given = opts[:types]
+        for (k, T) in given
+            S = nonmissingtype(T)
+            if S === DateTime
+                get(opts, :dateformat, nothing) === nothing && (tstypes[k] = DateTime)
+            elseif S <: ArrowTimestamp
+                S′ = S isa UnionAll ? S{nothing} : S
+                (S′ isa DataType && timestamp_unit(S′) isa DataType) ||
+                    throw(ArgumentError("column $(repr(k)): give ArrowTimestamp a unit, such as ArrowTimestamp{Microsecond} or ArrowTimestamp{Nanosecond, :UTC}"))
+                tstypes[k] = S′
+            end
+        end
+        isempty(tstypes) || (opts[:types] = Dict{Any, Type}(k => (haskey(tstypes, k) ? String : T) for (k, T) in given))
+    end
     src′ = src isa AbstractString ? String(src) : src
     chunks = CSV.Chunks(src′; _chunk_kw(opts)...)
     nb = length(chunks)
@@ -78,13 +208,17 @@ function CSVSource(src::Union{AbstractString, Vector{UInt8}}; delim = _default_d
     # CSV.Chunks settles one schema for every batch but exposes it only through a batch.
     if nb == 0
         f = CSV.File(src′; _chunk_kw(opts)...)
-        types = Type[_csv_eltype(eltype(Tables.getcolumn(f, n))) for n in names]
+        types = Type[_csv_schema_type(Tables.getcolumn(f, n)) for n in names]
         pending = nothing
     else
         pending = iterate(chunks)
         pending === nothing && throw(ArgumentError("CSV.Chunks reported $nb batches but yielded none"))
         first_batch = pending[1]
-        types = Type[_csv_eltype(eltype(Tables.getcolumn(first_batch, n))) for n in names]
+        types = Type[_csv_schema_type(Tables.getcolumn(first_batch, n)) for n in names]
+    end
+    for (k, T) in tstypes
+        j = k isa Integer ? Int(k) : findfirst(==(Symbol(k)), names)
+        j === nothing || (types[j] = Union{Missing, T})
     end
     sch = Tables.Schema(names, types)
     return CSVSource(src′, opts, names, sch, nb, ReentrantLock(), nothing, chunks, nothing, 1, pending)
@@ -293,7 +427,15 @@ Divergences from readr, measured against readr 2.1.6 by the `:differential` test
 - an unquoted empty field is always `missing`, even when `na` omits `""`;
 - `comment` skips lines that start with it; readr also drops trailing comments;
 - `f` (factor) reads as strings; there is no `locale`;
-- timestamps with sub-millisecond digits raise (`DateTime` holds ms; read them as `String`);
+- timestamps are `DateTime` when the first batch holds whole milliseconds, else
+  `ArrowTimestamp{Nanosecond}` (exact; ADR-0021 rule 12); a later batch with finer digits than
+  a `DateTime` first batch raises. `col_types = (t = ArrowTimestamp{U,TZ},)` parses ISO 8601 text itself,
+  with `Z`/`±HH:MM` suffixes for zoned types; so does `T`/`DateTime`, which raises on digits finer
+  than a millisecond (readr keeps them; read such columns as `ArrowTimestamp{Nanosecond}`). Both
+  need the full `yyyy-mm-ddTHH:MM:SS` form: a date alone, a time without seconds, or (for naive
+  targets) a `Z`/offset raises, where readr parses them (`CSVSource` with `dateformat` takes
+  other forms). Inferred `Z`/offset text: readr reads it as UTC; ChuiFrames reads it as strings
+  unless `col_types` says otherwise;
 - a time of day (readr `hms`) is an object column of `Dates.Time`.
 """
 function read_csv(path::Union{AbstractString, Vector{UInt8}}; col_names = true, col_types = nothing, col_select = nothing, na = ["", "NA"], skip::Integer = 0, comment = nothing, n_max = nothing, delim = _default_delim(path), trim_ws::Bool = true, quotechar = '"')

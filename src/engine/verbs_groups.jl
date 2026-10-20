@@ -6,17 +6,28 @@ struct GroupByStep <: Step
     keys::Vector{Any}
     computed::Vector{Pair{Symbol, Any}}
     add::Bool
+    drop::Bool
 end
 """
     group_by(keys...; add = false, drop = true)
 
 Group by columns (names, `c.x`, selectors) or computed keys (`:k => expr`, `k = expr`). The
 frame carries a group index: groups in ascending key order, NaN/-NaN one group, ±0.0 one group
-(shown as the first seen), `missing` its own group (ADR-0003 rule 8). `drop = false` (keeping
-empty factor levels) is not supported: ChuiFrames has no factor levels.
+(shown as the first seen), `missing` its own group (ADR-0003 rule 8).
+
+`drop = false` is dplyr's `.drop = FALSE`: for a dictionary-encoded key (a `DictColumn`, e.g. an
+Arrow dictionary column), every dictionary entry is a level, and absent levels are kept as empty
+groups, so `summarise(n = n_rows())` gives 0 for them (`sum` gives 0, `mean` NaN, and `maximum`
+an `ArgumentError`, CC-007, where R warns and gives `-Inf`). For other keys it changes nothing,
+as in dplyr for character and numeric keys. Differences from dplyr:
+- groups stay in CF-008's ascending order of the key values, not in level order;
+- `mutate`/`filter` do not evaluate empty groups (they have no rows), so a `maximum` there does
+  not raise, where dplyr evaluates and warns;
+- the flag is not stored on the frame yet: `mutate`, `select`, `rename` and `relocate` keep the
+  index with its empty groups, but verbs that rebuild the index (`filter`, `arrange`, the
+  slices, `count_by`, a `summarise` that keeps groups) drop them, where dplyr keeps them.
 """
 function group_by(keys...; add::Bool = false, drop::Bool = true, kw...)
-    drop || throw(ArgumentError("group_by(drop = false) is not supported: there are no factor levels to keep"))
     ks = Any[]
     comp = Pair{Symbol, Any}[]
     for k in keys
@@ -31,14 +42,19 @@ function group_by(keys...; add::Bool = false, drop::Bool = true, kw...)
         push!(comp, k => node(v))
         push!(ks, k)
     end
-    return GroupByStep(ks, comp, add)
+    return GroupByStep(ks, comp, add, drop)
 end
-Base.show(io::IO, s::GroupByStep) = print(io, "group_by(", join([_selrepr(k) for k in s.keys], ", "), s.add ? "; add = true" : "", ")")
+function Base.show(io::IO, s::GroupByStep)
+    opts = String[]
+    s.add && push!(opts, "add = true")
+    s.drop || push!(opts, "drop = false")
+    return print(io, "group_by(", join([_selrepr(k) for k in s.keys], ", "), isempty(opts) ? "" : "; " * join(opts, ", "), ")")
+end
 function apply(s::GroupByStep, f::Frame)
     isempty(s.computed) || (f = apply(MutateStep(_outs(s.computed), nothing, :all, nothing, nothing), f))
     keys = isempty(s.keys) ? Symbol[] : Symbol[f.names[i] for i in resolve(s.keys, f)]
     s.add && (keys = unique!([f.groups; keys]))
-    return regroup(f, keys)
+    return regroup(f, keys; drop = s.drop)
 end
 
 struct UngroupStep <: Step

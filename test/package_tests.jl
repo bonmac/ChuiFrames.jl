@@ -29,6 +29,9 @@ end
         # Arrow.jl storage types for Date32/Timestamp(ms), so no JuliaLang.* extension type is
         # written. NOT documented by Arrow.jl: revisit with ADR-0010's Arrow.jl 3.0 trigger.
         :DATE, :DATETIME,
+        # ... and for every Timestamp unit and zone (ADR-0021 rule 10, TS-06): `Arrow.Timestamp`
+        # with its `Arrow.Meta.TimeUnit` enum. Same status and revisit trigger as the line above.
+        :Timestamp, :Meta, :TimeUnit,
         # Dates' documented abstract type (Dates manual, "Dates.AbstractDateTime")
         :AbstractDateTime,
         # Parquet2's documented reader/writer API, used by ext/ChuiFramesParquet2Ext.jl (ADR-0020);
@@ -40,7 +43,18 @@ end
         :DEFAULT_MORSEL, :_tryclose, :_tryrm, :column, :isnullable, :schema_types,
         :AbstractColumn, :BinaryColumn, :DictColumn, :ListColumn, :StrView, :StringColumn,
         :StructColumn, :check_writable, :conform_column, :conform_partition, :empty_frame,
-        :pushed_columns, :temp_path_for,
+        :pushed_columns, :temp_path_for, :PrimitiveColumn, :read_ipc_schema,
+        # ... and its timestamp helpers (ADR-0021 rule 11)
+        :_DT_MAX_MS, :_DT_MIN_MS, :_UNIX_EPOCH_MS, :_instant_ns,
+        # Parquet2 INTERNALS, used on purpose by the exact timestamp path (ADR-0021 rule 11, TS-12):
+        # the raw Int64 read rebuilds a `Column`/`SchemaNode` with type `ParqInt64`, and the exact
+        # write adds an `encodevalue` method on the owned `ExactMs` type. The read fails closed if
+        # these change; the Parquet tests pin exactness. A ★ question to the user (lead report).
+        :Column, :SchemaNode, :ParqInt64, :encodevalue,
+        # Dates' documented accessor (Dates manual API: `Dates.value`)
+        :value,
+        # DataAPI's documented metadata interface (DataAPI README, "metadata")
+        :metadata,
         # DataAPI generics (README: "functions to be extended")
         :refarray, :refpool, :refvalue, :nrow, :ncol,
         # DataAPI selector types, re-exported as the same bindings (ADR-0002 rule 7)

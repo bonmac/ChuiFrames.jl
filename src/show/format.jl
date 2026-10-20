@@ -150,8 +150,16 @@ function _abbr(T::Type)
     s = get(_ABBR, S, nothing)
     s === nothing || return s * q
     S <: AbstractString && return "str" * q
+    S <: ArrowTimestamp && isconcretetype(S) && return _ts_abbr(S) * q
     S isa DataType && return string(nameof(S)) * q
     return "obj" * q
+end
+
+# `dttm[us]`, `dttm[ns, UTC]`: the unit and the zone are part of the type (ADR-0021 rule 8).
+const _TS_ABBR_UNIT = IdDict{Any, String}(Dates.Second => "s", Dates.Millisecond => "ms", Dates.Microsecond => "us", Dates.Nanosecond => "ns")
+function _ts_abbr(::Type{T}) where {T <: ArrowTimestamp}
+    tz = timestamp_zone(T)
+    return string("dttm[", _TS_ABBR_UNIT[timestamp_unit(T)], tz === nothing ? "" : string(", ", tz), "]")
 end
 
 _tsum(c::AbstractColumn) = _abbr(eltype(c))
@@ -186,6 +194,7 @@ The text of one non-missing cell.
 cell_text(x::AbstractString) = escape_string(x, "")
 cell_text(x::Bool) = x ? "true" : "false"
 cell_text(x::Union{Date, DateTime}) = string(x)
+cell_text(x::ArrowTimestamp) = timestamp_string(x)
 cell_text(x::Real) = sprint(show, x; context = :compact => true)
 cell_text(x::Union{Signed, Unsigned}) = string(x)
 cell_text(x::ByteView) = string("<", length(x), length(x) == 1 ? " byte>" : " bytes>")

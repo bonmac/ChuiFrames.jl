@@ -9,7 +9,8 @@ end
 
 """
 One schema field. `kind` is one of `:prim` (`T` is the value type: an integer, float,
-`Date` (Date32) or `DateTime` (Timestamp(ms))), `:bool`, `:utf8`/`:binary` (`T` is the offset
+`Date` (Date32), `DateTime` (Timestamp(ms), no zone) or `ArrowTimestamp{U,TZ}` (any other
+Timestamp, ADR-0021)), `:bool`, `:utf8`/`:binary` (`T` is the offset
 type, `Int32` or `Int64`), `:utf8view`/`:binaryview`, `:list` (`T` is the offset type) or
 `:struct`. A dictionary-encoded field describes its value type and has `dict` set.
 """
@@ -113,10 +114,9 @@ function _parse_type(tt::UInt8, ty, path, children)
     elseif tt == 10
         u, tz = _sc(ty, 0, Int16, 0), (ty === nothing ? "" : fb_string(ty, 1))
         (u == 1 && isempty(tz)) && return :prim, DateTime
-        return _unsupported(
-            path, "Timestamp($(_unit(u))$(isempty(tz) ? "" : ", timezone = $(repr(tz))"))",
-            ": µs/ns/zoned timestamps need the ArrowTimestamp type of a phase-2 ADR"
-        )
+        0 <= u <= 3 || _ipcerr("column $(repr(path)): bad Timestamp unit $u")
+        # every other unit or a zone: ArrowTimestamp, raw values kept (ADR-0021 rules 1, 10)
+        return :prim, ArrowTimestamp{_TS_UNITS[u + 1], isempty(tz) ? nothing : Symbol(tz)}
     elseif tt == 12 || tt == 21
         length(children) == 1 || _ipcerr("column $(repr(path)): a $tname needs exactly one child")
         return :list, (tt == 12 ? Int32 : Int64)
