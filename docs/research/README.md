@@ -1,0 +1,28 @@
+# Research notes (phase 1)
+
+Verified notes behind the phase-1 ADRs. Each note lists its versions, method, findings, an
+UNVERIFIED list and an Evidence section; evidence IDs are local to each note (a prefix per note),
+and ADRs cite them as "<note> <ID>". Dated 2026-10-20 unless a note says otherwise.
+
+| Note | Question | Evidence IDs |
+|---|---|---|
+| [parity-dplyr.md](parity-dplyr.md) | dplyr 1.2.0 → ChuiFrames: every export with status, phase, test | PR-01… |
+| [parity-tidyr.md](parity-tidyr.md) | tidyr 1.3.1 parity matrix | PR-01… |
+| [parity-tidyverse-other.md](parity-tidyverse-other.md) | readr, haven, stringr, lubridate, forcats, purrr, tibble | PR-01… |
+| [parity-polars.md](parity-polars.md) | Polars 2.0.0 expression API, verbs and lazy engine | PE-01… |
+| [parity-julia-frames.md](parity-julia-frames.md) | DataFrames.jl, DataFramesMeta, TidierData; name clashes | PJ-01… |
+| [parity-others.md](parity-others.md) | data.table, pandas, Ibis, DuckDB, dbplyr/dtplyr, sqldf: ideas to borrow | PE-20… |
+| [storage.md](storage.md) | Arrow.jl vs own buffers: layouts, speed, strings, dictionaries | ST-01… |
+| [dependencies.md](dependencies.md) | 33 dependency candidates: versions, closures, load times | DP-01… |
+| [parquet-csv.md](parquet-csv.md) | Parquet.jl vs Parquet2 for the built-in Parquet; CSV.jl versions | PQ-01… |
+| [engine.md](engine.md) | Prototype facts, group-by, codegen, optimizers, execution, distributed | EN-01… |
+| [grammar.md](grammar.md) | The `c.x` capture on 1.10 and 1.13, gaps, `missing`/NaN semantics | GR-01… |
+| [source-sink.md](source-sink.md) | Tables.jl partitions, readers/writers, connector prior art | SS-01… |
+| [lane-checks.md](lane-checks.md) | The lane owner's own confirmations | LC-01… |
+
+How parity matrices are used: each row's "Test" column is the phase's test checklist (brief,
+"API parity"). Status values: prototype, planned, adapted (spelling forced by Julia), base
+(Base/stdlib already does it), skip (with a reason).
+
+Scratch scripts and raw outputs stayed in the session scratchpad and are not part of the repo;
+each Evidence entry quotes the command and the output that matters.
