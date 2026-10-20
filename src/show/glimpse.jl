@@ -15,6 +15,7 @@
 _glimpse_text(::Missing) = "missing"
 _glimpse_text(x::AbstractString) = string('"', escape_string(x), '"')
 _glimpse_text(x::Union{Date, DateTime}) = string(x)
+_glimpse_text(x::ArrowTimestamp) = timestamp_string(x)
 _glimpse_text(x::ByteView) = cell_text(x)
 _glimpse_text(x::AbstractVector) = sprint(show, collect(x); context = (:compact => true, :limit => true, :typeinfo => typeof(collect(x))))
 _glimpse_text(x) = sprint(show, x; context = (:compact => true, :limit => true))

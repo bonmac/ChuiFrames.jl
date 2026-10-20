@@ -42,7 +42,11 @@ end
     @test_throws MethodError c.x > 1
     @test_throws MethodError !c.x
     # exactly three == methods with a node argument
-    ms = [m for m in methods(==) if m.module === ChuiFrames]
+    # (ArrowTimestamp's own == methods, ADR-0021, do not count: only those taking a node)
+    ms = [
+        m for m in methods(==) if m.module === ChuiFrames &&
+            any(p -> p <: ChuiFrames.Node, Base.unwrap_unionall(m.sig).parameters[2:end])
+    ]
     @test length(ms) == 3
 end
 

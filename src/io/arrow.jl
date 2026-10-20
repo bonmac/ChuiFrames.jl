@@ -92,6 +92,9 @@ _plain_pool(d::StringColumn) = String[String(_dict_value(x)) for x in d]
 _dict_value(::Missing) = throw(ArgumentError("a dictionary must not hold missing values"))
 _dict_value(x) = x
 _plain_pool(d::AbstractColumn) = collect(nonmissingtype(eltype(d)), d)
+# temporal dictionary values as Arrow.jl's storage values, as for plain columns (no extension tag)
+_plain_pool(d::PrimitiveColumn{E, T}) where {E, T <: Union{Date, DateTime, ArrowTimestamp}} =
+    collect(_arrow_temporal(T), ArrowTemporal(d))
 
 _decode(c::DictColumn) = column(collect(eltype(c), c))
 
@@ -107,6 +110,15 @@ struct ArrowTemporal{E, A, C <: PrimitiveColumn} <: AbstractVector{E}
 end
 _arrow_temporal(::Type{Date}) = Arrow.DATE
 _arrow_temporal(::Type{DateTime}) = Arrow.DATETIME
+# ArrowTimestamp: Arrow.jl's own Timestamp{unit, zone}, written with no extension tag (ADR-0021
+# rule 10, TS-06).
+const _ARROW_UNITS = IdDict{Any, Any}(
+    Dates.Second => Arrow.Meta.TimeUnit.SECOND, Dates.Millisecond => Arrow.Meta.TimeUnit.MILLISECOND,
+    Dates.Microsecond => Arrow.Meta.TimeUnit.MICROSECOND, Dates.Nanosecond => Arrow.Meta.TimeUnit.NANOSECOND,
+)
+_arrow_temporal(::Type{T}) where {T <: ArrowTimestamp} = Arrow.Timestamp{_ARROW_UNITS[timestamp_unit(T)], timestamp_zone(T)}
+_arrow_value(::Type{A}, v) where {A} = convert(A, v)
+_arrow_value(::Type{A}, v::ArrowTimestamp) where {A} = A(Dates.value(v))
 function ArrowTemporal(c::PrimitiveColumn{E, T}) where {E, T}
     A = _arrow_temporal(T)
     return ArrowTemporal{isnullable(c) ? Union{Missing, A} : A, A, typeof(c)}(c)
@@ -114,9 +126,9 @@ end
 Base.size(x::ArrowTemporal) = size(x.c)
 Base.IndexStyle(::Type{<:ArrowTemporal}) = IndexLinear()
 @inline Base.getindex(x::ArrowTemporal{E, A}, i::Int) where {E, A} =
-    (v = x.c[i]; v === missing ? missing : convert(A, v))
+    (v = x.c[i]; v === missing ? missing : _arrow_value(A, v))
 
-arrow_present(c::PrimitiveColumn{E, T}) where {E, T <: Union{Date, DateTime}} = ArrowTemporal(c)
+arrow_present(c::PrimitiveColumn{E, T}) where {E, T <: Union{Date, DateTime, ArrowTimestamp}} = ArrowTemporal(c)
 arrow_present(c::Union{PrimitiveColumn, BoolColumn}) = isnullable(c) ? c : c.values
 arrow_present(c::StringColumn) = c
 arrow_present(c::BinaryColumn) = ArrowBinary(c)

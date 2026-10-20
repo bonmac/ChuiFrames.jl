@@ -123,7 +123,9 @@ const _MAX_MS = Int64(2)^62     # |ms| beyond this would overflow DateTime's Int
 
 _storage(::Type{Date}) = Int32
 _storage(::Type{DateTime}) = Int64
+_storage(::Type{<:ArrowTimestamp}) = Int64
 _storage(::Type{T}) where {T} = T
+_fromraw(::Type{T}, x::Int64) where {T <: ArrowTimestamp} = T(x)   # raw count, unit and zone kept (ADR-0021)
 _fromraw(::Type{Date}, x::Int32) = _EPOCH_DATE + Dates.Day(x)       # Date32: days since 1970-01-01
 function _fromraw(::Type{DateTime}, x::Int64)                       # Timestamp(ms): ms since the epoch
     -_MAX_MS <= x <= _MAX_MS || _ipcerr("timestamp $x ms is out of the DateTime range")

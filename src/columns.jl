@@ -435,6 +435,9 @@ function _column_other(::Type{T}, v, nullable) where {T}
         if P <: _PRIM && _lossless(P, v)
             return _column(P, map(x -> ismissing(x) ? missing : convert(P, x), v), nullable)
         end
+    elseif (P = _timestamp_target(T, v)) !== nothing                       # ADR-0021 rule 7
+        _lossless(P, v) || throw(ArgumentError("cannot combine timestamps into $P exactly (a value overflows its unit); convert them first"))
+        return _column(P, map(x -> ismissing(x) ? missing : convert(P, x), v), nullable)
     elseif T <: NamedTuple && isconcretetype(T)
         return _struct_column(T, v, nullable)
     elseif T <: AbstractVector && isconcretetype(T)

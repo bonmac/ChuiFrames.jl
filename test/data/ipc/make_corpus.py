@@ -16,9 +16,17 @@ os.makedirs(out, exist_ok=True)
 LONG = ["short", "a string longer than twelve bytes", None, "ünïcödé text, long enough", ""]
 
 
+class TS:
+    """A raw Arrow timestamp (ADR-0021): Int64 count, unit, zone (None = naive)."""
+    def __init__(self, raw, unit, tz):
+        self.raw, self.unit, self.tz = raw, unit, tz
+
+
 def enc(v):
     if v is None:
         return None
+    if isinstance(v, TS):
+        return {"ts": [v.raw, v.unit, v.tz]}
     if isinstance(v, float):
         if math.isnan(v):
             return {"float": "NaN"}
@@ -42,6 +50,44 @@ def enc(v):
     return {"repr": str(v)}
 
 
+def raw_ts(t):
+    """A timestamp type other than Timestamp(ms) with no zone: dumped raw (to_pylist cannot hold ns)."""
+    return pa.types.is_timestamp(t) and not (t.unit == "ms" and t.tz is None)
+
+
+def has_raw_ts(t):
+    if raw_ts(t):
+        return True
+    if pa.types.is_dictionary(t):
+        return has_raw_ts(t.value_type)
+    if pa.types.is_list(t) or pa.types.is_large_list(t):
+        return has_raw_ts(t.value_type)
+    if pa.types.is_struct(t):
+        return any(has_raw_ts(t.field(i).type) for i in range(t.num_fields))
+    return False
+
+
+def rawpy(s):
+    """A pyarrow scalar as Python values, with raw timestamps as TS (recursing into lists and structs)."""
+    t = s.type
+    if not s.is_valid:
+        return None
+    if pa.types.is_dictionary(t):
+        return rawpy(s.value)
+    if raw_ts(t):
+        return TS(s.value, t.unit, t.tz)
+    if pa.types.is_list(t) or pa.types.is_large_list(t):
+        return [rawpy(x) for x in s.values]
+    if pa.types.is_struct(t):
+        return {t.field(i).name: rawpy(s[t.field(i).name]) for i in range(t.num_fields)}
+    return s.as_py()
+
+
+def pycolumn(col):
+    """Column values for the dump: to_pylist, except for columns holding raw timestamps."""
+    return [rawpy(s) for s in col] if has_raw_ts(col.type) else col.to_pylist()
+
+
 def dump(name, path, stream):
     """Expected values: read back with pyarrow, one entry per batch plus the concatenation."""
     with open(path, "rb") as f:
@@ -54,7 +100,7 @@ def dump(name, path, stream):
         "schema": [{"name": f.name, "type": str(f.type), "nullable": f.nullable} for f in schema],
         "batch_lengths": [b.num_rows for b in batches],
         "num_rows": t.num_rows,
-        "columns": {n: [enc(x) for x in t.column(n).to_pylist()] for n in t.column_names},
+        "columns": {n: [enc(x) for x in pycolumn(t.column(n))] for n in t.column_names},
     }
     with open(os.path.join(out, name + ".json"), "w") as f:
         json.dump(doc, f, indent=1)
@@ -179,7 +225,6 @@ import decimal
 write_file("unsupported_decimal", pa.table({"x": pa.array([decimal.Decimal("1.25")], pa.decimal128(5, 2))}))
 write_file("unsupported_time", pa.table({"x": pa.array([datetime.time(1, 2)], pa.time64("us"))}))
 write_file("unsupported_ree", pa.table({"x": pa.RunEndEncodedArray.from_arrays([2, 3], [1, 2])}))
-write_file("unsupported_tsus", pa.table({"x": pa.array([datetime.datetime(2020, 1, 1)], pa.timestamp("us"))}))
 od = pa.DictionaryArray.from_arrays(pa.array([0, 1], pa.int8()), pa.array(["lo", "hi"]), ordered=True)
 write_file("ordered_dict", pa.table({"x": od}))
 # every other type of ADR-0001 rule 6's "must raise" list (case name -> array)
@@ -197,14 +242,83 @@ raise_cases = {
     "listview": pa.array([[1]], pa.list_view(pa.int64())),
     "largelistview": pa.array([[1]], pa.large_list_view(pa.int64())),
     "extension": pa.ExtensionArray.from_storage(pa.uuid(), pa.array([b"0123456789abcdef"], pa.binary(16))),
-    "tsns": pa.array([datetime.datetime(2020, 1, 1)], pa.timestamp("ns")),
-    "tss": pa.array([datetime.datetime(2020, 1, 1)], pa.timestamp("s")),
-    "tsmstz": pa.array([datetime.datetime(2020, 1, 1)], pa.timestamp("ms", tz="UTC")),
 }
 for k, arr in raise_cases.items():
     write_file(f"unsupported_{k}", pa.table({"x": arr}))
+# (Timestamp(s/us/ns) and zoned Timestamp(ms) used to raise here; ADR-0021 reads them, section 11.)
+
+# 11. timestamps of every unit and zone (ADR-0021), pyarrow: two batches, built from raw Int64
+# counts so no zone database is involved; nullable and non-nullable fields
+I64MAX, I64MIN = 2**63 - 1, -(2**63)
+TSU = pa.timestamp("us", tz="UTC")
+ts_schema = pa.schema([
+    pa.field("s", pa.timestamp("s"), nullable=False),
+    pa.field("ms_utc", pa.timestamp("ms", tz="UTC")),
+    pa.field("us", pa.timestamp("us")),
+    pa.field("us_berlin", pa.timestamp("us", tz="Europe/Berlin"), nullable=False),
+    pa.field("ns", pa.timestamp("ns"), nullable=False),
+    pa.field("ns_kolkata", pa.timestamp("ns", tz="+05:30")),
+    pa.field("dict_us", pa.dictionary(pa.int8(), pa.timestamp("us"))),
+    pa.field("lst_ns", pa.list_(pa.timestamp("ns"))),
+    pa.field("st", pa.struct([("t", TSU)])),
+])
+ts_dict = pa.array([1_700_000_000_000_000, -1, 1_700_000_000_000_001], pa.timestamp("us"))
+
+
+def ts_batch(s, ms_utc, us, us_berlin, ns, ns_kolkata, dict_idx, lst_ns, st):
+    cols = [pa.array(s, pa.timestamp("s")), pa.array(ms_utc, pa.timestamp("ms", tz="UTC")),
+            pa.array(us, pa.timestamp("us")), pa.array(us_berlin, pa.timestamp("us", tz="Europe/Berlin")),
+            pa.array(ns, pa.timestamp("ns")), pa.array(ns_kolkata, pa.timestamp("ns", tz="+05:30")),
+            pa.DictionaryArray.from_arrays(pa.array(dict_idx, pa.int8()), ts_dict),
+            pa.array(lst_ns, pa.list_(pa.timestamp("ns"))),
+            pa.array(st, pa.struct([("t", TSU)]))]
+    return pa.record_batch(cols, schema=ts_schema)
+
+
+tsb1 = ts_batch(
+    s=[0, -3_155_760_000, 1_700_000_000, 253_402_300_799, -62_135_596_800, 1],
+    ms_utc=[0, None, 1_700_000_000_123, -1, 1_700_000_000_124, None],
+    us=[None, 1_700_000_000_123_456, -1, 0, None, 1_700_000_000_123_457],
+    us_berlin=[1_711_846_800_000_000, 1_711_850_400_000_000, -86_400_000_001, 0, 1, 1_700_000_000_999_999],
+    ns=[1_700_000_000_000_000_000, 1_700_000_000_000_000_001, -1, -1_000_000_000_000_000_001, I64MAX, I64MIN],
+    ns_kolkata=[0, 1, None, -1, I64MAX - 1, I64MIN + 1],
+    dict_idx=[0, 1, 0, None, 2, 2],
+    lst_ns=[[1, 2, None], [], None, [I64MIN, I64MAX], [-1], [1_700_000_000_000_000_001, 1_700_000_000_000_000_000]],
+    st=[{"t": 0}, None, {"t": None}, {"t": -1}, {"t": 1_700_000_000_123_456}, {"t": 1}],
+)
+tsb2 = ts_batch(
+    s=[1_700_000_001, -1, 86_400, 0],
+    ms_utc=[None, 1, 2, 3],
+    us=[1, 2, None, -2],
+    us_berlin=[2, 3, 4, -5],
+    ns=[0, 1, 2, -2],
+    ns_kolkata=[None, None, 5, 1_700_000_000_000_000_000],
+    dict_idx=[1, None, 0, 2],
+    lst_ns=[None, [0], [-5, 5], []],
+    st=[None, {"t": 2}, {"t": None}, {"t": -3}],
+)
+write_file("timestamps_pyarrow", [tsb1, tsb2], schema=ts_schema)
+write_stream("timestamps_pyarrow_stream", [tsb1, tsb2], schema=ts_schema)
+
+# 12. timestamps as Polars writes them by default (Polars 2.0.0): a Series of datetimes is
+# Datetime(us) naive; ns UTC, ms Europe/Berlin and a datetime_range
+D = datetime.datetime
+ptime = pl.DataFrame({
+    "us": pl.Series([D(2026, 10, 20, 12, 0, 0, 123456), None, D(1969, 12, 31, 23, 59, 59, 999999),
+                     D(2000, 2, 29), D(1900, 1, 1, 0, 0, 0, 1), D(2262, 4, 11)]),
+    "ns_utc": pl.Series([1_700_000_000_000_000_000, 1_700_000_000_000_000_001, None, -1, 0, 2**62])
+    .cast(pl.Datetime("ns")).dt.replace_time_zone("UTC"),
+    "ms_berlin": pl.datetime_range(D(2026, 10, 23), D(2026, 10, 28), "1d", time_unit="ms",
+                                   time_zone="Europe/Berlin", eager=True),
+    "range": pl.datetime_range(D(1969, 12, 31, 22), D(1970, 1, 1, 5, 30), "90m", eager=True),
+})
+ptime.write_ipc(os.path.join(out, "polars_timestamps.arrow"))
+dump("polars_timestamps", os.path.join(out, "polars_timestamps.arrow"), False)
+ptime.write_ipc_stream(os.path.join(out, "polars_timestamps_stream.arrows"))
+dump("polars_timestamps_stream", os.path.join(out, "polars_timestamps_stream.arrows"), True)
 
 # 10. R arrow files, when make_r_corpus.R has written them into OUTDIR first: dump only
-for name, ext, stream in (("r_feather", ".arrow", False), ("r_stream", ".arrows", True)):
+for name, ext, stream in (("r_feather", ".arrow", False), ("r_stream", ".arrows", True),
+                          ("r_timestamps", ".arrow", False)):
     if os.path.exists(os.path.join(out, name + ext)):
         dump(name, os.path.join(out, name + ext), stream)

@@ -113,6 +113,18 @@
     parsejson(s::AbstractString) = value(P(Vector{UInt8}(s), 1))
     loaddump(case::AbstractString) = parsejson(read(joinpath(DIR, case * ".json"), String))
 
+    "pyarrow's timestamp unit names."
+    const TSUNITS = Dict("s" => Dates.Second, "ms" => Dates.Millisecond, "us" => Dates.Microsecond, "ns" => Dates.Nanosecond)
+
+    "The exact element type of a pyarrow `timestamp[unit]`/`timestamp[unit, tz=zone]` string."
+    function expected_timestamp_type(t::AbstractString)
+        m = match(r"^timestamp\[(s|ms|us|ns)(?:, tz=(.+))?\]$", t)
+        m === nothing && return nothing
+        unit, tz = m.captures
+        (unit == "ms" && tz === nothing) && return DateTime            # ADR-0001 rule 6
+        return ChuiFrames.ArrowTimestamp{TSUNITS[unit], tz === nothing ? nothing : Symbol(tz)}
+    end
+
     "Decode one value of a pyarrow dump (see `enc` in make_corpus.py) to the expected Julia value."
     function expected(v)
         v === nothing && return missing
@@ -124,6 +136,10 @@
         if k == "datetime"                              # isoformat: microseconds; ms is enough here
             base, frac = occursin('.', x) ? split(x, '.') : (x, "0")
             return DateTime(base) + Dates.Millisecond(parse(Int, rpad(frac, 3, '0')[1:3]))
+        end
+        if k == "ts"                                    # [raw Int64, unit, zone or null] (ADR-0021)
+            raw, unit, tz = x
+            return ChuiFrames.ArrowTimestamp{TSUNITS[unit], tz === nothing ? nothing : Symbol(tz)}(raw)
         end
         k == "struct" && return NamedTuple{Tuple(Symbol.(keys(x)))}(Tuple(expected(p.second) for p in x.pairs))
         k == "list" && return Any[expected(y) for y in x]
@@ -150,7 +166,11 @@
             "date32[day]" => Date, "timestamp[ms]" => DateTime,
         )
         haskey(S, t) && return S[t]
+        TS = expected_timestamp_type(t)
+        TS === nothing || return TS
         startswith(t, "dictionary<values=string") && return ChuiFrames.StrView
+        m = match(r"^dictionary<values=(timestamp\[[^\]]+\]), indices=", t)
+        m === nothing || return expected_timestamp_type(m.captures[1])
         (startswith(t, "list<") || startswith(t, "large_list<")) && return SubArray
         startswith(t, "struct<") && return NamedTuple
         error("no expected type for $t")

@@ -5,9 +5,7 @@
     using ChuiFrames: read_ipc, read_ipc_batches, read_ipc_schema
     cases = [
         "unsupported_decimal" => "Decimal128(5, 2)", "unsupported_time" => "Time64(MICROSECOND)",
-        "unsupported_ree" => "RunEndEncoded", "unsupported_tsus" => "Timestamp(MICROSECOND)",
-        "unsupported_tsns" => "Timestamp(NANOSECOND)", "unsupported_tss" => "Timestamp(SECOND)",
-        "unsupported_tsmstz" => "Timestamp(MILLISECOND, timezone = \"UTC\")",
+        "unsupported_ree" => "RunEndEncoded",
         "unsupported_date64" => "Date64", "unsupported_float16" => "Float16",
         "unsupported_duration" => "Duration(SECOND)", "unsupported_interval" => "Interval",
         "unsupported_fixedsizebinary" => "FixedSizeBinary(2)", "unsupported_fixedsizelist" => "FixedSizeList(2)",
@@ -24,8 +22,9 @@
             @test ok
         end
     end
-    e = IPCCorpus.outcome(() -> read_ipc(IPCCorpus.casepath("unsupported_tsus")))
-    @test occursin("ArrowTimestamp", e.msg)          # points at the deferred phase-2 ADR
+    # Timestamp(s/us/ns) and zoned Timestamp(ms) no longer raise (ADR-0021): the unsupported_ts*
+    # cases are gone, and timestamps_tests.jl reads every unit and zone
+    @test !any(c -> startswith(c, "unsupported_ts"), readdir(IPCCorpus.DIR))
 end
 
 @testitem "ipc: hand-built stream (positive control), big-endian schema, old metadata" tags = [:unit, :ipc] setup = [IPCCorpus] begin
