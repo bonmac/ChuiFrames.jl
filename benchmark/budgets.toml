@@ -1,0 +1,330 @@
+# ChuiFrames performance budgets (ADR-0022, Proposed). Budgets may only tighten without an ADR
+# amendment.
+#
+# [ttfx.<julia major.minor>]: warm medians of fresh processes, milliseconds, checked by
+#   julia benchmark/ttfx.jl --check
+# [time.<v>] (nanoseconds), [allocs.<v>] (count) and [memory.<v>] (bytes): the median trial of
+# each SUITE entry of benchmark/benchmarks.jl, checked by
+#   julia benchmark/run.jl --check
+# Versions without a table of their own use `default` (ttfx) or "1.10" (time, allocs, memory).
+#
+# Baseline: ChuiFrames 717d8cc (suite at 6250cad), Apple M3 Pro (12 cores, 18 GiB), 1 thread,
+# BenchmarkTools 1.8.0, a SHARED machine at load average 9-49 during the runs (evidence
+# .lanes/evidence/bench-113-6250cad.txt, bench-110-6250cad.txt; docs/research/performance.md PF-02,
+# PF-03). The comment after each row is that baseline.
+#   time   = 3x the median, rounded UP to the 1-2-5 series (3x to 7.5x), floor 10 μs
+#   allocs = 1.5x the count, rounded UP to 2 significant digits, floor 100
+#   memory = 1.5x the bytes, rounded UP to 2 significant digits, floor 16 KiB
+# The time rows catch a lost specialization, a type instability or an accidental O(n^2) (3x or
+# more), not a 10-50 % drift: that is the regression gate's job (scripts/bench.jl, ratchets.toml
+# bench.time_tolerance). The allocation rows are deterministic per Julia version and catch smaller
+# regressions (a new per-row allocation in a hot loop moves them by 1x n).
+
+[ttfx."1.13"]
+load_ms = 500                # ADR-0005 rule 5; measured 448 [404, 527] (PF-04)
+load_first_call_ms = 700     # measured 481 [438, 559]
+precompile_ms = 60000        # measured 16481 [15906, 16949]; 41774 at load average 56-89
+
+[ttfx."1.10"]
+load_ms = 800                # ADR-0005 rule 5; measured 626 [587, 715] (PF-04)
+load_first_call_ms = 1000    # measured 683 [642, 789]
+precompile_ms = 60000        # measured 14090 [13938, 15082]; 26579 at load average 89
+
+[ttfx.default]               # other versions (1.11, 1.12, pre): the LTS column
+load_ms = 800
+load_first_call_ms = 1000
+precompile_ms = 60000
+
+[time."1.13"]
+"arrange/Float64/n=10" = 20000                                  # 5.24 μs
+"arrange/Float64/n=10^4" = 100000000                            # 18.89 ms
+"arrange/Float64/n=10^6" = 10000000000                          # 2.934 s
+"arrange/Int, desc Float64/n=10" = 50000                        # 7.32 μs
+"arrange/Int, desc Float64/n=10^4" = 200000000                  # 35.84 ms
+"arrange/Int, desc Float64/n=10^6" = 20000000000                # 5.831 s
+"arrange/String/n=10" = 20000                                   # 5.12 μs
+"arrange/String/n=10^4" = 100000000                             # 23.61 ms
+"arrange/String/n=10^6" = 20000000000                           # 3.579 s
+"count_by/String few/n=10" = 100000                             # 20.21 μs
+"count_by/String few/n=10^4" = 5000000                          # 1.43 ms
+"count_by/String few/n=10^6" = 1000000000                       # 175.93 ms
+"distinct/Int, String/n=10" = 50000                             # 13.08 μs
+"distinct/Int, String/n=10^4" = 1000000                         # 204.83 μs
+"distinct/Int, String/n=10^6" = 200000000                       # 37.91 ms
+"filter/x > 0/n=10" = 50000                                     # 8.12 μs
+"filter/x > 0/n=10^4" = 2000000                                 # 388.04 μs
+"filter/x > 0/n=10^6" = 500000000                               # 76.38 ms
+"io/read_arrow/n=10^5" = 10000000                               # 2.43 ms
+"io/read_csv/n=10^5" = 200000000                                # 51.38 ms
+"io/write_arrow/n=10^5" = 20000000                              # 6.5 ms
+"io/write_csv/n=10^5" = 100000000                               # 26.34 ms
+"mutate/z = 2x + y/n=10" = 200000                               # 35.83 μs
+"mutate/z = 2x + y/n=10^4" = 2000000                            # 419.08 μs
+"mutate/z = 2x + y/n=10^6" = 200000000                          # 50.93 ms
+"pipeline/filter, mutate, select/n=10" = 100000                 # 31.06 μs
+"pipeline/filter, mutate, select/n=10^4" = 5000000              # 843.21 μs
+"pipeline/filter, mutate, select/n=10^6" = 1000000000           # 295.13 ms
+"select/2 columns/n=10" = 20000                                 # 5.02 μs
+"select/2 columns/n=10^4" = 20000                               # 4.73 μs
+"select/2 columns/n=10^6" = 20000                               # 4.5 μs
+"slice_head/n = 10/n=10" = 10000                                # 2.78 μs
+"slice_head/n = 10/n=10^4" = 20000                              # 3.97 μs
+"slice_head/n = 10/n=10^6" = 500000                             # 89.25 μs
+"summarise/Int few/n=10" = 100000                               # 26.08 μs
+"summarise/Int few/n=10^4" = 10000000                           # 1.97 ms
+"summarise/Int few/n=10^6" = 500000000                          # 165.99 ms
+"summarise/Int many/n=10^4" = 10000000                          # 2.72 ms
+"summarise/Int many/n=10^6" = 2000000000                        # 360.99 ms
+"summarise/String few/n=10" = 100000                            # 21.46 μs
+"summarise/String few/n=10^4" = 5000000                         # 1.49 ms
+"summarise/String few/n=10^6" = 500000000                       # 144.26 ms
+"summarise/String many/n=10^4" = 10000000                       # 3.13 ms
+"summarise/String many/n=10^6" = 5000000000                     # 990.14 ms
+"window/row_number, cumsum by Int few/n=10" = 100000            # 26.21 μs
+"window/row_number, cumsum by Int few/n=10^4" = 10000000        # 1.69 ms
+"window/row_number, cumsum by Int few/n=10^6" = 1000000000      # 256.14 ms
+
+[time."1.10"]
+"arrange/Float64/n=10" = 20000                                  # 5.26 μs
+"arrange/Float64/n=10^4" = 50000000                             # 13.53 ms
+"arrange/Float64/n=10^6" = 20000000000                          # 3.347 s
+"arrange/Int, desc Float64/n=10" = 20000                        # 4.51 μs
+"arrange/Int, desc Float64/n=10^4" = 100000000                  # 21.23 ms
+"arrange/Int, desc Float64/n=10^6" = 20000000000                # 3.612 s
+"arrange/String/n=10" = 10000                                   # 3.0 μs
+"arrange/String/n=10^4" = 50000000                              # 12.97 ms
+"arrange/String/n=10^6" = 10000000000                           # 3.022 s
+"count_by/String few/n=10" = 100000                             # 19.46 μs
+"count_by/String few/n=10^4" = 5000000                          # 1.1 ms
+"count_by/String few/n=10^6" = 500000000                        # 114.49 ms
+"distinct/Int, String/n=10" = 50000                             # 14.08 μs
+"distinct/Int, String/n=10^4" = 2000000                         # 348.0 μs
+"distinct/Int, String/n=10^6" = 200000000                       # 40.22 ms
+"filter/x > 0/n=10" = 50000                                     # 9.15 μs
+"filter/x > 0/n=10^4" = 2000000                                 # 360.67 μs
+"filter/x > 0/n=10^6" = 200000000                               # 53.59 ms
+"io/read_arrow/n=10^5" = 5000000                                # 1.62 ms
+"io/read_csv/n=10^5" = 200000000                                # 41.02 ms
+"io/write_arrow/n=10^5" = 50000000                              # 7.18 ms
+"io/write_csv/n=10^5" = 100000000                               # 32.19 ms
+"mutate/z = 2x + y/n=10" = 100000                               # 21.5 μs
+"mutate/z = 2x + y/n=10^4" = 1000000                            # 233.46 μs
+"mutate/z = 2x + y/n=10^6" = 100000000                          # 26.83 ms
+"pipeline/filter, mutate, select/n=10" = 100000                 # 31.54 μs
+"pipeline/filter, mutate, select/n=10^4" = 5000000              # 736.9 μs
+"pipeline/filter, mutate, select/n=10^6" = 500000000            # 84.17 ms
+"select/2 columns/n=10" = 50000                                 # 6.69 μs
+"select/2 columns/n=10^4" = 20000                               # 5.36 μs
+"select/2 columns/n=10^6" = 20000                               # 5.34 μs
+"slice_head/n = 10/n=10" = 10000                                # 2.95 μs
+"slice_head/n = 10/n=10^4" = 20000                              # 5.05 μs
+"slice_head/n = 10/n=10^6" = 500000                             # 164.88 μs
+"summarise/Int few/n=10" = 100000                               # 23.96 μs
+"summarise/Int few/n=10^4" = 5000000                            # 1.14 ms
+"summarise/Int few/n=10^6" = 500000000                          # 123.99 ms
+"summarise/Int many/n=10^4" = 10000000                          # 2.39 ms
+"summarise/Int many/n=10^6" = 2000000000                        # 504.3 ms
+"summarise/String few/n=10" = 100000                            # 26.29 μs
+"summarise/String few/n=10^4" = 10000000                        # 1.84 ms
+"summarise/String few/n=10^6" = 500000000                       # 141.91 ms
+"summarise/String many/n=10^4" = 20000000                       # 4.84 ms
+"summarise/String many/n=10^6" = 5000000000                     # 1.206 s
+"window/row_number, cumsum by Int few/n=10" = 100000            # 33.25 μs
+"window/row_number, cumsum by Int few/n=10^4" = 10000000        # 1.87 ms
+"window/row_number, cumsum by Int few/n=10^6" = 1000000000      # 268.14 ms
+
+[allocs."1.13"]
+"arrange/Float64/n=10" = 240                                    # 154
+"arrange/Float64/n=10^4" = 870000                               # 577623
+"arrange/Float64/n=10^6" = 130000000                            # 82884300
+"arrange/Int, desc Float64/n=10" = 140                          # 92
+"arrange/Int, desc Float64/n=10^4" = 960000                     # 637745
+"arrange/Int, desc Float64/n=10^6" = 160000000                  # 104388138
+"arrange/String/n=10" = 150                                     # 98
+"arrange/String/n=10^4" = 870000                                # 575120
+"arrange/String/n=10^6" = 130000000                             # 82862195
+"count_by/String few/n=10" = 390                                # 258
+"count_by/String few/n=10^4" = 30000                            # 19608
+"count_by/String few/n=10^6" = 4500000                          # 2989608
+"distinct/Int, String/n=10" = 270                               # 180
+"distinct/Int, String/n=10^4" = 300                             # 197
+"distinct/Int, String/n=10^6" = 300                             # 197
+"filter/x > 0/n=10" = 180                                       # 114
+"filter/x > 0/n=10^4" = 30000                                   # 19670
+"filter/x > 0/n=10^6" = 3100000                                 # 2000190
+"io/read_arrow/n=10^5" = 510                                    # 337
+"io/read_csv/n=10^5" = 160000                                   # 101032
+"io/write_arrow/n=10^5" = 630                                   # 418
+"io/write_csv/n=10^5" = 3700                                    # 2461
+"mutate/z = 2x + y/n=10" = 290                                  # 187
+"mutate/z = 2x + y/n=10^4" = 45000                              # 29672
+"mutate/z = 2x + y/n=10^6" = 4500000                            # 2999672
+"pipeline/filter, mutate, select/n=10" = 420                    # 278
+"pipeline/filter, mutate, select/n=10^4" = 52000                # 34014
+"pipeline/filter, mutate, select/n=10^6" = 5300000              # 3500941
+"select/2 columns/n=10" = 100                                   # 43
+"select/2 columns/n=10^4" = 100                                 # 47
+"select/2 columns/n=10^6" = 100                                 # 47
+"slice_head/n = 10/n=10" = 140                                  # 89
+"slice_head/n = 10/n=10^4" = 140                                # 90
+"slice_head/n = 10/n=10^6" = 140                                # 90
+"summarise/Int few/n=10" = 500                                  # 333
+"summarise/Int few/n=10^4" = 30000                              # 19745
+"summarise/Int few/n=10^6" = 4500000                            # 2989745
+"summarise/Int many/n=10^4" = 69000                             # 45789
+"summarise/Int many/n=10^6" = 8700000                           # 5787602
+"summarise/String few/n=10" = 530                               # 353
+"summarise/String few/n=10^4" = 30000                           # 19775
+"summarise/String few/n=10^6" = 4500000                         # 2989775
+"summarise/String many/n=10^4" = 72000                          # 47797
+"summarise/String many/n=10^6" = 9000000                        # 5987521
+"window/row_number, cumsum by Int few/n=10" = 450               # 296
+"window/row_number, cumsum by Int few/n=10^4" = 130000          # 82606
+"window/row_number, cumsum by Int few/n=10^6" = 18000000        # 11962606
+
+[allocs."1.10"]
+"arrange/Float64/n=10" = 240                                    # 156
+"arrange/Float64/n=10^4" = 870000                               # 577624
+"arrange/Float64/n=10^6" = 130000000                            # 82884395
+"arrange/Int, desc Float64/n=10" = 150                          # 94
+"arrange/Int, desc Float64/n=10^4" = 960000                     # 637746
+"arrange/Int, desc Float64/n=10^6" = 160000000                  # 104387409
+"arrange/String/n=10" = 150                                     # 100
+"arrange/String/n=10^4" = 870000                                # 575121
+"arrange/String/n=10^6" = 130000000                             # 82862196
+"count_by/String few/n=10" = 340                                # 222
+"count_by/String few/n=10^4" = 44000                            # 29061
+"count_by/String few/n=10^6" = 6000000                          # 3989061
+"distinct/Int, String/n=10" = 270                               # 174
+"distinct/Int, String/n=10^4" = 290                             # 191
+"distinct/Int, String/n=10^6" = 290                             # 191
+"filter/x > 0/n=10" = 170                                       # 107
+"filter/x > 0/n=10^4" = 30000                                   # 19663
+"filter/x > 0/n=10^6" = 3100000                                 # 2000143
+"io/read_arrow/n=10^5" = 510                                    # 338
+"io/read_csv/n=10^5" = 160000                                   # 100980
+"io/write_arrow/n=10^5" = 680                                   # 452
+"io/write_csv/n=10^5" = 2400                                    # 1584
+"mutate/z = 2x + y/n=10" = 260                                  # 172
+"mutate/z = 2x + y/n=10^4" = 45000                              # 29657
+"mutate/z = 2x + y/n=10^6" = 4500000                            # 2999657
+"pipeline/filter, mutate, select/n=10" = 400                    # 264
+"pipeline/filter, mutate, select/n=10^4" = 51000                # 34000
+"pipeline/filter, mutate, select/n=10^6" = 5300000              # 3499814
+"select/2 columns/n=10" = 100                                   # 43
+"select/2 columns/n=10^4" = 100                                 # 47
+"select/2 columns/n=10^6" = 100                                 # 47
+"slice_head/n = 10/n=10" = 140                                  # 90
+"slice_head/n = 10/n=10^4" = 140                                # 91
+"slice_head/n = 10/n=10^6" = 140                                # 91
+"summarise/Int few/n=10" = 450                                  # 295
+"summarise/Int few/n=10^4" = 44000                              # 29196
+"summarise/Int few/n=10^6" = 6000000                            # 3989196
+"summarise/Int many/n=10^4" = 83000                             # 55197
+"summarise/Int many/n=10^6" = 11000000                          # 6786996
+"summarise/String few/n=10" = 480                               # 319
+"summarise/String few/n=10^4" = 44000                           # 29230
+"summarise/String few/n=10^6" = 6000000                         # 3989230
+"summarise/String many/n=10^4" = 86000                          # 57208
+"summarise/String many/n=10^6" = 11000000                       # 6986919
+"window/row_number, cumsum by Int few/n=10" = 380               # 249
+"window/row_number, cumsum by Int few/n=10^4" = 140000          # 92013
+"window/row_number, cumsum by Int few/n=10^6" = 20000000        # 12962033
+
+[memory."1.13"]
+"arrange/Float64/n=10" = 16384                                  # 5008
+"arrange/Float64/n=10^4" = 16000000                             # 10595824
+"arrange/Float64/n=10^6" = 2200000000                           # 1458274624
+"arrange/Int, desc Float64/n=10" = 16384                        # 4128
+"arrange/Int, desc Float64/n=10^4" = 18000000                   # 11557888
+"arrange/Int, desc Float64/n=10^6" = 2800000000                 # 1802336144
+"arrange/String/n=10" = 16384                                   # 4688
+"arrange/String/n=10^4" = 30000000                              # 19709696
+"arrange/String/n=10^6" = 4200000000                            # 2752100720
+"count_by/String few/n=10" = 25000                              # 16320
+"count_by/String few/n=10^4" = 990000                           # 659872
+"count_by/String few/n=10^6" = 120000000                        # 79899296
+"distinct/Int, String/n=10" = 16384                             # 9184
+"distinct/Int, String/n=10^4" = 390000                          # 256432
+"distinct/Int, String/n=10^6" = 37000000                        # 24046032
+"filter/x > 0/n=10" = 16384                                     # 4608
+"filter/x > 0/n=10^4" = 1600000                                 # 1020064
+"filter/x > 0/n=10^6" = 190000000                               # 121416544
+"io/read_arrow/n=10^5" = 19000000                               # 12307824
+"io/read_csv/n=10^5" = 30000000                                 # 19742784
+"io/write_arrow/n=10^5" = 9500000                               # 6324416
+"io/write_csv/n=10^5" = 30000000                                # 19478336
+"mutate/z = 2x + y/n=10" = 16384                                # 7488
+"mutate/z = 2x + y/n=10^4" = 1300000                            # 806544
+"mutate/z = 2x + y/n=10^6" = 130000000                          # 80045968
+"pipeline/filter, mutate, select/n=10" = 17000                  # 11248
+"pipeline/filter, mutate, select/n=10^4" = 2100000              # 1395952
+"pipeline/filter, mutate, select/n=10^6" = 250000000            # 161475488
+"select/2 columns/n=10" = 16384                                 # 1664
+"select/2 columns/n=10^4" = 16384                               # 1728
+"select/2 columns/n=10^6" = 16384                               # 1728
+"slice_head/n = 10/n=10" = 16384                                # 4480
+"slice_head/n = 10/n=10^4" = 130000                             # 86336
+"slice_head/n = 10/n=10^6" = 13000000                           # 8016224
+"summarise/Int few/n=10" = 30000                                # 19632
+"summarise/Int few/n=10^4" = 1100000                            # 667360
+"summarise/Int few/n=10^6" = 120000000                          # 79906784
+"summarise/Int many/n=10^4" = 4600000                           # 3014256
+"summarise/Int many/n=10^6" = 470000000                         # 311302096
+"summarise/String few/n=10" = 33000                             # 21648
+"summarise/String few/n=10^4" = 1100000                         # 670000
+"summarise/String few/n=10^6" = 120000000                       # 79909424
+"summarise/String many/n=10^4" = 5300000                        # 3517040
+"summarise/String many/n=10^6" = 540000000                      # 354886144
+"window/row_number, cumsum by Int few/n=10" = 22000             # 14064
+"window/row_number, cumsum by Int few/n=10^4" = 3400000         # 2241760
+"window/row_number, cumsum by Int few/n=10^6" = 420000000       # 279640288
+
+[memory."1.10"]
+"arrange/Float64/n=10" = 16384                                  # 6016
+"arrange/Float64/n=10^4" = 16000000                             # 10544176
+"arrange/Float64/n=10^6" = 2200000000                           # 1458141664
+"arrange/Int, desc Float64/n=10" = 16384                        # 5104
+"arrange/Int, desc Float64/n=10^4" = 18000000                   # 11506208
+"arrange/Int, desc Float64/n=10^6" = 2800000000                 # 1802189968
+"arrange/String/n=10" = 16384                                   # 5696
+"arrange/String/n=10^4" = 30000000                              # 19658048
+"arrange/String/n=10^6" = 4200000000                            # 2751966256
+"count_by/String few/n=10" = 27000                              # 17872
+"count_by/String few/n=10^4" = 1300000                          # 806304
+"count_by/String few/n=10^6" = 150000000                        # 95846304
+"distinct/Int, String/n=10" = 16384                             # 10496
+"distinct/Int, String/n=10^4" = 380000                          # 252064
+"distinct/Int, String/n=10^6" = 37000000                        # 24012080
+"filter/x > 0/n=10" = 16384                                     # 5392
+"filter/x > 0/n=10^4" = 1500000                                 # 973456
+"filter/x > 0/n=10^6" = 150000000                               # 97293168
+"io/read_arrow/n=10^5" = 19000000                               # 12290560
+"io/read_csv/n=10^5" = 29000000                                 # 18702152
+"io/write_arrow/n=10^5" = 9500000                               # 6288592
+"io/write_csv/n=10^5" = 31000000                                # 20031808
+"mutate/z = 2x + y/n=10" = 16384                                # 8432
+"mutate/z = 2x + y/n=10^4" = 1200000                            # 799744
+"mutate/z = 2x + y/n=10^6" = 120000000                          # 79999744
+"pipeline/filter, mutate, select/n=10" = 21000                  # 13808
+"pipeline/filter, mutate, select/n=10^4" = 2000000              # 1317504
+"pipeline/filter, mutate, select/n=10^6" = 200000000            # 133275840
+"select/2 columns/n=10" = 16384                                 # 2352
+"select/2 columns/n=10^4" = 16384                               # 2416
+"select/2 columns/n=10^6" = 16384                               # 2416
+"slice_head/n = 10/n=10" = 16384                                # 5184
+"slice_head/n = 10/n=10^4" = 130000                             # 85104
+"slice_head/n = 10/n=10^6" = 13000000                           # 8005120
+"summarise/Int few/n=10" = 33000                                # 21536
+"summarise/Int few/n=10^4" = 1300000                            # 814160
+"summarise/Int few/n=10^6" = 150000000                          # 95854160
+"summarise/Int many/n=10^4" = 5000000                           # 3296928
+"summarise/Int many/n=10^6" = 520000000                         # 340460240
+"summarise/String few/n=10" = 36000                             # 23872
+"summarise/String few/n=10^4" = 1300000                         # 817168
+"summarise/String few/n=10^6" = 150000000                       # 95857168
+"summarise/String many/n=10^4" = 5700000                        # 3774736
+"summarise/String many/n=10^6" = 570000000                      # 376006048
+"window/row_number, cumsum by Int few/n=10" = 26000             # 16816
+"window/row_number, cumsum by Int few/n=10^4" = 3600000         # 2370752
+"window/row_number, cumsum by Int few/n=10^6" = 450000000       # 295407872
