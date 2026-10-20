@@ -124,6 +124,11 @@ Base.propertynames(f::Frame) = copy(getfield(f, :names))
 
 Frame equality from `chui-frames.md` Definitions: equal column tables (by `isequal`) and
 equal grouping columns.
+
+This is a weaker relation than `isequal(a::Frame, b::Frame)`: it ignores the `drop` flag, which
+`isequal`, `==` and `hash` on `Frame` include (user decision at the phase-2c ★, 2026-10-20). Two
+frames that differ only in `drop` are frame-equal but not `isequal`, because later verbs treat
+them differently (a `drop = false` frame keeps its empty groups).
 """
 frame_equal(a, b) =
     isequal(Tables.columntable(a), Tables.columntable(b)) && isequal(groupcols(a), groupcols(b))
@@ -135,7 +140,7 @@ frame_equal(a, b) =
 _samestructure(a::Frame, b::Frame) =
     a.names == b.names && a.nrow == b.nrow && a.groups == b.groups && a.drop == b.drop
 
-"`isequal(a::Frame, b::Frame)`: the same names in order, row count, grouping columns and drop flag, and `isequal` columns (NaN equals NaN, `-0.0` differs from `0.0`, `missing` equals `missing`)."
+"`isequal(a::Frame, b::Frame)`: the same names in order, row count, grouping columns and drop flag, and `isequal` columns (NaN equals NaN, `-0.0` differs from `0.0`, `missing` equals `missing`). Stronger than the contract's `frame_equal`, which ignores the drop flag."
 function Base.isequal(a::Frame, b::Frame)
     a === b && return true
     _samestructure(a, b) || return false
