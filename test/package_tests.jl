@@ -21,7 +21,16 @@ end
     INTERFACE = (
         # Tables.jl interface (docs: "Implementing the Interface"; Tables.Scan, Tables 1.14)
         :istable, :columnaccess, :rowaccess, :columns, :rows, :columnnames, :getcolumn,
-        :schema, :Schema, :partitions, :Scan, :columntable, :rowtable,
+        :schema, :Schema, :partitions, :Scan, :columntable, :rowtable, :rowcount, :Partitioner,
+        # Tables.Scan's pushdown vocabulary (Tables 1.14 docs; LC-10, ADR-0004 rule 1)
+        :Col, :ScanExpr, :filtermask, :resolve,
+        # Arrow.jl's documented writer API (ADR-0010; the adapter is its only caller)
+        :write, :append, :Writer,
+        # Arrow.jl storage types for Date32/Timestamp(ms), so no JuliaLang.* extension type is
+        # written. NOT documented by Arrow.jl: revisit with ADR-0010's Arrow.jl 3.0 trigger.
+        :DATE, :DATETIME,
+        # Dates' documented abstract type (Dates manual, "Dates.AbstractDateTime")
+        :AbstractDateTime,
         # DataAPI generics (README: "functions to be extended")
         :refarray, :refpool, :refvalue, :nrow, :ncol,
         # DataAPI selector types, re-exported as the same bindings (ADR-0002 rule 7)

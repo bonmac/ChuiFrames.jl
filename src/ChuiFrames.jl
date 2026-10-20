@@ -10,6 +10,8 @@ Phase 2 (eager frame). See `docs/agent/BRIEF.md`, `docs/adr/` and `HANDOFF.md`.
 module ChuiFrames
 
 using Dates: Dates, Date, DateTime
+using PrecompileTools: @compile_workload, @setup_workload
+using Statistics: mean
 using DataAPI: DataAPI
 using StringViews: StringView
 using Tables: Tables
@@ -33,6 +35,29 @@ include("io/io.jl")
 include("show/show.jl")
 
 export Frame, groupcols, isgrouped
+
+# TTFX workload (ADR-0011; ADR-0010 rule 4: one small Arrow write). It covers the common first
+# calls: building a frame, one pipeline of the core verbs, printing, and an Arrow and CSV round
+# trip in a temporary directory.
+@setup_workload begin
+    nt = (g = ["a", "b", "a", missing], x = [1.5, 2.0, NaN, 4.0], n = [1, 2, 3, 4])
+    @compile_workload begin
+        _init_formats()
+        f = Frame(nt)
+        r = f |> filter(c.n .> 1) |> mutate(y = c.x .* 2) |> group_by(:g) |>
+            summarise(m = mean(c.y), k = n_rows()) |> arrange(desc(c.m))
+        show(IOContext(devnull, :displaysize => (24, 80), :limit => true), MIME("text/plain"), r)
+        dir = mktempdir()
+        try
+            write_arrow(f, joinpath(dir, "w.arrow"))
+            read_arrow(joinpath(dir, "w.arrow"))
+            write_csv(f, joinpath(dir, "w.csv"))
+            read_csv(joinpath(dir, "w.csv"))
+        finally
+            rm(dir; recursive = true, force = true)
+        end
+    end
+end
 
 function __init__()
     _init_formats()
