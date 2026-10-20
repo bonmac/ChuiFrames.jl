@@ -19,6 +19,7 @@ and ADRs cite them as "<note> <ID>". Dated 2026-10-20 unless a note says otherwi
 | [grammar.md](grammar.md) | The `c.x` capture on 1.10 and 1.13, gaps, `missing`/NaN semantics | GR-01… |
 | [source-sink.md](source-sink.md) | Tables.jl partitions, readers/writers, connector prior art | SS-01… |
 | [differentials-polars-duckdb.md](differentials-polars-duckdb.md) | Phase 2c: eager verbs vs Polars 2.0.0 and DuckDB 1.5.6; every divergence | — |
+| [performance.md](performance.md) | Phase 2c: budgets, load/TTFX, ratios vs DataFrames.jl, Polars, DuckDB; AirspeedVelocity | PF-01… |
 | [lane-checks.md](lane-checks.md) | The lane owner's own confirmations | LC-01… |
 
 How parity matrices are used: each row's "Test" column is the phase's test checklist (brief,
