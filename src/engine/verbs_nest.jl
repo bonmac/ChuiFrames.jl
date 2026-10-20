@@ -63,7 +63,7 @@ function _checkunique(names::Vector{Symbol}, verb)
 end
 
 _outframe(f::Frame, names::Vector{Symbol}, cols::Vector{AbstractColumn}, n::Int) =
-    Frame(names, cols, Symbol[g for g in f.groups if g in names], nothing, n)
+    Frame(names, cols, Symbol[g for g in f.groups if g in names], nothing, n, f.drop)
 
 @inline _isnull(x) = x === missing || x === nothing
 
@@ -449,7 +449,7 @@ function apply(s::UnnestWiderStep, f::Frame)
             push!(outcols, f.columns[k])
         end
     end
-    return Frame(_checkunique(names, "unnest_wider"), outcols, Symbol[g for g in f.groups if g in names], nothing, f.nrow)
+    return Frame(_checkunique(names, "unnest_wider"), outcols, Symbol[g for g in f.groups if g in names], nothing, f.nrow, f.drop)
 end
 
 function _unnest_widen(col, nm::Symbol, sep, n::Int)
@@ -518,7 +518,7 @@ function apply(s::PackStep, f::Frame)
         push!(names, nm)
         push!(cols, StructColumn(NamedTuple{Tuple(inner)}(Tuple(getcol(f, n) for n in ns)); length = f.nrow))
     end
-    return Frame(_checkunique(names, "pack"), cols, copy(f.groups), nothing, f.nrow)
+    return Frame(_checkunique(names, "pack"), cols, copy(f.groups), nothing, f.nrow, f.drop)
 end
 
 struct UnpackStep <: Step
@@ -553,5 +553,5 @@ function apply(s::UnpackStep, f::Frame)
             push!(cols, f.columns[k])
         end
     end
-    return Frame(_checkunique(names, "unpack"), cols, Symbol[g for g in f.groups if g in names], nothing, f.nrow)
+    return Frame(_checkunique(names, "unpack"), cols, Symbol[g for g in f.groups if g in names], nothing, f.nrow, f.drop)
 end

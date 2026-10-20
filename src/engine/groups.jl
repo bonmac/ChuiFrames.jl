@@ -273,13 +273,30 @@ function _build_gindex_keep(f::Frame, keys::Vector{Symbol})
     return _gindex_from(grows, n, keycols)
 end
 
-"The frame's group index, built when the frame is grouped but carries none."
+"The frame's group index, built (with the frame's drop flag) when the frame is grouped but carries none."
 function gindex(f::Frame)
     isempty(f.groups) && return nothing
     f.gindex !== nothing && return f.gindex
-    return build_gindex(f, f.groups)
+    return build_gindex(f, f.groups; drop = f.drop)
 end
 
-"`f` regrouped by `keys` (no keys: ungrouped), with a fresh group index (`drop`: see [`build_gindex`](@ref))."
+"""
+    take_gindex(gi, idx) -> GroupIndex
+
+The group index of the rows `idx` (old row numbers, in their new order) under the same groups:
+every group of `gi` is kept, with its key values, even when no row of `idx` falls in it; rows
+of each group stay in (new) row order. This is how a row verb treats a `drop = false` frame
+(dplyr 1.2.0 keeps the groups of a `.drop = FALSE` grouped_df through `filter`, `arrange`,
+the slices and `distinct`, for any key type).
+"""
+function take_gindex(gi::GroupIndex, idx::AbstractVector{<:Integer})
+    rowsets = [Int[] for _ in 1:ngroups(gi)]
+    for (j, r) in enumerate(idx)
+        push!(rowsets[gi.ids[r]], j)
+    end
+    return _gindex_from(rowsets, length(idx), gi.keys)
+end
+
+"`f` regrouped by `keys` (no keys: ungrouped), with a fresh group index (`drop`: see [`build_gindex`](@ref)); `drop` is stored on the result."
 regroup(f::Frame, keys::Vector{Symbol}; drop::Bool = true) =
-    Frame(copy(f.names), copy(f.columns), copy(keys), isempty(keys) ? nothing : build_gindex(f, keys; drop), f.nrow)
+    Frame(copy(f.names), copy(f.columns), copy(keys), isempty(keys) ? nothing : build_gindex(f, keys; drop), f.nrow, drop)

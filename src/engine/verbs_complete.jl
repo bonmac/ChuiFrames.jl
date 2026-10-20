@@ -65,7 +65,7 @@ function apply(s::FillStep, f::Frame)
         end
         cols[i] = take(col, idx)
     end
-    return Frame(copy(f.names), cols, copy(f.groups), f.gindex, f.nrow)
+    return Frame(copy(f.names), cols, copy(f.groups), f.gindex, f.nrow, f.drop)
 end
 
 # =============================================================================================
@@ -184,7 +184,7 @@ function apply(s::ExpandStep, f::Frame)
         push!(names, n)
         push!(cols, take(getcol(f, n), facidx[j]))
     end
-    return Frame(names, cols, copy(f.groups), nothing, length(keyrows))
+    return Frame(names, cols, copy(f.groups), nothing, length(keyrows), f.drop)
 end
 
 # =============================================================================================
@@ -263,7 +263,7 @@ function apply(s::CompleteStep, f::Frame)
             i = f.lookup[k]
             cols[i] = _replace_missing(cols[i], v, _ -> true, k, false)
         end
-        return Frame(copy(f.names), cols, copy(f.groups), f.gindex, f.nrow)
+        return Frame(copy(f.names), cols, copy(f.groups), f.gindex, f.nrow, f.drop)
     end
     grid = apply(ExpandStep(s.factors), f)
     keys = grid.names
@@ -311,5 +311,5 @@ function apply(s::CompleteStep, f::Frame)
         ok = s.explicit ? (_ -> true) : (r -> didx[r] == 0)
         cols[i] = _replace_missing(cols[i], v, ok, k, s.explicit ? false : (orig_nullable && !(k in keys)))
     end
-    return Frame(names, cols, copy(f.groups), nothing, length(gidx))
+    return Frame(names, cols, copy(f.groups), nothing, length(gidx), f.drop)
 end

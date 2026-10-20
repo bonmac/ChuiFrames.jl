@@ -59,7 +59,7 @@ function apply(s::BindRowsStep, f::Frame)
     names, cols = _bind(frames, [x for x in ids], s.id)
     out = Frame(names, cols, Symbol[], nothing, sum(fr.nrow for fr in frames))
     g = [x for x in f.groups if x in names]
-    return isempty(g) ? out : regroup(out, g)
+    return isempty(g) ? out : regroup(out, g; drop = f.drop)
 end
 
 struct BindColsStep <: Step
@@ -77,7 +77,7 @@ function apply(s::BindColsStep, f::Frame)
     cols = AbstractColumn[x for fr in frames for x in fr.columns]
     dup = Set(n for n in names if count(==(n), names) > 1)
     names = [n in dup ? Symbol(n, "...", i) : n for (i, n) in enumerate(names)]
-    return Frame(names, cols, Symbol[g for g in f.groups if g in names], nothing, f.nrow)
+    return Frame(names, cols, Symbol[g for g in f.groups if g in names], nothing, f.nrow, f.drop)
 end
 
 struct SetStep <: Step
@@ -121,5 +121,5 @@ function apply(s::SetStep, x::Frame)
     end
     out = take(both, keep)
     g = x.groups
-    return isempty(g) ? out : regroup(out, copy(g))
+    return isempty(g) ? out : regroup(out, copy(g); drop = x.drop)
 end
