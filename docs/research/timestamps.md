@@ -59,7 +59,7 @@ through Arrow, Parquet and CSV like the producers' own tools? Input to ADR-0021.
 
 ## Julia packages
 
-- **TS-06 Arrow.jl 2.8.1 writer.** `Arrow.Timestamp{U,TZ}` (`src/eltypes.jl:262-272`) holds
+- **TS-06 Arrow.jl 2.8.1 writer.** `Arrow.Timestamp{U,TZ}` (Arrow.jl's `eltypes.jl:262-272`) holds
   `x::Int64`; `U` is an `Arrow.Meta.TimeUnit.T` enum value, `TZ` a `Symbol` or `nothing`;
   `Arrow.DATETIME === Timestamp{MILLISECOND,nothing}`. A column of `Arrow.Timestamp` values, or a
   lazy `AbstractVector` presenting them, is written as Arrow's Timestamp(unit, zone) **with no

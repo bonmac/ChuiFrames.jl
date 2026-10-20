@@ -46,7 +46,7 @@ export Frame, groupcols, isgrouped, ArrowTimestamp
             "public Source, Sink, TablesSource, source_schema, source_label, plan_partitions, " *
                 "read_partition, partition_stats, row_count, partition_row_count, source_ordering, " *
                 "source_groups, isthreadsafe, source_boundedness, open_sink, write_partition!, " *
-                "close_sink!, abort_sink!, register_format!, scan_file"
+                "close_sink!, abort_sink!, register_format!, scan_file, timestamp_unit, timestamp_zone"
         )
     )
 end

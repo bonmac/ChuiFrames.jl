@@ -184,7 +184,7 @@ function _ms_datetime(n, x::Int64)
     inst = Int128(x) + ChuiFrames._UNIX_EPOCH_MS
     ChuiFrames._DT_MIN_MS <= inst <= ChuiFrames._DT_MAX_MS ||
         throw(ArgumentError("Parquet: column $(repr(n)): timestamp $x ms is out of the DateTime range"))
-    return DateTime(Dates.UTM(Int64(inst)))
+    return DateTime(1970) + Dates.Millisecond(x)      # exact: integer ms, range checked above
 end
 
 function _check_timestamp(s::ParquetSource, n::Symbol)

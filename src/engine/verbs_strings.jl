@@ -307,7 +307,8 @@ Base.show(io::IO, s::SeparateWiderRegexStep) = print(
 
 function _regexparts(ps)
     parts = String[]
-    for (nm, p) in ps
+    for (nm, p0) in ps
+        p = String(p0)::String   # pattern text (the constructor stores strings; typed for JET)
         # `(?:p)|` always matches "", so its captures count p's own groups
         ng = length(match(Regex("(?:" * p * ")|"), "").captures)
         ng == 0 || throw(ArgumentError("separate_wider_regex: the pattern $(repr(p)) has $ng capture group(s); use (?:…) for grouping inside patterns"))
