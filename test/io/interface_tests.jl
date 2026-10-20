@@ -93,7 +93,7 @@ end
     if isdefined(ChuiFrames, :lazy)
         @test_broken false   # p2-engine: replace with the lazy filter/select/summarise checks
     else
-        @test_skip "needs p2-engine: lazy filter, select and grouped summary over a Source"
+        @test_skip "needs the phase-3 lazy entry points: lazy filter, select and grouped summary over a Source"
     end
     # A partitioned Tables.jl input is a Source, and plans the same partitions twice.
     parts = Tables.partitioner([(x = [1, 2],), (x = [3],), (x = Int[],)])
@@ -191,7 +191,7 @@ end
     if isdefined(ChuiFrames, :lazy)
         @test_broken false   # p2-engine: filter(.!(c.f .<= 2.0)) / filter(c.f .!= 1.0) lazily, frame-equal to eager
     else
-        @test_skip "needs p2-engine: lazy pruning with these statistics"
+        @test_skip "needs the phase-3 lazy entry points: lazy pruning with these statistics"
     end
 end
 

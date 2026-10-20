@@ -29,6 +29,18 @@ end
     @test column(Union{Int, Float64}[2^53 + 1, 2.5]) isa ObjectColumn
     @test column(Union{Int8, UInt64}[Int8(-1), UInt64(1)]) isa ObjectColumn
     @test isequal(collect(column(Union{Missing, Int, Float64}[1, missing, 2.5])), [1.0, missing, 2.5])
+    # NaN is lossless too (review minor: `==` made NaN look lossy)
+    @test column(Union{Int, Float64}[1, NaN]) isa PrimitiveColumn{Float64}
+end
+
+@testitem "columns: vcat_columns never loses integer precision" tags = [:unit] begin
+    using ChuiFrames: column, vcat_columns, PrimitiveColumn, ObjectColumn
+    big = 2^53 + 1
+    v = vcat_columns([column([big]), column([0.5])])
+    @test !(v isa PrimitiveColumn{Float64})          # was 9.007199254740992e15 (review minor)
+    @test isequal(collect(v), Any[big, 0.5])
+    @test vcat_columns([column([1]), column([0.5])]) isa PrimitiveColumn{Float64}
+    @test isequal(collect(vcat_columns([column([1]), column(Union{Missing, Int}[missing])])), [1, missing])
 end
 
 @testitem "columns: zero-null-slot invariant" tags = [:unit] begin

@@ -1,6 +1,7 @@
 # ADR-0014: Depend on ChuiCore through one internal adapter, switching each piece when ChuiCore releases it
 
-- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★); amended 2026-10-20
+  (see Amendments)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (core dependency)
@@ -84,3 +85,12 @@ ChuiCore's ADR-0001, ADR-0003 and ADR-0005 (Accepted 2026-10-20, in ChuiCore's m
 ## Revisit when
 
 - ChuiCore tags its first release, or its phase-1 ADRs change a name used here.
+
+## Amendments
+
+- **2026-10-20** (relayed by the lead from the user; commit 4485704):
+  - rule 1: `neutral` is public, not exported (ecosystem ADR-0009, as amended). Before, it was
+    listed with the exported names.
+  - rule 4: request R8 was answered with option A. ChuiFrames owns its `missing`-aware
+    aggregators (built on CC-004 in its own code); they are not stand-ins, and rule 5's release
+    gate does not apply to them. Before, they were listed among the requests to ChuiCore.

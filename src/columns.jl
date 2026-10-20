@@ -455,7 +455,7 @@ function _lossless(::Type{P}, v) where {P}
         ismissing(x) && continue
         try
             y = convert(P, x)
-            y == x || return false
+            isequal(y, x) || return false   # isequal: NaN converts losslessly
         catch
             return false
         end
@@ -573,7 +573,9 @@ kinds or value types go through [`column`](@ref) on the promoted values.
 function vcat_columns(cols::AbstractVector)
     isempty(cols) && throw(ArgumentError("vcat_columns needs at least one column"))
     length(cols) == 1 && return cols[1]
-    E = mapreduce(eltype, promote_type, cols)
+    # A Union of the inputs' element types, not `promote_type`: `column` then promotes small
+    # numeric unions only when lossless (ADR-0001 rule 12), so Int + Float64 never rounds.
+    E = Union{map(eltype, cols)...}
     v = Vector{E}(undef, sum(length, cols))
     k = 0
     for c in cols, x in c

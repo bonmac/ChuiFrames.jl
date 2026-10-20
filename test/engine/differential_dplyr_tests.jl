@@ -159,8 +159,15 @@
             okall = length(jcols) == length(r.cols)
             for ((jk, jv), (rk, rv)) in zip(jcols, r.cols)
                 if kind === :skip_keeps_nan && jk == "sx"
-                    nanrows = [x isa AbstractFloat && isnan(x) for x in jv]
+                    # The expected NaN groups come from the INPUT (the groups whose x holds a
+                    # NaN), not from Julia's output, so a group wrongly computed as NaN is
+                    # still caught (review minor, 2026-10-20).
+                    nangroups = Set(Any[d.g[i] for i in eachindex(d.x) if !ismissing(d.x[i]) && isnan(d.x[i])])
+                    jg = last(only(filter(p -> first(p) == "g", jcols)))
+                    nanrows = [any(isequal(gv), nangroups) for gv in jg]
                     @test any(nanrows)                      # the divergence really occurs
+                    @test all(isnan, jv[nanrows])           # ... exactly on those groups
+                    @test !any(x -> x isa AbstractFloat && isnan(x), jv[.!nanrows])
                     jv, rv = jv[.!nanrows], rv[.!nanrows]
                 end
                 ok = length(jv) == length(rv) && all(same(a, b) for (a, b) in zip(jv, rv))
