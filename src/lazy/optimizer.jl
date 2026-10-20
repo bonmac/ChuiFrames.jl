@@ -159,7 +159,7 @@ _nm(x::Col) = x.name
 
 # Columns needed below step `s` given those needed above (`nothing`: every column), or
 # `nothing` when `s` cannot be analysed (selectors, across, options that depend on the schema).
-function _need_in(s::Step, need::Union{Nothing, Set{Symbol}})
+function _need_in(s::Step, need::Union{Nothing, AbstractSet{Symbol}})
     if s isa FilterStep
         need === nothing && return nothing
         all(p -> !_hasselector(p), s.preds) || return nothing
@@ -185,7 +185,7 @@ function _need_in(s::Step, need::Union{Nothing, Set{Symbol}})
     elseif s isa RenameStep
         need === nothing && return nothing
         back = Dict{Symbol, Symbol}(p.first => p.second for p in s.pairs)
-        return union(Set{Symbol}(get(back, c, c) for c in need), (p.second for p in s.pairs))
+        return union!(Set{Symbol}(get(back, c, c) for c in need), Symbol[p.second for p in s.pairs])
     elseif s isa MutateStep
         (need === nothing || s.keep !== :all || s.before !== nothing || s.after !== nothing) && return nothing
         by = _plainnames(s.by)

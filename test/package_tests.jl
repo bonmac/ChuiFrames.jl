@@ -34,6 +34,9 @@ end
         :Timestamp, :Meta, :TimeUnit,
         # Dates' documented abstract type (Dates manual, "Dates.AbstractDateTime")
         :AbstractDateTime,
+        # `Meta.lower`, documented in the Julia manual (Metaprogramming / Base.Meta), lowers the
+        # rendered kernel for `code_lowered` (ADR-0003 rule 13); not marked `public` in 1.13
+        :lower,
         # Parquet2's documented reader/writer API, used by ext/ChuiFramesParquet2Ext.jl (ADR-0020);
         # checked only when a test has loaded Parquet2 (e.g. `ci.jl test -- all`)
         :Dataset, :FileWriter, :ColumnStatistics, :load, :writetable!, :finalize!,

@@ -92,6 +92,12 @@ end
     q = (filter(c.y .> 1) ⨟ head(2))(lazy(t))
     @test any(startswith("limit pushdown"), fired(q))
     @test col(collect(q; morsel = 1), :y) == [2, 3]
+    # projection through a rename above a non-pushed step (found by the p3-prop properties:
+    # the rename branch built a Set{Any})
+    for p in (filter_out(c.y .> 2) ⨟ rename(yy = :y) ⨟ select(:yy), mutate(z = c.y .* 2) ⨟ rename(yy = :y) ⨟ select(:yy))
+        @test any(startswith("projection pushdown: the scan reads 1 of 4 columns (y)"), fired(p(lazy(t))))
+        @test agrees(p, t)
+    end
     # constant folding of literal-only calls with an exact declared type
     q = filter(c.y .> (lit(1) .+ 1))(lazy(t))
     @test any(startswith("constant folding"), fired(q))

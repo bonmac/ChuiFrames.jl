@@ -14,17 +14,14 @@ the same result either way, so the replay costs only a second run on failure.
 function Base.collect(q::LazyFrame; morsel::Integer = DEFAULT_MORSEL, threads::Bool = true)
     morsel >= 1 || throw(ArgumentError("collect: morsel must be at least 1, got $morsel"))
     opt = optimize(q)
-    stats = ExecStats()
-    result = try
-        execute(physical(opt.plan); morsel = Int(morsel), threads, stats)
+    return try
+        execute(physical(opt.plan); morsel = Int(morsel), threads)
     catch err
         lazyerr = err isa MorselError ? err.err : _taskerror(err)
+        lazyerr isa InterruptException && rethrow()
         reference(q.plan)            # throws the eager exception, if eager throws
         throw(lazyerr)
-    finally
-        _LAST_STATS[] = stats
     end
-    return result
 end
 
 "`collect(s::Source; kw...)`: the whole source as a frame, through the lazy engine (CF-016's `collect(scan_file(path))`)."

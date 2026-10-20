@@ -39,13 +39,18 @@ _alltrue(ps::AbstractVector...) = BitVector(all(p -> p[i] === true, ps) for i in
 _notalltrue(ps::AbstractVector...) = .!_alltrue(ps...)
 "The rows `keep` of every column."
 _keeprows(cols::NamedTuple, keep::BitVector) = map(v -> v[keep], cols)
+"`cols` without column `nm` (`mutate(nm = nothing)`)."
+function _dropcol(cols::NamedTuple, nm::Symbol)
+    ks = Tuple(k for k in keys(cols) if k !== nm)
+    return NamedTuple{ks}(Tuple(cols[k] for k in ks))
+end
 "The row count of a partition's columns."
 _nrows(cols::NamedTuple) = isempty(cols) ? 0 : length(first(cols))
 function _rstep!(body, s::MutateStep, probe::Frame)
     for o in s.outs
         nm = o.first
         if o.second === nothing
-            push!(body, :(cols = Base.structdiff(cols, NamedTuple{($(QuoteNode(nm)),)})))
+            push!(body, :(cols = $(GlobalRef(@__MODULE__, :_dropcol))(cols, $(QuoteNode(nm)))))
         else
             push!(body, :(cols = merge(cols, NamedTuple{($(QuoteNode(nm)),)}(($(_FIT)($(_rnode(o.second)), n),)))))
         end

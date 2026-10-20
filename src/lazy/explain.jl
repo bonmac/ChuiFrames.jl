@@ -74,7 +74,7 @@ function _printpruning(io::IO, ph::Physical, morsel::Int)
     return println(io, "  partitions: ", length(handles) - pruned, " of ", length(handles), " kept, ", pruned, " pruned by statistics")
 end
 
-_exprstring(ex::Expr) = sprint(Base.show_unquoted, Base.remove_linenums!(deepcopy(ex)))
+_exprstring(ex::Expr) = string(Base.remove_linenums!(deepcopy(ex)))
 
 """
     code_lowered([io,] q::LazyFrame)

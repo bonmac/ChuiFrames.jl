@@ -20,11 +20,11 @@
 == pruning ==
   partitions: 3 of 3 kept, 0 pruned by statistics
 == rendered kernel ==
-  (cols->begin
+  cols->begin
           n = ChuiFrames._nrows(cols)
           p1 = ChuiFrames._fitrows(broadcast(>, cols.y, 1), n)
           keep = ChuiFrames._alltrue(p1)
           cols = ChuiFrames._keeprows(cols, keep)
           n = count(keep)
           cols
-      end)
+      end

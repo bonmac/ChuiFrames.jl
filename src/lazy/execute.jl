@@ -90,7 +90,6 @@ mutable struct ExecStats
 end
 ExecStats() = ExecStats(0, 0, 0, false, 0, false)
 
-const _LAST_STATS = Ref{Union{Nothing, ExecStats}}(nothing)
 
 "The `Tables.Scan` the scan node pushes to its source (ADR-0004 rules 1, 3)."
 function pushed_scan(n::ScanNode)
