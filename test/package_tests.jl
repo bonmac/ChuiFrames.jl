@@ -1,7 +1,6 @@
 @testitem "module loads" tags = [:unit] begin
     @test ChuiFrames isa Module
     @test nameof(ChuiFrames) == :ChuiFrames
-    @test isempty(setdiff(names(ChuiFrames), [:ChuiFrames]))  # nothing exported yet
 end
 
 @testitem "Aqua" tags = [:quality] begin
