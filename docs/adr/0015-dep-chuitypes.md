@@ -1,6 +1,6 @@
 # ADR-0015: Depend on ChuiTypes only when async I/O or the stream source needs it, from a release
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (core dependency, deferred)

@@ -9,3 +9,6 @@
   architecture, the source/sink interface, the dependency budget, and one ADR per proposed
   dependency.
 - The phase-1 design spec, `docs/superpowers/specs/2026-10-20-phase1-research-design.md`.
+- ADRs 0001–0020 and the phase-1 spec accepted by the user at the phase-1 ★ (2026-10-20),
+  including two approved brief deviations: Parquet as a Parquet2 extension, and morsel
+  parallelism in phase 3.

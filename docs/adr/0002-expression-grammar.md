@@ -1,6 +1,6 @@
 # ADR-0002: The expression grammar stays macro-free: `c.x` nodes, dots for elementwise, plain calls for whole columns
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl

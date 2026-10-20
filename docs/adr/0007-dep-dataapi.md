@@ -1,6 +1,6 @@
 # ADR-0007: Depend on DataAPI.jl directly for shared selector and data-frame names
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (core dependency)

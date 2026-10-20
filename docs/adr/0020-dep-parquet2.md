@@ -1,6 +1,6 @@
 # ADR-0020: Read and write Parquet through Parquet2.jl, in a package extension
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (weak dependency)
@@ -53,7 +53,8 @@ Findings from [parquet-csv.md](../research/parquet-csv.md), Julia 1.13.2 and 1.1
 
 ## Consequences
 
-- Brief deviation (★): Parquet is "one `using` away", not built in.
+- Brief deviation (★): Parquet is "one `using` away", not built in. The user approved this
+  deviation at the phase-1 ★ on 2026-10-20.
 - Parquet tests run in the extension's test environment, with files written by pyarrow and by
   Parquet2.
 - Arrow IPC (built in) is the recommended on-disk format for ChuiFrames' own data.

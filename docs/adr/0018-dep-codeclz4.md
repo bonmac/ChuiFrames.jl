@@ -1,6 +1,6 @@
 # ADR-0018: Depend on CodecLz4.jl for LZ4-frame-compressed Arrow IPC buffers
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (core dependency)

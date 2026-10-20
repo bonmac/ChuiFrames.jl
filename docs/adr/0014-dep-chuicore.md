@@ -1,6 +1,6 @@
 # ADR-0014: Depend on ChuiCore through one internal adapter, switching each piece when ChuiCore releases it
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (core dependency)

@@ -1,6 +1,6 @@
 # ADR-0019: Depend on CSV.jl 1.x for the built-in CSV reader and writer
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (core dependency)

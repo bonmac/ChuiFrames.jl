@@ -1,6 +1,6 @@
 # ADR-0003: One plan-based engine runs both modes: rule passes, a narrow cost stage, push-based morsel pipelines
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl
@@ -207,6 +207,7 @@ machine, so compare ratios within a run):
     - **Brief deviation (★):** the brief lists parallel execution under phase 5. This ADR moves
       morsel parallelism to phase 3, because lazy == eager must be tested on the parallel paths
       from the start. Phase 5 keeps async I/O, out-of-core and the distributed prototype.
+      The user approved this deviation at the phase-1 ★ on 2026-10-20.
 
 ## Alternatives rejected
 

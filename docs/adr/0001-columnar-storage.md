@@ -1,6 +1,6 @@
 # ADR-0001: Columns are ChuiFrames' own Arrow-layout buffers; ChuiFrames reads Arrow IPC itself and writes it through Arrow.jl
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl

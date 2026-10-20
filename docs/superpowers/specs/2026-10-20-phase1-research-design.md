@@ -3,7 +3,8 @@
 - **Date:** 2026-10-20
 - **Branch:** `feat/phase1-research`
 - **Tier:** T2 (public API, contracts, dependencies)
-- **Status:** awaiting the user at the phase-1 ★ checkpoint. Nothing is implemented.
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★), with every recommendation
+  taken. Nothing is implemented.
 
 ## Goal
 

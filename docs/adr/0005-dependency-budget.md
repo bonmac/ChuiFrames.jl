@@ -1,6 +1,6 @@
 # ADR-0005: The dependency budget: ten registered core packages, Parquet and connectors as extensions
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl
@@ -88,6 +88,8 @@ Measured facts:
 
 ## Consequences
 
+- Brief deviation, approved by the user at the phase-1 ★ on 2026-10-20: Parquet is a package
+  extension on Parquet2, not built in (ADR-0020); the Arrow writer stays in the core (ADR-0010).
 - Phase 2's `Project.toml` lists the ten core packages and two stdlibs, with these compat
   entries in place before the first `Pkg.add` (LC-09 pitfall).
 - Each future core dependency carries a measured load-time delta.

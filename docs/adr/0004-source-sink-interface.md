@@ -1,6 +1,6 @@
 # ADR-0004: Sources take `Tables.Scan` pushdown and answer with a residual, plus statistics and handles; sinks are transactional; v0 is bounded-only
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (the interface is published in the coordinator's `chui-frames.md`)
