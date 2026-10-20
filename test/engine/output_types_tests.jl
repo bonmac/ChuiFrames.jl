@@ -23,9 +23,12 @@
     # count_by with weights keeps the weight column's type
     r3 = (g = ["a", "b", "a"], w = [1.5, 2.0, 0.5]) |> count_by(:g; wt = c.w)
     @test et(r3, :n) === Float64
-    # ranks are Int whatever the data (nullable when their argument is)
+    # rank types follow the argument's declared type, not the data: Int for an Int column;
+    # nullable for a float column (NaN ranks as missing) with or without a NaN present
     r4 = (x = [3, 1, 2],) |> mutate(r = min_rank(c.x), k = row_number())
     @test et(r4, :r) === Int && et(r4, :k) === Int
+    @test et((x = [3.0, 1.0],) |> mutate(r = min_rank(c.x)), :r) === Union{Missing, Int}
+    @test et((x = [3.0, NaN],) |> mutate(r = min_rank(c.x)), :r) === Union{Missing, Int}
     # each result is writable
     for (fr, nm) in ((f, :z), (r, :s), (r2, :m), (r3, :n))
         p = tempname() * ".arrow"

@@ -73,7 +73,14 @@ The read-only reviewer requested changes: 3 blockers and 1 major, all fixed.
 - **M1** (Parquet µs/ns timestamps truncated): fixed in `cc21bbb`.
 - **Minors fixed:** lossless NaN, `vcat_columns` precision, the NaN-group oracle, the skip labels, and the ADR-0014 amendment note.
 
+Final verdict: **approve** (on `38ad1c8`). After it, rank nullability was fixed to follow the
+argument's declared type (a float argument may rank NaN as `missing`).
+
 Minors left open, with reasons:
+- `case_when`'s element type still depends on whether its default fires (its static type is
+  unknown unless all branches are Bool); phase 3 must type it before lazy == eager.
+- The Parquet µs/ns check reads units from the first row group's top-level columns only (not
+  nested timestamps).
 - No property test for the zero-null-slot invariant across verbs. The constructors enforce it.
 - Parquet writes one row group per partition, not per morsel (ADR-0020 rule 1). Re-split in phase 3, when morsels exist.
 - The ExplicitImports ignore list matches by name, not by module, which its API does not support.

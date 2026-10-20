@@ -327,10 +327,11 @@ function static_type(x::Reduce, ctx::SelectCtx)
 end
 function static_type(x::Window, ctx::SelectCtx)
     if x.kind in (:row_number, :min_rank, :dense_rank)
-        # a rank is `missing` only where its argument is, so it is nullable only when the
-        # argument's declared type is (review B1)
+        # a rank is `missing` where its argument is `missing` or NaN (as in dplyr), so it is
+        # nullable exactly when the argument's declared type admits either (review B1)
         isempty(x.args) && return Int
-        return any(a -> _nullable(static_type(a, ctx)) || static_type(a, ctx) === Any, x.args) ? Union{Missing, Int} : Int
+        mayskip(T) = T === Any || _nullable(T) || nonmissingtype(T) <: AbstractFloat || !isconcretetype(nonmissingtype(T))
+        return any(a -> mayskip(static_type(a, ctx)), x.args) ? Union{Missing, Int} : Int
     end
     x.kind === :consecutive_id && return Int
     return Any
