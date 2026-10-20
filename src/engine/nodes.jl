@@ -266,6 +266,50 @@ end
 
 Base.:|>(a::Node, f) = Pipe(a, f)
 
+"""
+    Typed{T}
+
+The callable built by [`typed(T, f)`](@ref): `f` with a declared result type `T`. Printed as
+`typed(T, f)`; equal when `T` and `f` are (CF-005).
+"""
+struct Typed{T, F}
+    f::F
+end
+
+"""
+    typed(T, f)
+
+Declare the result type of a whole-column function: `c.x |> typed(T, f)` is `c.x |> f` whose
+static type is `T` (ADR-0002 rule 11), instead of unknown (`Any`). `T` is the **element** type
+when `f` returns a vector in a column context (`mutate`, `filter`, `reframe`), and the type of
+the value when `f` returns one value (always in `summarise`). So
+`filter(c.s |> typed(Bool, v -> occursin.("a", v)))` is planned as a `Bool` predicate (no
+row-by-row check), and `filter(c.x |> typed(Int, identity))` is an `ArgumentError` at plan time.
+
+The result is checked when evaluated: a value that is not `isa T` is an `ArgumentError` naming
+the expression, `T` and the value's type. Nothing is converted. Called directly,
+`typed(T, f)(v)` applies `f` and checks the same way.
+"""
+typed(::Type{T}, f) where {T} = Typed{T, typeof(f)}(f)
+typed(T, f) = throw(ArgumentError("typed(T, f): T must be a type, got $(repr(T))"))
+(t::Typed{T})(v) where {T} = (r = t.f(v); _checktyped(r, T, true, t); r)
+Base.show(io::IO, t::Typed{T}) where {T} = print(io, "typed(", T, ", ", _fname(t.f), ")")
+Base.:|>(a::Node, t::Typed) = Pipe(a, t)
+
+# `r` checked against the declared type `T`: elementwise for a vector when `elementwise`.
+function _checktyped(r, ::Type{T}, elementwise::Bool, what) where {T}
+    if elementwise && r isa AbstractVector
+        eltype(r) <: T && return nothing
+        for y in r
+            y isa T || _typederror(what, T, typeof(y), "an element")
+        end
+    else
+        r isa T || _typederror(what, T, typeof(r), "a value")
+    end
+    return nothing
+end
+_typederror(what, T, S, kind) = throw(ArgumentError("$(what) declares result type $T but gave $kind of type $S; typed(T, f) checks and never converts (convert inside f)"))
+
 Base.cumsum(a::Node) = Window(:cumsum, Node[a], (), _NOKW)
 Base.cumprod(a::Node) = Window(:cumprod, Node[a], (), _NOKW)
 Base.accumulate(op, a::Node; init = nothing) =
@@ -324,6 +368,7 @@ end
 Base.show(io::IO, x::Reduce) = _showcall(io, x.fname, (x.pre..., x.arg, x.post...), x.kw)
 Base.show(io::IO, x::Pipe) = print(io, "(", x.arg, " |> ", _fname(x.f), ")")
 Base.show(io::IO, x::Window) = x.kind === :row_number && isempty(x.args) ? print(io, "row_number()") :
+    x.kind === :ntile && isempty(x.args) ? print(io, "ntile(n = ", x.params[1], ")") :
     _showcall(io, x.kind, x.kind === :accumulate ? (x.params..., x.args...) : (x.args..., x.params...), x.kw)
 Base.show(io::IO, ::NRows) = print(io, "n_rows()")
 Base.show(io::IO, x::Desc) = print(io, "desc(", x.inner, ")")
