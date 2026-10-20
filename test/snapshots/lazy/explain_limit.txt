@@ -1,0 +1,30 @@
+== logical plan ==
+  head(2)
+  filter((c.y .> 1))
+  scan Frame 6×4
+== optimized plan ==
+  head(2)
+  scan Frame 6×4
+    filter: (c.y .> 1)
+    limit: 2 per partition
+== rules fired ==
+  - predicate pushdown: filter((c.y .> 1)) into the scan
+  - limit pushdown: head(2) into the scan (per partition)
+== physical plan ==
+  scan: Frame 6×4
+    pushed to the source: Tables.Cmp{Int64}(Tables.OP_GT, Tables.Col(:y), 1)
+    pushed limit: 2 rows per partition
+  streamed stage, per morsel: filter((c.y .> 1)) (re-applied scan predicates)
+  limit: head(2) in morsel order, sequential (foldxl); stops the scan early
+  then materialize (concatenate in morsel order)
+== pruning ==
+  partitions: 3 of 3 kept, 0 pruned by statistics
+== rendered kernel ==
+  (cols->begin
+          n = ChuiFrames._nrows(cols)
+          p1 = ChuiFrames._fitrows(broadcast(>, cols.y, 1), n)
+          keep = ChuiFrames._alltrue(p1)
+          cols = ChuiFrames._keeprows(cols, keep)
+          n = count(keep)
+          cols
+      end)

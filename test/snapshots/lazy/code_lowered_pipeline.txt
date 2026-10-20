@@ -1,0 +1,59 @@
+# rendered kernel: one partition's columns as `cols`
+CodeInfo(
+1 ─ %1  = ChuiFrames.partition
+│         cols = %1
+│   %3  = ChuiFrames._nrows
+│         n = (%3)(cols)
+│   %5  = ChuiFrames._fitrows
+│   %6  = ChuiFrames.broadcast
+│   %7  =   dynamic Base.getproperty(cols, :x)
+│   %8  =   dynamic (%6)(>, %7, 3.5)
+│   %9  = n
+│         p1 = (%5)(%8, %9)
+│   %11 = ChuiFrames._fitrows
+│   %12 = ChuiFrames.broadcast
+│   %13 =   dynamic Base.getproperty(cols, :y)
+│   %14 =   dynamic (%12)(>=, %13, 2)
+│   %15 = n
+│         p2 = (%11)(%14, %15)
+│   %17 = ChuiFrames._alltrue
+│   %18 = p1
+│   %19 = p2
+│         keep = (%17)(%18, %19)
+│   %21 = ChuiFrames._keeprows
+│   %22 = keep
+│         cols = (%21)(cols, %22)
+│   %24 = ChuiFrames.count
+│   %25 = keep
+│         n = (%24)(%25)
+│   %27 = ChuiFrames.NamedTuple
+│   %28 =   builtin Core.apply_type(%27, (:g, :x, :yy))
+│   %29 =   dynamic Base.getproperty(cols, :g)
+│   %30 =   dynamic Base.getproperty(cols, :x)
+│   %31 =   dynamic Base.getproperty(cols, :y)
+│   %32 =   builtin Core.tuple(%29, %30, %31)
+│         cols = (%28)(%32)
+│   %34 = ChuiFrames.NamedTuple
+│   %35 =   builtin Core.apply_type(%34, (:g, :x, :yy))
+│   %36 =   dynamic Base.getproperty(cols, :g)
+│   %37 =   dynamic Base.getproperty(cols, :x)
+│   %38 =   dynamic Base.getproperty(cols, :yy)
+│   %39 =   builtin Core.tuple(%36, %37, %38)
+│         cols = (%35)(%39)
+│   %41 = ChuiFrames.merge
+│   %42 = cols
+│   %43 = ChuiFrames.NamedTuple
+│   %44 =   builtin Core.tuple(:z)
+│   %45 =   builtin Core.apply_type(%43, %44)
+│   %46 = ChuiFrames._fitrows
+│   %47 = ChuiFrames.broadcast
+│   %48 =   dynamic Base.getproperty(cols, :yy)
+│   %49 =   dynamic (%47)(*, %48, 2)
+│   %50 = n
+│   %51 =   dynamic (%46)(%49, %50)
+│   %52 =   builtin Core.tuple(%51)
+│   %53 =   dynamic (%45)(%52)
+│         cols = (%41)(%42, %53)
+│   %55 = cols
+└──       return %55
+)
