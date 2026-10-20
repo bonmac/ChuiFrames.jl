@@ -1,0 +1,55 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "v1",
+   "type": "string_view",
+   "nullable": true
+  },
+  {
+   "name": "v2",
+   "type": "string_view",
+   "nullable": true
+  },
+  {
+   "name": "bv",
+   "type": "binary_view",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  5
+ ],
+ "num_rows": 5,
+ "columns": {
+  "v1": [
+   "short",
+   "a string longer than twelve bytes",
+   null,
+   "\u00fcn\u00efc\u00f6d\u00e9 text, long enough",
+   ""
+  ],
+  "v2": [
+   "SHORT",
+   "A STRING LONGER THAN TWELVE BYTES",
+   null,
+   "\u00dcN\u00cfC\u00d6D\u00c9 TEXT, LONG ENOUGH",
+   ""
+  ],
+  "bv": [
+   {
+    "bytes": "78"
+   },
+   {
+    "bytes": "612062696e6172792076616c7565206c6f6e676572207468616e203132"
+   },
+   null,
+   {
+    "bytes": ""
+   },
+   {
+    "bytes": "0001"
+   }
+  ]
+ }
+}

@@ -1,0 +1,19 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "halffloat",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  1
+ ],
+ "num_rows": 1,
+ "columns": {
+  "x": [
+   1.5
+  ]
+ }
+}

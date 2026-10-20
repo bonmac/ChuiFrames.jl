@@ -1,0 +1,21 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "month_day_nano_interval",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  1
+ ],
+ "num_rows": 1,
+ "columns": {
+  "x": [
+   {
+    "repr": "MonthDayNano(months=1, days=2, nanoseconds=3)"
+   }
+  ]
+ }
+}

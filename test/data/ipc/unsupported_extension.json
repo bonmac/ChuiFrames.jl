@@ -1,0 +1,21 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "extension<arrow.uuid>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  1
+ ],
+ "num_rows": 1,
+ "columns": {
+  "x": [
+   {
+    "repr": "30313233-3435-3637-3839-616263646566"
+   }
+  ]
+ }
+}

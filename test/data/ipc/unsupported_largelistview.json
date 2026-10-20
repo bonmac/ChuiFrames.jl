@@ -1,0 +1,23 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "large_list_view<item: int64>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  1
+ ],
+ "num_rows": 1,
+ "columns": {
+  "x": [
+   {
+    "list": [
+     1
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,33 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "int64",
+   "nullable": false
+  },
+  {
+   "name": "y",
+   "type": "double",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  2,
+  0,
+  1
+ ],
+ "num_rows": 3,
+ "columns": {
+  "x": [
+   1,
+   2,
+   3
+  ],
+  "y": [
+   0.5,
+   null,
+   1.0
+  ]
+ }
+}

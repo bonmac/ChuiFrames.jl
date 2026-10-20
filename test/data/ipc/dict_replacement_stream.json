@@ -1,0 +1,28 @@
+{
+ "format": "stream",
+ "schema": [
+  {
+   "name": "d",
+   "type": "dictionary<values=string, indices=int32, ordered=0>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  3,
+  3,
+  2
+ ],
+ "num_rows": 8,
+ "columns": {
+  "d": [
+   "x",
+   "y",
+   "x",
+   "q",
+   "p",
+   null,
+   "m",
+   "m"
+  ]
+ }
+}
