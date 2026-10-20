@@ -32,6 +32,9 @@ include("ipc/ipc.jl")
 # ADR-0010, ADR-0019).
 include("io/io.jl")
 
+# The lazy engine: plans, optimizer, pushdown and pruning, morsel execution, explain (phase 3).
+include("lazy/lazy.jl")
+
 # tibble-style printing and the name-conflict banner stand-in.
 include("show/show.jl")
 
