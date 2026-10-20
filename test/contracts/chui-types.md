@@ -1,4 +1,5 @@
-<!-- vendored contract: coordinator commit ff0100a, contracts/chui-types.md, copied 2026-10-19 -->
+<!-- vendored contract: coordinator commit e206271, contracts/chui-types.md, copied 2026-10-20 -->
+
 # Contract: chui-types (v0)
 
 > **Binding since 2026-10-19** (ADR-0002/0004/0007/0009/0010 Accepted at the L0 checkpoint).
@@ -35,34 +36,52 @@ They bind the ecosystem's design now through ADR-0009 §4 and ADR-0002 §2.
 - ChuiCore only *documents* purity and effect conventions; it ships no runtime (ADR-0009 §4).
 - Future test, once named: every effect-like value a downstream produces for async work is, or
   converts to, the runtime's effect type and runs through its run function; cancelling it through
-  the runtime cancels the underlying `Task`.
+  the runtime runs its canceller, or abandons and counts a foreign `Task` that has none
+  (obligation 2, ADR-0013).
 
 **Conversions to and from the runtime live in ChuiTypes** (was CT-002).
 - The adapters between the runtime's effect type and other effect-like values (plain `Task`,
   `Channel`, thrown exceptions, ChuiTypes' own lazy IO values, futures and streams) are defined
   **in ChuiTypes**, not downstream.
-- Semantics every adapter keeps:
-  - *Task → effect:* running the effect runs the task (once) and succeeds with `fetch(task)`'s
-    value; if the task fails, the effect fails with the task's exception in its error channel,
-    not as a thrown `TaskFailedException`.
-  - *Effect → Task:* the task's result is the effect's success value; an effect failure is thrown
-    from `fetch` as the original exception; cancelling the effect stops the task.
-  - *Exceptions:* a thrown exception inside an effect becomes a value in the error channel;
-    converting back rethrows the same exception object.
+- Semantics every adapter keeps (amended by ADR-0013, from ChuiTypes ADR-0006). The **error
+  channel** is the runtime's `Cause`: `Fail(e)`, `Die(ex, bt)` or `Interrupted` (ChuiTypes
+  ADR-0002 §3).
+  - *Task → effect:* running the effect runs the task (once; later runs see the same outcome)
+    and succeeds with the task's value. If the task fails, the effect fails with `Fail(ex)`, where
+    `ex` is the task's own exception object (`task.exception`), never the
+    `TaskFailedException`. **Cancelling** a `fromtask(t::Task)` effect runs its canceller if
+    one was given, then awaits the task. Without a canceller the effect ends `Interrupted` at
+    once, and the task is **abandoned** and counted in the runtime's orphan counter: a started
+    foreign `Task` cannot be stopped from outside. (`fromtask(f::Function)` runs `f` as
+    cooperative work under the effect's cancel state and awaits it on cancellation.)
+  - *Effect → Task:* the task's result is the effect's success value. `fetch` on the returned
+    **`Fiber`** handle throws the original exception. A Base `Task` from `totask` cannot do
+    that, because Base's `fetch` always wraps: its `fetch` throws a `TaskFailedException` whose
+    `task.exception === original`. Cancelling the effect stops its task at the next step or
+    runtime primitive.
+  - *Exceptions:* a thrown exception inside an effect becomes a value in the error channel (a
+    `Die`); converting back through `run` or a `Fiber` rethrows the same exception object
+    (`===`); through `totask`, Base wraps it as above.
   - *Channel ↔ effect/stream:* closing the channel ends the stream; an exception closing the
     channel becomes a stream failure.
-  - *Round trip:* converting to the runtime and back gives a value that behaves as the original
-    (same result, same failure, same cancellation).
+  - *Round trip:* converting to the runtime and back keeps the success value, the exception
+    object and the cancellation. It does **not** keep the `Die`/`Fail` kind: an exception that
+    crosses a Task boundary always comes back as `Fail(ex)`, because a Base `Task` has no
+    defect/error distinction.
 - A downstream package that needs an adapter for another effect-like type requests it from
   ChuiTypes (ADR-0010 rule 3); an internal shim is allowed only while that request is open.
 - Future test, once named: round-trips a successful `Task`, a failing `Task` (the exception object
-  is preserved) and a `Channel` (closing ends the stream) for each conversion the downstream uses.
+  is preserved, `===`, and comes back as `Fail`) and a `Channel` (closing ends the stream) for
+  each conversion the downstream uses; `fetch` on a `Fiber` throws the original exception, and
+  on a `totask` Base `Task` a `TaskFailedException` whose `task.exception` is that object;
+  cancelling a `fromtask(t::Task)` effect without a canceller ends it `Interrupted` and raises the orphan
+  count by one.
 
-Illustrative shape only (every name is a placeholder; parsed, never run):
+Illustrative shape only (names from ChuiTypes ADR-0006, accepted but not yet built; parsed, never run):
 ```julia
 using ChuiTypes
-eff = ChuiTypes.from_task(@task read("data.csv", String))   # Task → the runtime's effect type
-res = ChuiTypes.run(eff)                                   # run on the one runtime
+eff = ChuiTypes.fromtask(@task read("data.csv", String))   # Task → the runtime's effect type
+res = ChuiTypes.run(eff)                                  # run on the one runtime
 ```
 
 ---
@@ -115,8 +134,9 @@ No IDs and no contract tests. Each item gets an ID when ChuiTypes' ADR accepts i
   success), `run`-style entry points, resource safety (`bracket`/`Scope`), retries and schedules,
   timeouts, fibers vs `Task`s, cancellation semantics, and the environment mechanism
   (`Base.ScopedValues` / the ScopedValues.jl backport on 1.10, ADR-0006).
-- **The adapter names** behind the conversion obligation (`from_task` and similar above are
-  placeholders).
+- **The adapter names** behind the conversion obligation. ChuiTypes ADR-0006 accepts
+  `fromtask`, `totask`, `Fiber`, `fromchannel` and `tochannel`; they are not yet built or
+  released, so there is no entry yet.
 - **Futures:** Fluture-style lazy, cancellable futures; the Folktale/Monet-style Task-like type
   (which needs a non-Base name, CT-003).
 - **Streams:** push vs pull, backpressure, cold/hot observables, the operator set, schedulers and

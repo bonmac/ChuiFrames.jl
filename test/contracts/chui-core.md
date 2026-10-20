@@ -1,4 +1,5 @@
-<!-- vendored contract: coordinator commit ff0100a, contracts/chui-core.md, copied 2026-10-19 -->
+<!-- vendored contract: coordinator commit e206271, contracts/chui-core.md, copied 2026-10-20 -->
+
 # Contract: chui-core (v0)
 
 > **Binding since 2026-10-19** (ADR-0002/0004/0007/0009/0010 Accepted at the L0 checkpoint).
@@ -7,15 +8,43 @@
 - **Owner:** ChuiCore. **Consumers:** ChuiTypes, ChuiFrames, and every future Chui package.
 - **Contract version:** v0, describing ChuiCore 0.0.1 (unreleased).
 - **Sources:** ADR-0002 (placement), ADR-0004 (versioning), ADR-0007 §2 (law kits),
-  ADR-0009 §1, §5, §6 (vocabulary), ADR-0010 (format). Evidence: `research/ecosystem-verification.md`
-  (E-NN).
-- **Format:** see [README.md](README.md). Stable entries below; undecided items under
+  ADR-0009 §1, §5, §6 (vocabulary), ADR-0010 (format), ADR-0012 (CC-001's arity rule, CC-012,
+  CC-013); ChuiCore's ADR-0001 to ADR-0008 (accepted 2026-10-20). Evidence:
+  `research/ecosystem-verification.md` (E-NN).
+- **Format:** see [README.md](README.md). Stable entries below; ecosystem rules that bind design
+  before their names exist are [obligations](#obligations-not-entries); undecided items are under
   [PROVISIONAL](#provisional), without IDs. CC-003, CC-008 and CC-009 were withdrawn before the
   contract became binding (`status=retired`); their IDs are not reused.
 - **Qualified names.** Entries name the protocol functions and built-in aggregators qualified
-  (`ChuiCore.partial`, `ChuiCore.Sum`). Contract tests use the qualified form. Which of these
-  names are also *exported* is PROVISIONAL (see "Export list" below); `⨟` and `opcompose` are
-  exported.
+  (`ChuiCore.partial`, `ChuiCore.Sum`). They are **public, not exported** (CC-013), so
+  contract tests use the qualified form; `⨟` and `opcompose` are exported.
+
+## Obligations (not entries)
+
+No IDs and no contract tests. Each becomes an entry with the next free ID, and a `test:` line,
+when ChuiCore accepts the names it needs (the v1 transducer set is fixed in ChuiCore's phase 3,
+ChuiCore ADR-0003 §1).
+
+**Only `isstateless` pipelines run per partition** (ChuiCore ADR-0003 §4, accepted 2026-10-20).
+- `ChuiCore.isstateless(xf)::Bool` declares whether a transducer pipeline may run independently
+  on each partition. The default is **`false`** (fail-closed). Of ChuiCore's transducers, only
+  `Map`, `Filter`, `MapCat`, and compositions made only of those, declare `true`;
+  early-terminating transducers (`Take`, `TakeWhile`) and every other stateful transducer are
+  `false`. Any transducer type, downstream ones included, may declare `true` only if it keeps
+  no state.
+- **Every executor** that splits its input into partitions (ChuiCore's `foldparts`, `foldxt` and
+  `aggregate`, ChuiFrames' engine, any future package) runs a pipeline per partition **only if**
+  `isstateless(xf)` is `true`. Any other pipeline runs as one sequential `foldxl` over the
+  partitions flattened in order, with a single `init()`. So a downstream transducer type that
+  declares nothing is never run per partition.
+- Per-partition runs also require the pipeline and the reducing operation to be pure;
+  effectful pipelines use `foldxl`. Partition results are merged in partition order (CC-005).
+- Downstream executors should call `foldparts`/`aggregate` rather than re-implement partition
+  folding (ChuiCore ADR-0003, Consequences).
+- Declaring `isstateless(xf) == true` for a stateful transducer is a bug in that transducer.
+- Future test, once named: `isstateless` is `true` for `Map(f)`, `Filter(p)` and their
+  composition, and `false` for `Take(1)`, `TakeWhile(p)` and a transducer type defined in the
+  test with no `isstateless` method.
 
 ---
 
@@ -30,8 +59,18 @@
   returns `g ∘ f`, but a downstream method may return its own type (ChuiFrames' `Step ⨟ Step`
   returns a `Pipeline`), so `(f ⨟ g) == (g ∘ f)` holds only for the fallback and is not part of
   this entry. `∘` (Base) stays available and keeps its right-to-left meaning.
-- `⨟` is **binary, not n-ary**: methods take exactly two arguments, and `a ⨟ b ⨟ c` parses as the
-  nested call `⨟(⨟(a, b), c)` (unlike `*`, which parses `a * b * c` as one 3-argument call; E-37).
+- **Infix `⨟` is binary:** `a ⨟ b ⨟ c` parses as the nested call `⨟(⨟(a, b), c)` (unlike `*`,
+  which parses `a * b * c` as one 3-argument call; E-37), so an infix chain only ever calls
+  two-argument methods.
+- **Arity of methods** (ADR-0012). Every method a Chui package adds to `⨟`/`opcompose` takes
+  exactly two arguments, with one exception: a downstream package may add a **closing varargs
+  method** for a type it owns, taking three or more arguments, and it must agree with the infix
+  chain: `⨟(a, b, c, rest...)` equals `foldl(⨟, (a, b, c, rest...))` under that package's
+  documented equality, checked by that downstream's CC-002 test. Among Chui packages and
+  CompositionsBase, the only other method of another arity is the upstream fallback,
+  CompositionsBase's untyped `opcompose(fs...)` (CC-012), which composes one or more callables.
+  For a downstream type with no closing method, a prefix call `⨟(a, b, c)` reaches that fallback
+  and returns a plain composition of its arguments, not the downstream's type.
 - `⨟` is left-associative with precedence 12, the same as `∘` and `*`, above `|>` (9) and above
   every comparison, including the dotted ones (E-23). Consequences that callers must know:
   - `f ⨟ g ⨟ h` is `(f ⨟ g) ⨟ h`, and both groupings compute the same thing (law below);
@@ -40,7 +79,8 @@
   - `f ⨟ g ∘ h` parses as `(f ⨟ g) ∘ h` (same precedence, left-associative).
 
 **Laws** (behavioural, for every input `x`): `((f ⨟ g) ⨟ h)(x) == (f ⨟ (g ⨟ h))(x) == h(g(f(x)))`;
-`(identity ⨟ f)(x) == f(x) == (f ⨟ identity)(x)`.
+`(identity ⨟ f)(x) == f(x) == (f ⨟ identity)(x)`. **Prefix calls:** for callables
+`f₁, …, fₙ` with `n ≥ 2`, `⨟(f₁, …, fₙ)(x) == fₙ(⋯ f₂(f₁(x)) ⋯)`, the same as the infix chain.
 
 names: `ChuiCore.:⨟`, `ChuiCore.opcompose`
 
@@ -51,6 +91,7 @@ inc(x) = x + 1
 dbl(x) = 2x
 (inc ⨟ dbl)(3) == dbl(inc(3)) == 8                    # true
 opcompose(inc, dbl)(3) == 8                           # true
+⨟(inc, dbl, inc)(3) == inc(dbl(inc(3))) == 9          # true: the variadic upstream fallback
 Meta.parse("c.x .> 3 ⨟ g") == :(c.x .> (3 ⨟ g))       # true: parenthesise!
 ```
 
@@ -61,12 +102,13 @@ Meta.parse("x |> f ⨟ g") == :(x |> (f ⨟ g))       # -> true
 Meta.parse("f ⨟ g ∘ h") == :((f ⨟ g) ∘ h)         # -> true
 Meta.parse("a ⨟ b ⨟ c").args                      # -> Any[:⨟, :(a ⨟ b), :c]
 Meta.parse("a * b * c").args                      # -> Any[:*, :a, :b, :c]
+Meta.parse("⨟(a, b, c)").args                     # -> Any[:⨟, :a, :b, :c]
 ```
 
 test: `CC-001 ⨟ composes left to right` — checks `(f ⨟ g)(x) == g(f(x))` for a few Base
 functions and several inputs (never `(f ⨟ g) == g ∘ f`), `opcompose === ⨟`, both associativity
-groupings on sample inputs, and the parse shapes above by comparing `Expr` values, not printed
-strings.
+groupings on sample inputs, the prefix law `⨟(f, g, h)(x) == h(g(f(x)))` for three Base
+functions, and the parse shapes above by comparing `Expr` values, not printed strings.
 
 ### CC-002 One `⨟` binding; downstream packages only add methods
 `since=0.0.1 status=stable`
@@ -99,14 +141,15 @@ MyPkg.:⨟ === ChuiCore.:⨟                      # true
 test: `CC-002 single ⨟ binding` — in each downstream repo: `isdefined(Pkg, :⨟)` implies
 `Pkg.:⨟ === ChuiCore.:⨟`, and the downstream's own `⨟` methods (if any) satisfy CC-001's
 behavioural law on its callable types, compared with its documented equality (frame equality
-for ChuiFrames).
+for ChuiFrames); and, if it defines a closing varargs method (CC-001), that `⨟(a, b, c)` equals
+`(a ⨟ b) ⨟ c` under that equality, on sample values.
 
 ### CC-003 `⨟` is CompositionsBase's binding
 `since=0.0.1 status=retired`
 
 Withdrawn before the contract became binding (critic review B4, 2026-10-19): ADR-0009 §1 makes
-this a *recommendation* that ChuiCore's own ADR confirms, not a decision. Now the PROVISIONAL item
-"CompositionsBase binding" below. The ID is not reused.
+this a *recommendation* that ChuiCore's own ADR confirms, not a decision. ChuiCore ADR-0006
+confirmed it on 2026-10-20; it is now CC-012. The ID is not reused.
 
 ### CC-004 Aggregator protocol: `init`, `partial`, `combine`, `final`
 `since=0.0.1 status=stable`
@@ -396,42 +439,117 @@ contract environment, `using ChuiCore` and checks that neither `Test` nor `Suppo
 `Base.loaded_modules`; also reads ChuiCore's `Project.toml` (`pkgdir(ChuiCore)`) and checks that
 neither is in `[deps]`.
 
+### CC-012 `⨟` and `opcompose` are CompositionsBase's bindings
+`since=0.0.1 status=stable`
+
+**Statement.** (ChuiCore ADR-0006, confirming ADR-0009 §1.)
+- ChuiCore depends on CompositionsBase (`[compat] CompositionsBase = "0.1.2"`) and re-exports
+  exactly two of its names, `⨟` and `opcompose`: `ChuiCore.:⨟ === CompositionsBase.:⨟` and
+  `ChuiCore.opcompose === CompositionsBase.opcompose`. ChuiCore does not export CompositionsBase's
+  other names (`compose`, `decompose`, `deopcompose`, nor its re-export of Base's `∘`).
+- So a bare `⨟` resolves, to that one binding, after `using ChuiCore` together with
+  `using CompositionsBase`, or with a package that re-exports CompositionsBase's `⨟` (Accessors
+  and Transducers do; ChuiCore ADR-0006).
+- A check of this compares bindings with `===` and evaluates a bare `⨟`. It never relies on the
+  absence of a "both … export" warning: 1.10 prints one when two different bindings clash, but
+  1.13 prints nothing and fails only at the use (E-37).
+- The variadic generic fallback is CompositionsBase's (`opcompose(fs...)`, CC-001's arity rule).
+
+**Example.**
+```julia
+using ChuiCore, CompositionsBase
+ChuiCore.:⨟ === CompositionsBase.:⨟                 # true
+ChuiCore.opcompose === CompositionsBase.opcompose   # true
+(sin ⨟ cos)(1.0) == cos(sin(1.0))                   # true: the bare ⨟ resolves
+Base.isexported(ChuiCore, :compose)                 # false
+```
+
+test: `CC-012 CompositionsBase binding` — in the contract environment (which adds
+CompositionsBase): the two `===` identities; in a fresh module, after `using ChuiCore,
+CompositionsBase`, evaluating the bare symbol `⨟` returns `ChuiCore.:⨟` (no `UndefVarError`); and
+for each name CompositionsBase exports other than `⨟`, `opcompose` and the module's own name,
+`!Base.isexported(ChuiCore, n)`. ChuiCore ADR-0006 §5 also names the Accessors and Transducers
+cases; they are deliberately left to ChuiCore's own tests, so that downstream contract
+environments need not add Accessors and Transducers.
+
+### CC-013 Export tiers: the aggregation protocol and the built-in aggregators are public, not exported
+`since=0.0.1 status=stable`
+
+**Statement.** (ChuiCore ADR-0005; ADR-0009 as amended 2026-10-20.)
+- Every ChuiCore name is in exactly one tier: **exported**; **public, not exported** (declared
+  with `@compat public`: the `public` keyword on Julia ≥ 1.11, a no-op on 1.10, where `public` is
+  a `ParseError`; E-37, ADR-0006); or **internal** (no stability promise; no contract entry names
+  an internal name).
+- **Exported:** a short vocabulary. Only names that pass the clash rule below may be exported;
+  passing it does not export a name (`init` and `partial` pass and stay public). This entry
+  promises `⨟` and `opcompose` (CC-001, CC-012). `papply` also passes and is intended to be
+  exported; its entry, with its
+  signature, comes with its PROVISIONAL item below. `neutral`, `curry`, `pure`, `ap` and `fmap`
+  fail the rule (TypeClasses and Functors export them; ADR-0009 as amended), so they are public,
+  not exported.
+- **Public, not exported:** the aggregation protocol `init`, `partial`, `combine`, `final` and
+  `iscommutative` (CC-004, CC-005), and the built-in aggregators of CC-007. Downstream code
+  writes them qualified (`ChuiCore.combine`) or imports them by name (`using ChuiCore: combine`).
+- **Not exported** (each public once named; PROVISIONAL below): the transducer substrate,
+  optics, recursion schemes, free monads and laziness helpers. The hooks downstream code
+  extends in the typeclass encoding are public too, unless ChuiCore exports a trait name that
+  passes the clash rule (ChuiCore ADR-0005 §3).
+- **Clash rule for exports:** an exported name is not exported, as a different binding, by Base,
+  Core, `Base.Iterators`, the standard libraries of CC-010, or the packages named in ChuiCore
+  ADR-0005 §2. ChuiCore's own `:quality` test checks the package list; downstream contract tests
+  check the Base and standard-library part (CC-010).
+- Moving a name between tiers is a contract change (ADR-0010).
+
+**Example.**
+```julia
+using ChuiCore
+Base.isexported(ChuiCore, :opcompose)      # true
+Base.isexported(ChuiCore, :combine)        # false: write ChuiCore.combine
+using ChuiCore: Sum, init, partial, final  # or import the public names explicitly
+final(Sum(), partial(Sum(), init(Sum()), [1, 2, 3])) == 6   # true
+```
+
+test: `CC-013 export tiers` — checks `Base.isexported(ChuiCore, n)` for `⨟` and `opcompose`;
+for each of `init`, `partial`, `combine`, `final`, `iscommutative`, `neutral` and each name on CC-007's
+`names:` line, checks `!Base.isexported(ChuiCore, n)` and, on `VERSION ≥ v"1.11"`,
+`Base.ispublic(ChuiCore, n)`.
+
 ---
 
 ## PROVISIONAL
 
 No IDs and no contract tests. Each item gets an ID when ChuiCore's ADR accepts it (ADR-0010).
+Where ChuiCore's accepted ADRs (2026-10-20) already decide part of an item, the decided part is
+recorded below; the item gets its ID when the ADR's own "becomes an entry after phase N" note is met.
 
-- **CompositionsBase binding** (was CC-003). Recommendation (ADR-0009 §1): ChuiCore depends on
-  CompositionsBase (0.1.x, no dependencies of its own, E-03, E-28) and re-exports **only** `⨟`
-  and `opcompose` from it (not `compose`, nor its re-export of Base's `∘`), so that
-  `ChuiCore.:⨟ === CompositionsBase.:⨟` and a user loading ChuiCore with Accessors or
-  Transducers sees no ambiguity. A future test of this must check the `===` identities and that
-  an unqualified `⨟` resolves after `using ChuiCore, CompositionsBase`; it must **not** rely on
-  the absence of a "both … export" warning: on 1.10 Julia prints that warning when two different
-  bindings clash, on 1.13 it prints nothing and errors only at the use (`UndefVarError`), so a
-  warning-based check passes vacuously on 1.13 (E-37).
-- **Export list.** Whether the protocol functions (`init`, `partial`, `combine`, `final`,
-  `iscommutative`) and the built-in aggregator types are exported or only `public`. Known
-  pressure: `combine` is also exported by DataFrames (Context7, E-38), so exporting it makes a
-  bare `combine` ambiguous for DataFrames users. The `public` keyword is a `ParseError` on 1.10
-  (E-37), so marking names public needs a version gate: Compat's `@compat public …` (a no-op on
-  1.10; ADR-0006, E-06) or `@static if VERSION >= v"1.11" eval(Meta.parse("public …")) end`.
-  Downstream code uses qualified names until this is decided.
-- **Typeclass trait encoding.** How `Semigroup`, `Monoid`, `Functor`, `Applicative`, `Monad`,
-  `Alternative`, `Foldable`, `Traversable`, `Contravariant`, `Bifunctor`, `Profunctor` and
-  `Category`/`Arrow` are encoded as Holy traits, how an instance is declared, and the names of
-  their operations. *Name decided at the L0 checkpoint (2026-10-19, ADR-0009 §5):* the monoid's
-  neutral element is **`neutral`** (e.g. `neutral(::Type{T})`; the exact signature and trait
-  encoding stay open here). `identity` is Base's and CC-010 forbids a new binding of it; `mempty`
-  was rejected as Haskell jargon. Neither `neutral` nor `mempty` is exported by Base or Core (E-37).
-- **Law kits** (was CC-008). Recommended shape: ChuiCore exports `test_semigroup_laws`,
-  `test_monoid_laws`, `test_aggregator_laws` as function stubs whose methods load only in test
-  environments (ADR-0007 §2 option (a)); calling convention `test_*_laws(instance, gen; eq = …)`,
-  recording `@test` results in the caller's testset, with CC-004's tolerance rule as the default
-  `eq` for float results. Open: option (a) vs (b) (a separate test-utilities package), the form of
-  `gen` (Supposition generator, sample vector, or both), and kits for the other typeclasses
-  (`test_functor_laws`, …). Whatever is chosen must keep CC-011.
+- **Typeclass trait encoding.** *Decided* (ChuiCore ADR-0001): Semigroup, Monoid and
+  aggregators are **instance values** (dictionary passing). `combine(m, a, b)` takes the instance
+  first; ChuiCore defines no 2-argument or variadic `combine`. `neutral(m)` exists only for
+  instances with a true identity on the carrier and returns a **fresh** value on every call, with
+  `isequal(final(m, init(m)), final(m, neutral(m)))`; `neutral(m, ::Type{T})` optionally refines
+  it (default `neutral(m)`); `neutral(::Type{T}) = neutral(default_monoid(T), T)` is **closed
+  sugar**: downstream code declares `default_monoid(::Type{T})`, never a `neutral(::Type{T})`
+  method, and numbers have no default. `AlgebraClass(::Type{M})` (`IsSemigroup()`, `IsMonoid()`,
+  default `NotAlgebra()`) classifies instances and never gates CC-004/CC-005 executors. Functor,
+  Applicative, Monad, Alternative, Traversable, Contravariant, Bifunctor, Profunctor and
+  Category/Arrow are Holy traits on an owned constructor **tag** (`constructorclass(::Type{T})`,
+  fallback `NoTag()`; an unregistered type gets an `ArgumentError`); Foldable is Base iteration;
+  Maybe is Base's `Some{T}`/`nothing`; operations with no value to dispatch on take the tag
+  first (`pure(tag, x)`). *Open (ChuiCore phase 2):* the operation and tag names (no new `bind`,
+  `flatmap`, `first`, `second`, `empty` or `view`), and the exact instance list. Name decided at
+  L0 (ADR-0009 §5): **`neutral`**; `identity` is Base's and `mempty` was rejected as jargon.
+  `neutral`, `pure`, `ap` and `fmap` are public, not exported (CC-013).
+- **Law kits** (was CC-008). *Decided* (ChuiCore ADR-0007; ADR-0007 §2 as amended 2026-10-20):
+  ChuiCore exports method-less stubs (`test_semigroup_laws`, `test_monoid_laws`,
+  `test_aggregator_laws`, and one per typeclass); `ChuiCoreTestExt` (trigger `Test`) adds methods
+  for a finite collection of samples, `ChuiCoreSuppositionExt` (triggers `Test` and Supposition)
+  for a Supposition generator. The instance or tag comes first; each law is an inner
+  `@testset "<law name>"` holding one `@test`, counted in the caller's testset; aggregator kits
+  take `eq(r₁, r₂, v)`, default CC-004's `≈ᵃ`, other kits `eq(a, b)`, default `isequal`;
+  `ChuiCore.default_eq(instance)` is public. Supposition results are asserted with
+  `@check record=false db=false` plus an explicit `@test`, and each kit has planted-violation tests that
+  run on the LTS job. `Test` and Supposition stay weak dependencies (CC-011). *Open (phase 2):*
+  exact signatures and the full list of kits.
 - **Name-conflict banner** (was CC-009). Recommended shape:
   `ChuiCore.binding_conflicts(mod)::Vector{Pair{Symbol,Vector{Module}}}` lists, for each name
   `mod` exports, the other loaded modules exporting a **different binding** of that name (method
@@ -440,20 +558,44 @@ No IDs and no contract tests. Each item gets an ID when ChuiCore's ADR accepts i
   each package calls it from `__init__` when `isinteractive()`. Names and switch are open.
 - **Composition helpers:** `pipe`, `curry`, partial application, point-free helpers.
   *Name decided at the L0 checkpoint (2026-10-19, ADR-0009 §5, option (a)):* partial application
-  is **`papply`**, because the aggregation protocol keeps `partial` (CC-004); rejected: renaming
-  the protocol function to `absorb`/`step!`. `papply`'s signature (e.g. `papply(f, args...)`,
-  reusing `Base.Fix1`/`Fix2`, and `Base.Fix` from 1.12, where they fit) and the other helpers stay
-  PROVISIONAL until ChuiCore's composition ADR. None of `partial`, `papply`, `absorb`, `step!` is
-  exported by Base or Core (E-37).
-- **The transducer substrate API** (`Map`, `Filter`, `MapCat`, `Take`, `Reduced`, `foldxl`,
-  `foldxt` in the prototype). Its *location* (ChuiCore, own implementation, Transducers.jl interop
-  only via `ChuiCoreTransducersExt`) is decided by ADR-0002 §4; its names and semantics are not.
+  is **`papply`**, exported (CC-013), because the aggregation protocol keeps `partial` (CC-004);
+  rejected: renaming the protocol function to `absorb`/`step!`. `papply`'s signature (e.g.
+  `papply(f, args...)`, reusing `Base.Fix1`/`Fix2`, and `Base.Fix` from 1.12, where they fit) and
+  the other helpers stay PROVISIONAL until ChuiCore's composition ADR. None of `partial`,
+  `papply`, `absorb`, `step!` is exported by Base or Core (E-37).
+- **The transducer substrate API.** *Location* decided by ADR-0002 §4 (ChuiCore's own code;
+  Transducers.jl interop only in `ChuiCoreTransducersExt`). *Design decided* (ChuiCore ADR-0003):
+  transducers are immutable structs under `abstract type Transducer` (`Map`, `Filter`, `MapCat`,
+  `Take`, `TakeWhile`, `Scan`, `Partition`, `Composed`) with **no call method**; a reducing
+  function is built by `asrf(xf, op)`; the protocol is `start`/`next`/`complete` with `Reduced`
+  for early termination; state lives in the accumulator; `complete` runs exactly once per fold;
+  `a ⨟ b` means "a, then b" through CC-012's binding. Folds: `foldxl` (sequential, `init`
+  required), `foldparts` (pre-partitioned input, `init` a factory, `merge` required, merged in
+  order), `foldxt` (vectors only), `aggregate(agg, xf, parts)` (name provisional) over CC-004.
+  All public, not exported (CC-013); `ChuiCore.Map` never aliases `Transducers.Map`. The
+  per-partition rule is the [obligation](#obligations-not-entries) above. *Open (phase 3):* the
+  v1 set, `aggregate`'s name, the exact signatures.
 - **Recursion schemes:** `Fix`, cata, ana, hylo, para, apo, histo, futu, and monadic variants.
-- **Data types à la carte and free monads:** coproducts, injection/projection, interpreters.
-- **Laziness:** thunks, memoized lazy values, lazy structure combinators.
-- **Optics:** lenses and prisms, possibly by reusing Accessors.jl.
-- **The ADT and pattern-matching library choice** (own implementation vs Moshi.jl, SumTypes.jl,
-  MLStyle.jl).
+  Public, not exported (CC-013).
+- **Data types à la carte and free monads:** coproducts, injection/projection, interpreters. The
+  coproduct of functors is named `Coproduct` (`Sum` is CC-007's aggregator; ChuiCore ADR-0005).
+  Public, not exported.
+- **Laziness:** thunks, memoized lazy values, lazy structure combinators. Public, not exported.
+- **Optics.** *Decided* (ChuiCore ADR-0004): ChuiCore owns a minimal core, not a dependency on
+  Accessors: `Lens` (a property lens through `getproperty` and
+  `ConstructionBase.setproperties`; an index lens), `Prism` (`preview(p, x)` returns `Some(v)` or
+  `nothing`; `review(p, v)` builds the variant), `ChuiCore.set(x, optic, v)` and
+  `ChuiCore.modify(f, x, optic)` in Accessors' argument order; getting is calling the optic;
+  composition is Base's (`∘`/`⨟` give a `ComposedFunction`); struct rebuilding uses
+  ConstructionBase's `constructorof`. All public, not exported. Interop with Accessors is
+  `ChuiCoreAccessorsExt`. *Open (phase 3):* constructors, prism design and laws.
+- **The ADT and pattern-matching library choice.** *Decided* (ChuiCore ADR-0002): ChuiCore
+  depends on no pattern-matching library (not Moshi, SumTypes or MLStyle); a variant is a plain
+  struct; a closed sum is a `Union` alias of variants its package owns, an open sum an abstract
+  type; a `Union` alias containing a type its package does not own (`Nothing`, `Some`) gets no
+  methods of Base functions; a public test helper lists the members of a closed sum lacking a
+  method (blind to catch-all methods). No entry yet: no named sum type exists for downstream use;
+  the first one gets an entry when ChuiCore accepts it.
 - **Purity and effect conventions** (documented here; the runtime itself is ChuiTypes', see
   `chui-types.md` "Obligations").
 - **`missing`-aware aggregators** (`skipmissing` variants): ChuiFrames builds them on top of
