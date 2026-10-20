@@ -73,6 +73,11 @@ One row per group (one row for an ungrouped frame), rows sorted ascending by the
 (CF-008). Outputs apply in order; later ones see earlier ones as values. Every reduction goes
 through an aggregator, so `maximum` of an empty group is an `ArgumentError` (CC-007). `by` and
 `groups` are reserved options (CF-017). `groups`: `:drop_last` (default), `:drop`, `:keep`.
+
+**Difference from dplyr:** `summarise(…; by = :g)` also sorts its rows by the keys (CF-008),
+whereas dplyr's `.by` keeps the order in which groups first appear. Add `arrange` after
+`summarise` for another order. Group-key order (NaN before `missing`) is not `arrange` order
+(NaN and `missing` tied), as in dplyr.
 """
 function summarise(args...; kw...)
     outs, opts = _outputs(:summarise, args, kw, SUMMARISE_RESERVED)

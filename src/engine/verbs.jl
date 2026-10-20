@@ -22,6 +22,9 @@ Keep the rows where every condition is `true`; `false` and `missing` drop the ro
 rule 11). Conditions are evaluated per group on grouped frames. A condition whose declared
 element type is concrete and not `Bool` is an `ArgumentError` at plan time. NaN follows IEEE:
 `NaN .> 1` is `false`, `.!(NaN .> 1)` is `true` (rule 12, a documented divergence from dplyr).
+The same family: `sum(skipmissing(c.x))` skips `missing` but keeps NaN (so a group holding a NaN
+sums to NaN), while R's `sum(x, na.rm = TRUE)` drops NaN too. To match R, drop the NaN rows
+first: `filter(.!isnan.(coalesce.(c.x, 0.0)))`.
 """
 Base.filter(p::Node, ps::Node...) = FilterStep(Node[p, ps...], false)
 

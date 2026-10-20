@@ -65,7 +65,12 @@ struct Desc <: Node
     inner::Node
 end
 
-"`skipmissing(c.x)`: valid only as the argument of a reduction (ADR-0002 rule 10)."
+"""
+`skipmissing(c.x)`: valid only as the argument of a reduction (ADR-0002 rule 10). It skips
+`missing` only, as Base does; NaN stays, so `sum(skipmissing(c.x))` is NaN when a value is
+NaN. R's `na.rm = TRUE` drops NaN as well: a documented divergence, in the family of ADR-0002
+rule 12 (see `filter`).
+"""
 struct SkipMiss <: Node
     inner::Node
 end
