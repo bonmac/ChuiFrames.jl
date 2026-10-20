@@ -58,6 +58,12 @@ precompile_ms = 60000
 "io/read_csv/n=10^5" = 200000000                                # 51.38 ms
 "io/write_arrow/n=10^5" = 20000000                              # 6.5 ms
 "io/write_csv/n=10^5" = 100000000                               # 26.34 ms
+# lazy/* rows: phase 3, baseline 48c7e52 (.lanes/evidence/bench-113-48c7e52.txt, load 9.7-10.9)
+"lazy/filter, head 10/n=10^4" = 2000000                         # 428.25 μs
+"lazy/filter, head 10/n=10^6" = 20000000                        # 4.43 ms
+"lazy/filter, mutate, select/n=10" = 200000                     # 52.25 μs
+"lazy/filter, mutate, select/n=10^4" = 2000000                  # 424.4 μs
+"lazy/filter, mutate, select/n=10^6" = 200000000                # 49.62 ms
 "mutate/z = 2x + y/n=10" = 200000                               # 35.83 μs
 "mutate/z = 2x + y/n=10^4" = 2000000                            # 419.08 μs
 "mutate/z = 2x + y/n=10^6" = 200000000                          # 50.93 ms
@@ -107,6 +113,12 @@ precompile_ms = 60000
 "io/read_csv/n=10^5" = 200000000                                # 41.02 ms
 "io/write_arrow/n=10^5" = 50000000                              # 7.18 ms
 "io/write_csv/n=10^5" = 100000000                               # 32.19 ms
+# lazy/* rows: phase 3, baseline 48c7e52 (.lanes/evidence/bench-110-48c7e52.txt, load 6.9-10.6)
+"lazy/filter, head 10/n=10^4" = 2000000                         # 369.83 μs
+"lazy/filter, head 10/n=10^6" = 20000000                        # 4.0 ms
+"lazy/filter, mutate, select/n=10" = 200000                     # 58.04 μs
+"lazy/filter, mutate, select/n=10^4" = 2000000                  # 372.04 μs
+"lazy/filter, mutate, select/n=10^6" = 200000000                # 37.76 ms
 "mutate/z = 2x + y/n=10" = 100000                               # 21.5 μs
 "mutate/z = 2x + y/n=10^4" = 1000000                            # 233.46 μs
 "mutate/z = 2x + y/n=10^6" = 100000000                          # 26.83 ms
@@ -156,6 +168,11 @@ precompile_ms = 60000
 "io/read_csv/n=10^5" = 160000                                   # 101032
 "io/write_arrow/n=10^5" = 630                                   # 418
 "io/write_csv/n=10^5" = 3700                                    # 2461
+"lazy/filter, head 10/n=10^4" = 30000                           # 19820
+"lazy/filter, head 10/n=10^6" = 400000                          # 262165
+"lazy/filter, mutate, select/n=10" = 940                        # 626
+"lazy/filter, mutate, select/n=10^4" = 37000                    # 24479
+"lazy/filter, mutate, select/n=10^6" = 3800000                  # 2490650
 "mutate/z = 2x + y/n=10" = 290                                  # 187
 "mutate/z = 2x + y/n=10^4" = 45000                              # 29672
 "mutate/z = 2x + y/n=10^6" = 4500000                            # 2999672
@@ -205,6 +222,11 @@ precompile_ms = 60000
 "io/read_csv/n=10^5" = 160000                                   # 100980
 "io/write_arrow/n=10^5" = 680                                   # 452
 "io/write_csv/n=10^5" = 2400                                    # 1584
+"lazy/filter, head 10/n=10^4" = 30000                           # 19801
+"lazy/filter, head 10/n=10^6" = 400000                          # 262060
+"lazy/filter, mutate, select/n=10" = 880                        # 586
+"lazy/filter, mutate, select/n=10^4" = 37000                    # 24440
+"lazy/filter, mutate, select/n=10^6" = 3800000                  # 2489491
 "mutate/z = 2x + y/n=10" = 260                                  # 172
 "mutate/z = 2x + y/n=10^4" = 45000                              # 29657
 "mutate/z = 2x + y/n=10^6" = 4500000                            # 2999657
@@ -254,6 +276,11 @@ precompile_ms = 60000
 "io/read_csv/n=10^5" = 30000000                                 # 19742784
 "io/write_arrow/n=10^5" = 9500000                               # 6324416
 "io/write_csv/n=10^5" = 30000000                                # 19478336
+"lazy/filter, head 10/n=10^4" = 1600000                         # 1026832
+"lazy/filter, head 10/n=10^6" = 26000000                        # 17069920
+"lazy/filter, mutate, select/n=10" = 42000                      # 27456
+"lazy/filter, mutate, select/n=10^4" = 1300000                  # 847632
+"lazy/filter, mutate, select/n=10^6" = 270000000                # 173903504
 "mutate/z = 2x + y/n=10" = 16384                                # 7488
 "mutate/z = 2x + y/n=10^4" = 1300000                            # 806544
 "mutate/z = 2x + y/n=10^6" = 130000000                          # 80045968
@@ -303,6 +330,11 @@ precompile_ms = 60000
 "io/read_csv/n=10^5" = 29000000                                 # 18702152
 "io/write_arrow/n=10^5" = 9500000                               # 6288592
 "io/write_csv/n=10^5" = 31000000                                # 20031808
+"lazy/filter, head 10/n=10^4" = 1500000                         # 977048
+"lazy/filter, head 10/n=10^6" = 26000000                        # 16878808
+"lazy/filter, mutate, select/n=10" = 50000                      # 32712
+"lazy/filter, mutate, select/n=10^4" = 1200000                  # 793128
+"lazy/filter, mutate, select/n=10^6" = 260000000                # 171810888
 "mutate/z = 2x + y/n=10" = 16384                                # 8432
 "mutate/z = 2x + y/n=10^4" = 1200000                            # 799744
 "mutate/z = 2x + y/n=10^6" = 120000000                          # 79999744
