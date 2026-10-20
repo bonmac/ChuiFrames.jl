@@ -96,6 +96,13 @@ consecutive_id(x::Node, xs::Node...) = Window(:consecutive_id, Node[x, xs...], (
 
 Elementwise: the value of the first condition that is `true`; a `missing` condition counts as
 not true (ADR-0002 rule 10). Conditions and values are column expressions or constants.
+
+The element type comes from the values' and the default's types only, never from which branches
+fire (as dplyr's common type): equal types stay, numbers promote (`Int` and `Float64` give
+`Float64`, `Bool` and `Int` give `Int`), strings give `String`, and a `missing` default (the
+default) makes the result nullable even where it never fires. Values with no common type (a
+string and a number) are an `ArgumentError`, as in dplyr; so is an `Int` that the promoted
+`Float64` cannot hold exactly.
 """
 function case_when(pairs::Pair...; default = missing)
     isempty(pairs) && throw(ArgumentError("case_when needs at least one cond => value pair"))

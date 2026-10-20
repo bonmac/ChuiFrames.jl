@@ -115,12 +115,50 @@ function ev(x::Window, e::Env)
     return r
 end
 
+"""
+    _casewhen_type(ts) -> Type
+
+`case_when`'s element type from its values' and default's element types `ts` (ADR-0002
+rule 10), never from which branches fire, as dplyr 1.2.0 takes the common type of the values
+and `.default`: equal types stay; numbers promote (`Bool` and `Int` give `Int`, `Int` and
+`Float64` give `Float64`); strings give `String`; a `missing` value or default (the default
+default) only makes the type nullable. Other mixes are an `ArgumentError`, as dplyr's "Can't
+combine". A type that is not known exactly (`Any`, an abstract type or a `Union`) gives `Any`:
+the values are then narrowed as before.
+"""
+function _casewhen_type(ts)
+    S = Any[nonmissingtype(T) for T in ts if nonmissingtype(T) !== Union{}]
+    all(isconcretetype, S) || return Any
+    E = if isempty(S)
+        Missing
+    elseif all(==(S[1]), S)
+        S[1]
+    elseif all(T -> T <: AbstractString, S)
+        String
+    elseif all(T -> T <: Number, S) && isconcretetype(promote_type(S...))
+        promote_type(S...)
+    else
+        throw(ArgumentError("case_when: the values and the default have no common type ($(join(unique(S), ", "))); convert them to one type (dplyr: \"Can't combine\")"))
+    end
+    return any(T -> Missing <: T, ts) ? Union{Missing, E} : E
+end
+_valtype(v) = v isa Scalar ? typeof(v.x) : eltype(v)
+# A value as element type `E`: converted only without loss (a big Int as Float64 is an error).
+function _cwvalue(@nospecialize(E), x)
+    x isa E && return x
+    x isa AbstractString && return String(x)
+    y = convert(nonmissingtype(E), x)
+    isequal(y, x) || throw(ArgumentError("case_when: the value $(repr(x)) cannot be represented as $(nonmissingtype(E)), the common type of the values and the default; convert the values first"))
+    return y
+end
+
 function ev(x::CaseWhen, e::Env)
     conds = Any[ev(a, e) for a in x.conds]
     vals = Any[ev(a, e) for a in x.vals]
     d = ev(x.default, e)
     n = e.n
-    out = Vector{Any}(undef, n)
+    E = _casewhen_type(Any[map(_valtype, vals); _valtype(d)])
+    out = Vector{E}(undef, n)
     for i in 1:n
         chosen = false
         for (k, cnd) in enumerate(conds)
@@ -128,14 +166,15 @@ function ev(x::CaseWhen, e::Env)
             b isa Union{Bool, Missing} || throw(ArgumentError("case_when conditions must be Bool or missing, got $(typeof(b))"))
             if b === true
                 v = vals[k]
-                out[i] = v isa Scalar ? v.x : v[i]
+                out[i] = _cwvalue(E, v isa Scalar ? v.x : v[i])
                 chosen = true
                 break
             end
         end
-        chosen || (out[i] = d isa Scalar ? d.x : d[i])
+        chosen || (out[i] = _cwvalue(E, d isa Scalar ? d.x : d[i]))
     end
-    return _narrowvec(out)
+    # untyped inputs (`Any`) carry no type to go by: narrow by the values, as before
+    return E === Any ? _narrowvec(out) : out
 end
 
 function ev(x::IfAnyAll, e::Env)
@@ -360,8 +399,7 @@ end
 function static_type(x::CaseWhen, ctx::SelectCtx)
     ts = Any[static_type(v, ctx) for v in x.vals]
     push!(ts, static_type(x.default, ctx))
-    all(_isboolish, ts) && return Union{Missing, Bool}
-    return Any
+    return _casewhen_type(ts)   # the type `ev` gives (Any when a type is unknown)
 end
 static_type(x::IfAnyAll, ::SelectCtx) = Union{Missing, Bool}
 
