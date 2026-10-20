@@ -1,0 +1,21 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "duration[s]",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  1
+ ],
+ "num_rows": 1,
+ "columns": {
+  "x": [
+   {
+    "repr": "0:00:03"
+   }
+  ]
+ }
+}

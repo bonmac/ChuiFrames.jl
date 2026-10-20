@@ -1,0 +1,23 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "d",
+   "type": "dictionary<values=string, indices=int8, ordered=0>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  5
+ ],
+ "num_rows": 5,
+ "columns": {
+  "d": [
+   "a",
+   "a",
+   null,
+   "b",
+   "a"
+  ]
+ }
+}

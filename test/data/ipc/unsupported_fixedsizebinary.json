@@ -1,0 +1,21 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "fixed_size_binary[2]",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  1
+ ],
+ "num_rows": 1,
+ "columns": {
+  "x": [
+   {
+    "bytes": "6162"
+   }
+  ]
+ }
+}

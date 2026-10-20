@@ -1,0 +1,21 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "int64",
+   "nullable": true
+  },
+  {
+   "name": "s",
+   "type": "string",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [],
+ "num_rows": 0,
+ "columns": {
+  "x": [],
+  "s": []
+ }
+}

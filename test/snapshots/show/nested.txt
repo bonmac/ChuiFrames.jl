@@ -1,0 +1,6 @@
+# A Frame: 2 × 8
+  d          t                       l           st               o        any
+  <date?>    <dttm>                  <list[i64]> <struct[2]>      <Symbol> <any>
+1 2024-01-02 2024-01-02T03:04:05     <i64 [2]>   (a = 1, b = "x") :sym     1//2
+2 missing    2024-12-31T23:59:59.999 <i64 [0]>   (a = 2, b = "y") :other   text
+# ℹ 2 more variables: bin <binary>, flag <bool?>

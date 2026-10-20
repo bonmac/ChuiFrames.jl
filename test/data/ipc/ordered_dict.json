@@ -1,0 +1,20 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "dictionary<values=string, indices=int8, ordered=1>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  2
+ ],
+ "num_rows": 2,
+ "columns": {
+  "x": [
+   "lo",
+   "hi"
+  ]
+ }
+}

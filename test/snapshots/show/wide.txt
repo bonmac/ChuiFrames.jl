@@ -1,0 +1,21 @@
+# A Frame: 30 × 100
+   column_1 column_2 column_3 column_4 column_5 column_6 column_7 column_8
+      <i64>    <i64>    <i64>    <i64>    <i64>    <i64>    <i64>    <i64>
+ 1        1        2        3        4        5        6        7        8
+ 2        1        2        3        4        5        6        7        8
+ 3        1        2        3        4        5        6        7        8
+ 4        1        2        3        4        5        6        7        8
+ 5        1        2        3        4        5        6        7        8
+ 6        1        2        3        4        5        6        7        8
+ 7        1        2        3        4        5        6        7        8
+ 8        1        2        3        4        5        6        7        8
+ 9        1        2        3        4        5        6        7        8
+10        1        2        3        4        5        6        7        8
+# ℹ 20 more rows
+# ℹ 92 more variables: column_9 <i64>, column_10 <i64>, column_11 <i64>,
+#   column_12 <i64>, column_13 <i64>, column_14 <i64>, column_15 <i64>,
+#   column_16 <i64>, column_17 <i64>, column_18 <i64>, column_19 <i64>,
+#   column_20 <i64>, column_21 <i64>, column_22 <i64>, column_23 <i64>,
+#   column_24 <i64>, column_25 <i64>, column_26 <i64>, column_27 <i64>,
+#   column_28 <i64>, column_29 <i64>, column_30 <i64>, column_31 <i64>,
+#   column_32 <i64>, column_33 <i64>, column_34 <i64>, column_35 <i64>, …

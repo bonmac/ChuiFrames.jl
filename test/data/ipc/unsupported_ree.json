@@ -1,0 +1,21 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "x",
+   "type": "run_end_encoded<run_ends: int64, values: int64>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  3
+ ],
+ "num_rows": 3,
+ "columns": {
+  "x": [
+   1,
+   1,
+   2
+  ]
+ }
+}

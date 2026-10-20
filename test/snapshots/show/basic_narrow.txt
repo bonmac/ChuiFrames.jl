@@ -1,0 +1,6 @@
+# A Frame: 3 × 2
+            x s
+       <f64?> <str?>
+1        1.23 a
+2  missing    a very long str…
+3 -1000000    missing

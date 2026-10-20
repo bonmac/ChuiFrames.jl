@@ -1,6 +1,7 @@
 # ADR-0014: Depend on ChuiCore through one internal adapter, switching each piece when ChuiCore releases it
 
-- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★)
+- **Status:** Accepted (2026-10-20, user at the ChuiFrames phase-1 ★); amended 2026-10-20
+  (see Amendments)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint
 - **Scope:** ChuiFrames.jl (core dependency)
@@ -29,8 +30,8 @@ exact tested snapshots.
    - The **recursion-scheme** functions the optimizer needs (`cata`, `ana`, a paramorphism).
    - `⨟`/`opcompose` semantics.
 
-   ChuiCore makes all of these **public but not exported**, except `⨟`, `opcompose`, `neutral` and
-   `papply` (ChuiCore ADR-0005). So ChuiFrames code writes them qualified, through the adapter
+   ChuiCore makes all of these **public but not exported**, except `⨟`, `opcompose` and `papply`
+   (ChuiCore ADR-0005). `neutral` is public, not exported (ecosystem ADR-0009, as amended). So ChuiFrames code writes them qualified, through the adapter
    (`Upstream.combine` now, `ChuiCore.combine` after the switch). No other ChuiFrames file
    defines or imports these names except through the adapter (ADR-0003 rules 4–6 and 14).
 2. **Stand-ins never become public API.** ChuiFrames must not export them. In particular it
@@ -49,9 +50,10 @@ exact tested snapshots.
    adds one `:contract` test item per ID.
 4. **Missing pieces go to ChuiCore as requests** (ecosystem ADR-0010 rule 3), not as permanent
    local copies. The requests are filed **when the stand-in is created**: a recursion-scheme API
-   that fits a plan functor (including a paramorphism); the transducer substrate's names;
-   `missing`-aware aggregator variants if ChuiCore wants to own them (CC PROVISIONAL); the
-   conflict banner. Each stand-in switches when **its own** piece is released, not at
+   that fits a plan functor (including a paramorphism); the transducer substrate's names; the
+   conflict banner. **`missing`-aware aggregators** (the `skipmissing` variants) are not a
+   stand-in: the user decided on 2026-10-20 (request R8, option A) that ChuiFrames owns them,
+   built on CC-004 in its own code, so rule 5's release gate does not apply to them. Each stand-in switches when **its own** piece is released, not at
    ChuiCore's first release as a whole.
 5. **Release gate.** ChuiFrames' `/release-check` **must** fail while any adapter body is still
    a local stand-in for a piece ChuiCore owns. If ChuiCore declines a request, the lead raises it
@@ -83,3 +85,12 @@ ChuiCore's ADR-0001, ADR-0003 and ADR-0005 (Accepted 2026-10-20, in ChuiCore's m
 ## Revisit when
 
 - ChuiCore tags its first release, or its phase-1 ADRs change a name used here.
+
+## Amendments
+
+- **2026-10-20** (relayed by the lead from the user; commit 4485704):
+  - rule 1: `neutral` is public, not exported (ecosystem ADR-0009, as amended). Before, it was
+    listed with the exported names.
+  - rule 4: request R8 was answered with option A. ChuiFrames owns its `missing`-aware
+    aggregators (built on CC-004 in its own code); they are not stand-ins, and rule 5's release
+    gate does not apply to them. Before, they were listed among the requests to ChuiCore.

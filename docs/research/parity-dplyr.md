@@ -79,14 +79,14 @@ superseded/deprecated/defunct rows covering 81 names (42 superseded, 6 deprecate
 | `rename` | `rename(new = :old)` | planned | 2 | Keywords keep dplyr's `new = old` order. `Base.rename` is internal (file rename), not exported. | `differential:dplyr` |
 | `rename_with` | `rename_with(uppercase, cols)` | planned | 2 | Function first, as in R. | `differential:dplyr` |
 | `relocate` | `relocate(:x; before=:y, after=nothing)` | planned | 2 |  | `differential:dplyr` |
-| `mutate` | `mutate(r = c.a ./ c.b)` | prototype | 2 | Keywords apply in order (DESIGN §3.3). `.by`, `.keep`, `.before` planned. | `differential:dplyr`, `lazy==eager` |
+| `mutate` | `mutate(r = c.a ./ c.b)` | prototype | 2 | Keywords apply in order (DESIGN §3.3). `by`, `keep`, `before`, `after` (phase 2, reserved by CF-017). | `differential:dplyr`, `lazy==eager` |
 | `pull` | `pull(:x)` / `pull(c.x)` | planned | 2 | Returns the column vector. | `unit` |
 
 ## 3. Summaries and counts
 
 | R function | Julia equivalent | Status | Phase | Notes | Test |
 |---|---|---|---|---|---|
-| `summarise` | `summarise(m = mean(c.x))` | prototype | 2 | Monoid aggregation (DESIGN §3.6). `.groups` keyword planned. | `differential:dplyr`, `lazy==eager` |
+| `summarise` | `summarise(m = mean(c.x))` | prototype | 2 | Monoid aggregation (DESIGN §3.6). `groups` and `by` keywords (phase 2). **Divergence:** with `by`, rows are sorted by key (CF-008); dplyr's `.by` keeps first-appearance order (checked 2026-10-20, dplyr 1.2.0: `b, a` vs ChuiFrames `a, b`). `sum(skipmissing(c.x))` keeps NaN; R's `na.rm = TRUE` drops it (ADR-0002 rule 12 family; differential case `summarise_g`). | `differential:dplyr`, `lazy==eager` |
 | `summarize` | `summarize` (alias) | planned | 2 | Same value as `summarise`. | `unit` |
 | `reframe` | `reframe(q = quantile(c.x, [0.25, 0.75]))` | planned | 2 | Any number of rows per group. | `differential:dplyr` |
 | `count` | `count_by(:g; wt=nothing, sort=false, name=:n)` | adapted | 2 | `count(c.g)` is the Base `count` reduction on a node already (constraint 2). | `differential:dplyr`, `CF-009` |

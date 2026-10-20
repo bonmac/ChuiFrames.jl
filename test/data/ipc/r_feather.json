@@ -1,0 +1,77 @@
+{
+ "format": "file",
+ "schema": [
+  {
+   "name": "s",
+   "type": "string",
+   "nullable": true
+  },
+  {
+   "name": "i",
+   "type": "int32",
+   "nullable": true
+  },
+  {
+   "name": "f",
+   "type": "double",
+   "nullable": true
+  },
+  {
+   "name": "b",
+   "type": "bool",
+   "nullable": true
+  },
+  {
+   "name": "d",
+   "type": "date32[day]",
+   "nullable": true
+  },
+  {
+   "name": "fac",
+   "type": "dictionary<values=string, indices=int8, ordered=0>",
+   "nullable": true
+  }
+ ],
+ "batch_lengths": [
+  3
+ ],
+ "num_rows": 3,
+ "columns": {
+  "s": [
+   "alpha",
+   null,
+   "a long R string over twelve"
+  ],
+  "i": [
+   1,
+   null,
+   3
+  ],
+  "f": [
+   1.5,
+   {
+    "float": "NaN"
+   },
+   null
+  ],
+  "b": [
+   true,
+   null,
+   false
+  ],
+  "d": [
+   {
+    "date": "2020-01-01"
+   },
+   null,
+   {
+    "date": "1970-01-02"
+   }
+  ],
+  "fac": [
+   "u",
+   "v",
+   "u"
+  ]
+ }
+}

@@ -1,0 +1,5 @@
+# A Frame: 2 × 2
+  m               n
+  <missing>  <f64?>
+1 missing   missing
+2 missing   missing
