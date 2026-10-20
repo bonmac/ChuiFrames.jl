@@ -33,6 +33,9 @@
 ### Changed
 
 - CSV timestamps with sub-millisecond digits no longer raise; they read as `ArrowTimestamp`.
+- `read_csv(...; col_types = "T")` (or a `DateTime` type) parses ISO text exactly. Digits finer
+  than a millisecond raise an `ArgumentError` naming `ArrowTimestamp{Nanosecond}`; before, they
+  became `missing` with only a warning.
 - `group_by(drop = false)` no longer raises.
 - `rowcodes` with zero key columns gives one code per row (an internal fix found by the nest lane).
 

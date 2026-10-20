@@ -52,9 +52,9 @@ its files back and commits them.
 | `tidyr-nest` | `src/engine/verbs_nest.jl`, `src/engine/verbs_complete.jl`, `test/engine/tidyr_nest_tests.jl`, `test/engine/tidyr_complete_tests.jl`, `test/engine/differential_tidyr_nest_tests.jl` | nest/unnest*/pack/unpack, fill, complete/expand/nesting; unit + differential tests |
 | `rank-tail` | `src/engine/interpreter.jl`, `src/engine/helpers.jl`, `src/engine/nodes.jl`, `src/engine/groups.jl`, `src/engine/verbs_groups.jl`, `src/engine/verbs_rows.jl`, `src/engine/verbs.jl`, `test/engine/rank_tail_tests.jl`, `test/engine/differential_rank_tail_tests.jl` | item 3 |
 | `ts-corpus` | `test/data/ipc/**`, `test/ipc/**` | the timestamp corpus (Polars, pyarrow, R arrow) and its reader tests |
+| this lane | everything else in the file scope | ADR-0021 and its implementation, integration, gates, docs, HANDOFF, changelog |
 
 Outcome: items 1–3 are on this branch. Items 4–5 move to a follow-up branch.
-| this lane | everything else in the file scope | ADR-0021 and its implementation, integration, gates, docs, HANDOFF, changelog |
 
 ## Definition of done
 

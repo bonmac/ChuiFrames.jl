@@ -60,6 +60,8 @@ _iszoned(::DateTime) = false
 
 Dates.value(t::ArrowTimestamp) = getfield(t, :value)
 Base.broadcastable(t::ArrowTimestamp) = Ref(t)   # a scalar in `c.t .> t`, like DateTime
+# the value under a null struct parent (columns.jl, `_placeholder`)
+_placeholder(::Type{T}) where {T <: ArrowTimestamp} = T(0)
 
 # Nanoseconds per unit, and the exact instant as an Int128 count of nanoseconds.
 _ns_per(::Type{Dates.Second}) = Int128(1_000_000_000)

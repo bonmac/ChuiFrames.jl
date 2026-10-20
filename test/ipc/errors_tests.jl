@@ -40,6 +40,14 @@ end
     old = IPCCorpus.ipc_stream([(IPCCorpus.schema_msg([IPCCorpus.fb_field("x", IPCCorpus.T_INT64)]; version = 2), UInt8[])])
     e = IPCCorpus.outcome(() -> read_ipc(old))
     @test e isa ArgumentError && occursin("metadata version", e.msg)
+    # a Timestamp unit outside 0-3 is corrupt input (ADR-0021 rule 10; review m5); unit 2 is
+    # the positive control for the hand-built Timestamp field
+    ts(u) = IPCCorpus.ipc_stream([(IPCCorpus.schema_msg([IPCCorpus.fb_field("t", (10, Any[(0, :i16, u)]))]), UInt8[])])
+    @test read_ipc_schema(ts(2)).types == (Union{Missing, ArrowTimestamp{ChuiFrames.Dates.Microsecond, nothing}},)
+    for f in (read_ipc, read_ipc_schema)
+        bad = IPCCorpus.outcome(() -> f(ts(4)))
+        @test bad isa ArgumentError && occursin("bad Timestamp unit 4", bad.msg)
+    end
 end
 
 @testitem "ipc: corrupt offsets, indices and nulls raise ArgumentError" tags = [:unit, :ipc] setup = [IPCCorpus] begin

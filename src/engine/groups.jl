@@ -75,7 +75,7 @@ end
 # Ascending order of distinct key values; NaN before missing (isless). Values without `isless`
 # keep first-seen order. So do values whose `isless` refuses the pair: an `Any` column mixing
 # naive and zoned timestamps (ADR-0021 rule 5) raises an ArgumentError there.
-_unordered(err) = err isa MethodError || err isa ArgumentError
+_unordered(err) = err isa MethodError || (err isa ArgumentError && occursin("(ADR-0021 rule 5)", err.msg))
 function _valueranks(col::AbstractVector, firstrows::Vector{Int})
     vals = [_canon(col[i]) for i in firstrows]
     p = try

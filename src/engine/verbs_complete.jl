@@ -212,7 +212,9 @@ columns, the expanded columns, then the other columns in their order. Rows follo
 `fill = (n = 0,)` replaces missing values of the named columns: in the new rows, and in the
 existing rows too when `explicit = true` (tidyr's `replace_na`, which also replaces NaN). A
 fill value that does not convert losslessly to the column's type is an `ArgumentError` (tidyr:
-"can't convert"). `complete()` with no columns only applies `fill`. Grouped frames complete
+"can't convert"). A column whose element type is only `Missing` declares no value type, so a
+fill gives it the fill value's type (`fill = (m = 0,)` makes it `Int64`); tidyr keeps such a
+column logical, and fills it with `FALSE`. `complete()` with no columns only applies `fill`. Grouped frames complete
 per group and keep the grouping. The non-key columns are declared nullable (rows may be new),
 except a column whose every missing value `fill` replaced.
 """

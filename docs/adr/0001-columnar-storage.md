@@ -108,6 +108,11 @@ The Base union vector stores 9 bytes per element; values plus bitmap store 8.125
    these values. That ADR must define equality and hashing across units and zones (a ms and an ns
    timestamp of the same instant), and comparison with `DateTime`.
 
+   *Amended by [ADR-0021](0021-arrow-timestamp.md) (Proposed; takes effect when accepted):*
+   timestamps compare and hash by their exact instant, not their raw value (equal instants in
+   different units are equal; `distinct` still keeps distinct ns instants apart). `DateTime(t)`
+   floors. Timestamp(ms) with a zone and Timestamp(s) also read as `ArrowTimestamp`.
+
    **Every Arrow type not in the table above** (Decimal, Date64, Float16, Duration, Time,
    Interval, FixedSizeBinary, FixedSizeList, Map, Union, Null, ListView, LargeListView, run-end
    encoding, extension types) **must** raise an `ArgumentError` that names the type, until a

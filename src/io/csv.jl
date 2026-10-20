@@ -62,8 +62,8 @@ end
 function _csv_column(name::Symbol, v::AbstractVector, ::Type{E}) where {E}
     S = nonmissingtype(eltype(v))
     V = nonmissingtype(E)
-    if V <: ArrowTimestamp && (S <: AbstractString || S === Union{})
-        v = _parse_timestamp_column(name, v, V)      # col_types = (x = ArrowTimestamp{U,TZ},)
+    if (V <: ArrowTimestamp || V === DateTime) && (S <: AbstractString || S === Union{})
+        v = _parse_timestamp_column(name, v, V)      # col_types = (x = ArrowTimestamp{U,TZ},) or DateTime
     elseif _is_csv_timestamp(S)
         V <: Union{DateTime, ArrowTimestamp} ||
             throw(ArgumentError("column $(repr(name)): timestamps cannot be read as $V"))
@@ -91,6 +91,23 @@ end
 # shifted to UTC. Naive targets reject suffixes; digits the unit cannot hold raise.
 const _ISO_TS = r"^([+-]\d{5,}|\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:?\d{2})?$"
 function parse_timestamp(::Type{V}, s::AbstractString) where {V <: ArrowTimestamp}
+    ns = _iso_ns(V, s)
+    q, r = fldmod(ns, _ns_per(timestamp_unit(V)))
+    (r == 0 && typemin(Int64) <= q <= typemax(Int64)) ||
+        throw(ArgumentError("$(repr(s)) has digits that $V cannot hold"))
+    return V(Int64(q))
+end
+# An explicit `DateTime` target (`col_types = "T"`) takes the same exact path: digits finer than
+# a millisecond raise instead of becoming `missing` (review M1).
+function parse_timestamp(::Type{DateTime}, s::AbstractString)
+    ns = _iso_ns(DateTime, s)
+    q, r = fldmod(ns, Int128(1_000_000))
+    (r == 0 && _DT_MIN_MS <= q + _UNIX_EPOCH_MS <= _DT_MAX_MS) ||
+        throw(ArgumentError("$(repr(s)) has digits that DateTime cannot hold; read it as ArrowTimestamp{Nanosecond} (ArrowTimestamp{Microsecond} outside 1677-2262)"))
+    return DateTime(Dates.UTM(Int64(q + _UNIX_EPOCH_MS)))
+end
+# nanoseconds since the Unix epoch, in UTC for a zoned target
+function _iso_ns(::Type{V}, s::AbstractString) where {V}
     bad(why) = throw(ArgumentError("$(repr(s)) is not an ISO 8601 timestamp (yyyy-mm-ddTHH:MM:SS[.fffffffff][Z|±HH:MM])$why"))
     m = match(_ISO_TS, s)
     m === nothing && bad("")
@@ -102,8 +119,8 @@ function parse_timestamp(::Type{V}, s::AbstractString) where {V <: ArrowTimestam
     ns = ((_days_from_civil(y, mo, d) * 86_400 + H * 3600 + M * 60 + S) * Int128(1_000_000_000)) + frac
     sfx = m.captures[8]
     if sfx !== nothing
-        timestamp_zone(V) === nothing &&
-            throw(ArgumentError("$(repr(s)) has a zone suffix, but $V is naive; read it as a zoned type such as ArrowTimestamp{$(timestamp_unit(V)), :UTC}"))
+        (V === DateTime || timestamp_zone(V) === nothing) &&
+            throw(ArgumentError("$(repr(s)) has a zone suffix, but $V is naive; read it as a zoned type such as ArrowTimestamp{$(V === DateTime ? Dates.Millisecond : timestamp_unit(V)), :UTC}"))
         if sfx != "Z"
             sign = sfx[1] == '-' ? -1 : 1
             digits = replace(sfx[2:end], ":" => "")
@@ -112,10 +129,7 @@ function parse_timestamp(::Type{V}, s::AbstractString) where {V <: ArrowTimestam
             ns -= sign * (oh * 3600 + om * 60) * Int128(1_000_000_000)
         end
     end
-    q, r = fldmod(ns, _ns_per(timestamp_unit(V)))
-    (r == 0 && typemin(Int64) <= q <= typemax(Int64)) ||
-        throw(ArgumentError("$(repr(s)) has digits that $V cannot hold"))
-    return V(Int64(q))
+    return ns
 end
 function _parse_timestamp_column(name, v, ::Type{V}) where {V}
     out = Vector{Union{Missing, V}}(undef, length(v))
@@ -167,14 +181,22 @@ function CSVSource(src::Union{AbstractString, Vector{UInt8}}; delim = _default_d
     for k in (:pool, :stringtype, :scan, :typemap)
         haskey(kw, k) && throw(ArgumentError("CSVSource does not take the `$k` keyword (it is fixed by ChuiFrames)"))
     end
-    # ArrowTimestamp targets are read as text and parsed by ChuiFrames (ADR-0021 rule 12); a
-    # unit-only `ArrowTimestamp{U}` means the naive type.
+    # ArrowTimestamp targets, and DateTime targets without a `dateformat`, are read as text and
+    # parsed exactly by ChuiFrames (ADR-0021 rule 12); a unit-only `ArrowTimestamp{U}` means the
+    # naive type.
     tstypes = Dict{Any, Type}()
     if get(opts, :types, nothing) isa AbstractDict
         given = opts[:types]
         for (k, T) in given
             S = nonmissingtype(T)
-            S <: ArrowTimestamp && (tstypes[k] = S isa UnionAll ? S{nothing} : S)
+            if S === DateTime
+                get(opts, :dateformat, nothing) === nothing && (tstypes[k] = DateTime)
+            elseif S <: ArrowTimestamp
+                S′ = S isa UnionAll ? S{nothing} : S
+                (S′ isa DataType && timestamp_unit(S′) isa DataType) ||
+                    throw(ArgumentError("column $(repr(k)): give ArrowTimestamp a unit, such as ArrowTimestamp{Microsecond} or ArrowTimestamp{Nanosecond, :UTC}"))
+                tstypes[k] = S′
+            end
         end
         isempty(tstypes) || (opts[:types] = Dict{Any, Type}(k => (haskey(tstypes, k) ? String : T) for (k, T) in given))
     end
@@ -407,7 +429,8 @@ Divergences from readr, measured against readr 2.1.6 by the `:differential` test
 - timestamps are `DateTime` when the first batch holds whole milliseconds, else
   `ArrowTimestamp{Nanosecond}` (exact; ADR-0021 rule 12); a later batch with finer digits than
   a `DateTime` first batch raises. `col_types = (t = ArrowTimestamp{U,TZ},)` parses ISO 8601 text itself,
-  with `Z`/`±HH:MM` suffixes for zoned types. readr reads `Z`/offset text as UTC automatically;
+  with `Z`/`±HH:MM` suffixes for zoned types; so does `T`/`DateTime`, which raises on digits finer
+  than a millisecond (readr keeps them; read such columns as `ArrowTimestamp{Nanosecond}`). readr reads `Z`/offset text as UTC automatically;
   ChuiFrames reads it as strings unless `col_types` says otherwise;
 - a time of day (readr `hms`) is an object column of `Dates.Time`.
 """

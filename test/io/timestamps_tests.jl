@@ -168,7 +168,34 @@ end
         r = joinpath(dir, "r.csv")
         write(r, "t\n2024-01-01T00:00:00Z\nnot a time\n")
         @test_throws ArgumentError read_csv(r; col_types = (t = TS{Second, :UTC},))
+        # an explicit DateTime target (readr `T`) is exact: whole ms read, finer digits raise
+        # naming ArrowTimestamp, never `missing` (review M1)
+        d = joinpath(dir, "d.csv")
+        write(d, "t\n2024-01-01T00:00:00.123\n2024-01-01 00:00:01\n")
+        @test read_csv(d; col_types = "T").columns[1] == [DateTime(2024, 1, 1, 0, 0, 0, 123), DateTime(2024, 1, 1, 0, 0, 1)]
+        write(d, "t\n2024-01-01T00:00:00.123456\n")
+        for ct in ("T", (t = DateTime,))
+            err = try
+                read_csv(d; col_types = ct)
+                nothing
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("ArrowTimestamp{Nanosecond}", err.msg)
+        end
+        # ArrowTimestamp with no unit raises an ArgumentError asking for one (review m3)
+        err = try
+            read_csv(d; col_types = (t = TS,))
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError && occursin("give ArrowTimestamp a unit", err.msg)
     end
+    # a struct column with a timestamp field may have missing parents (review m4)
+    NT = NamedTuple{(:t,), Tuple{TS{Microsecond, nothing}}}
+    f = Frame(s = Union{Missing, NT}[(t = TS{Microsecond}(5),), missing])
+    @test isequal(collect(f.columns[1]), Union{Missing, NT}[(t = TS{Microsecond}(5),), missing])
 end
 
 @testitem "ArrowTimestamp: property laws (isequal ⇒ hash, strict order, floor monotone)" tags = [:property] begin
@@ -176,18 +203,44 @@ end
     const TS = ArrowTimestamp
     units = (Second, Millisecond, Microsecond, Nanosecond)
     # values small enough that every unit's instant stays comparable, with ties across units
-    raw = Data.Integers(-10^12, 10^12)
+    raw = Data.Integers(-10^12, 10^12)               # microseconds since 1970
+    near = Data.Integers(-2, 2)
+    # naive values in any unit, or a DateTime; zoned values in any unit and two zones
+    kinds = Data.SampledFrom(Any[units..., DateTime])
+    zones = Data.SampledFrom([:UTC, Symbol("Europe/Berlin")])
     ugen = Data.SampledFrom(collect(units))
-    tsgen = @composed function ts(u = ugen, x = raw)
-        return TS{u}(u === Second ? fld(x, 10^6) : u === Millisecond ? fld(x, 10^3) : u === Microsecond ? x : x * 1000)
+    count(u, x) = u === Second ? fld(x, 10^6) : u === Millisecond ? fld(x, 10^3) : u === Microsecond ? x : x * 1000
+    mk(k, x, z) = k === DateTime ? DateTime(1970) + Millisecond(fld(x, 10^3)) : TS{k, z}(count(k, x))
+    # pairs drawn from one instant (plus a step of -2..2 µs), so ties across units are common
+    naivepair = @composed function np(k1 = kinds, k2 = kinds, x = raw, d = near)
+        return (mk(k1, x, nothing), mk(k2, x + d, nothing))
     end
-    law(a, b) = (!isequal(a, b) || hash(a) == hash(b)) && (isless(a, b) + isless(b, a) + isequal(a, b) == 1) &&
-        (!isless(a, b) || DateTime(a) <= DateTime(b))
-    r = @check record = false db = false max_examples = 2000 law(tsgen, tsgen)
-    @test Supposition.results(r).ispass
-    # the planted violation: a hash that ignores the unit must be caught by the same harness
+    zonedpair = @composed function zp(u1 = ugen, u2 = ugen, z1 = zones, z2 = zones, x = raw, d = near)
+        return (mk(u1, x, z1), mk(u2, x + d, z2))
+    end
+    law(h) = function (p)
+        a, b = p
+        return (!isequal(a, b) || h(a) == h(b)) && (isless(a, b) + isless(b, a) + isequal(a, b) == 1) &&
+            (!isless(a, b) || DateTime(a) <= DateTime(b))
+    end
+    for gen in (naivepair, zonedpair)
+        r = @check record = false db = false max_examples = 2000 law(hash)(gen)
+        @test Supposition.results(r).ispass
+    end
+    # the planted violation, through the same law and the same generator: a hash of the raw
+    # count ignores the unit, so equal instants in different units must be caught
     badhash(t) = hash(Dates.value(t))
-    badlaw(x) = (a = TS{Millisecond}(x); b = TS{Microsecond}(x * 1000); !isequal(a, b) || badhash(a) == badhash(b))
-    r2 = @check record = false db = false max_examples = 200 badlaw(Data.Integers(1, 10^9))
+    r2 = @check record = false db = false max_examples = 2000 law(badhash)(naivepair)
     @test !Supposition.results(r2).ispass
+    # exact conversion (ADR-0021 rule 6): to any naive unit, the value is kept or InexactError
+    conv(p) = all(units) do u
+        a = p[1]
+        try
+            isequal(convert(TS{u, nothing}, a), a)
+        catch err
+            err isa InexactError
+        end
+    end
+    r3 = @check record = false db = false max_examples = 2000 conv(naivepair)
+    @test Supposition.results(r3).ispass
 end
