@@ -106,6 +106,11 @@
         return false
     end
     lazyq(p, t) = p === nothing ? lazy(t) : p(lazy(t))
+    # A time budget checked inside every property call: past it, each call throws, so a slow or
+    # hanging run fails loudly in-process (an outer alarm does not reach Pkg.test's child).
+    const DEADLINE = Ref(Inf)
+    deadline!(secs) = (DEADLINE[] = time() + secs; nothing)
+    checktime() = time() > DEADLINE[] && error("property time budget exceeded")
     # Partitions pruned by one run of `q` (0 when the run throws).
     function npruned(q; morsel, threads)
         st = ChuiFrames.ExecStats()
@@ -126,6 +131,7 @@ end
     nerr = Ref(0)
     nok = Ref(0)
     function lazy_eq(t, grouped, steps, m, th)
+        checktime()
         input = grouped ? group_by(:g)(Frame(t)) : t
         p = pipe(steps)
         e = outcome(() -> run_eager(p, input))
@@ -134,6 +140,7 @@ end
         outcomes_agree(e, l; approx = any(reduces, steps)) && return true
         return explain_failure(steps, e, l)
     end
+    deadline!(300)
     t0 = time()
     sr = @check record = false db = false max_examples = 3000 lazy_eq(tablegen, Data.Booleans(), stepsgen, morselgen, threadgen)
     elapsed = time() - t0
@@ -146,6 +153,7 @@ end
 
 @testitem "lazy property: the optimizer never hits the fixpoint cap and is idempotent" tags = [:property] setup = [LazyProp] begin
     function healthy(t, grouped, steps)
+        checktime()
         input = grouped ? group_by(:g)(Frame(t)) : t
         p = pipe(steps)
         q = lazyq(p, input)
@@ -156,6 +164,7 @@ end
         (isempty(log2.fired) && plan2 == plan) || (event!("pipeline", pipestr(steps)); event!("refired", log2.fired); return false)
         return true
     end
+    deadline!(300)
     t0 = time()
     sr = @check record = false db = false max_examples = 2000 healthy(tablegen, Data.Booleans(), stepsgen)
     elapsed = time() - t0
@@ -178,6 +187,7 @@ end
     tail = Data.Vectors(Data.SampledFrom(VOCAB); max_size = 3)
     pruned = Ref(0)
     function sound(t, pre, rest, m, th)
+        checktime()
         steps = Any[pre; rest]
         p = pipe(steps)
         e = outcome(() -> run_eager(p, t))
@@ -186,6 +196,7 @@ end
         outcomes_agree(e, l; approx = any(reduces, steps)) && return true
         return explain_failure(steps, e, l)
     end
+    deadline!(300)
     t0 = time()
     sr = @check record = false db = false max_examples = 2000 sound(tablegen, prefix, tail, Data.Integers(1, 4), threadgen)
     show_failure(sr)
@@ -219,6 +230,7 @@ end
     partsgen = Data.Vectors(Data.Vectors(Data.SampledFrom(XV); max_size = 4); max_size = 5)
     blind_pruned = Ref(0)
     function blind(parts, preds, out, m, th)
+        checktime()
         src = NaNBlindSource(Vector{Union{Missing, Float64}}[Union{Missing, Float64}[v...] for v in parts])
         s = out ? filter_out(preds...) : filter(preds...)
         e = outcome(() -> s(ChuiFrames.read_source(src)))
@@ -240,6 +252,7 @@ end
     const STREAMABLE = Any[s for s in STREAMED if ChuiFrames.isstreamable(s)]
     @test length(STREAMABLE) == length(STREAMED)
     function kernel_eq(t, steps)
+        checktime()
         p = pipe(steps)
         e = outcome(() -> run_eager(p, t))
         ph = ChuiFrames.physical(ChuiFrames.optimize(p(lazy(t))).plan)
@@ -266,6 +279,7 @@ end
         ok || (event!("pipeline", pipestr(steps)); event!("eager", want); event!("kernel", cols))
         return ok
     end
+    deadline!(300)
     t0 = time()
     sg = Data.Vectors(Data.SampledFrom(STREAMABLE); min_size = 1, max_size = 4)
     sr = @check record = false db = false max_examples = 400 kernel_eq(tablegen, sg)
@@ -276,6 +290,7 @@ end
 end
 
 @testitem "lazy: parallel morsels on large tables (results, ExecStats, exception order)" tags = [:property, :unit] setup = [LazyProp] begin
+    deadline!(300)
     t0 = time()
     n = 2_000
     big = (

@@ -270,7 +270,10 @@ end
 end
 
 @testitem "property: may_match never prunes a partition with a kept row (CF-013)" tags = [:property] setup = [PredProp] begin
+    # time budget checked inside each call: past it every call throws (fails loudly in-process)
+    deadline = time() + 300
     function sound(x, codes, knobs)
+        time() > deadline && error("property time budget exceeded")
         p = decode(codes, Ref(1), 0)
         s = mkstats(x, knobs)
         may_match(p, col -> col === :x ? s : nothing) && return true
