@@ -15,6 +15,34 @@
     @test out == "$msg|$msg|false"
 end
 
+@testitem "Parquet: sub-millisecond timestamps raise (ADR-0001 rule 6; review M1)" tags = [:unit] begin
+    using ChuiFrames, Tables, Dates, Parquet2
+    # pyarrow-written fixture, see test/io/data/README.md
+    p = joinpath(@__DIR__, "data", "timestamps_units.parquet")
+    # µs and ns timestamps wait for the ArrowTimestamp ADR: an error naming the unit, never a
+    # silent truncation to milliseconds (the Arrow reader and CSV raise too)
+    s = ChuiFrames.scan_file(p)
+    for (col, unit) in ((:us, "MICRO"), (:ns, "NANO"))
+        h, _ = ChuiFrames.plan_partitions(s, Tables.Scan(; select = [col]); morsel = 10)
+        err = try
+            ChuiFrames.read_partition(s, h[1])
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin(unit, uppercase(sprint(showerror, err)))
+        # truncated bounds must not drive pruning either
+        @test ChuiFrames.partition_stats(s, h[1], col) === nothing
+    end
+    @test_throws ArgumentError read_file(p)
+    # millisecond timestamps and dates still read
+    hs, _ = ChuiFrames.plan_partitions(s, Tables.Scan(; select = [:ms, :d]); morsel = 10)
+    f = ChuiFrames.read_partition(s, hs[1])
+    @test collect(Tables.getcolumn(f, :ms)) == [DateTime(2024, 1, 1, 0, 0, 0, 123)]
+    @test collect(Tables.getcolumn(f, :d)) == [Date(2024, 1, 2)]
+end
+
 @testitem "Parquet: round trip through Parquet2, one row group per partition" tags = [:unit] begin
     using ChuiFrames, Tables, Dates, Parquet2
     using ChuiFrames: frame_equal, column, DictColumn

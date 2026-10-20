@@ -31,6 +31,8 @@ struct ParquetSource <: ChuiFrames.Source
     ds::Parquet2.Dataset
     names::Vector{Symbol}
     schema::Tables.Schema
+    # columns whose timestamps are finer than milliseconds, with their unit name
+    subms::Dict{Symbol, String}
 end
 function ParquetSource(src::Union{AbstractString, Vector{UInt8}}; kw...)
     ds = Parquet2.Dataset(src; kw...)
@@ -38,7 +40,30 @@ function ParquetSource(src::Union{AbstractString, Vector{UInt8}}; kw...)
     names = collect(Symbol, sch.names)
     types = Type[_pq_eltype(T) for T in sch.types]
     label = src isa AbstractString ? "Parquet $(basename(src))" : "Parquet ($(length(src)) bytes)"
-    return ParquetSource(label, ds, names, Tables.Schema(names, types))
+    return ParquetSource(label, ds, names, Tables.Schema(names, types), _subms_columns(ds, names))
+end
+
+# Parquet2 decodes µs/ns timestamps to `DateTime`, silently truncating them to milliseconds.
+# ADR-0001 rule 6 defers sub-millisecond timestamps to the `ArrowTimestamp` ADR, so such a
+# column raises when read (as the Arrow reader and CSV do) and gives no statistics, instead of
+# producing truncated values or bounds (review M1, 2026-10-20). The unit is the column's
+# `ParqDateTime` exponent (-3 = ms, -6 = µs, -9 = ns; checked on a pyarrow 26 file).
+function _subms_columns(ds::Parquet2.Dataset, names::Vector{Symbol})
+    out = Dict{Symbol, String}()
+    length(ds) == 0 && return out
+    rg = ds[1]
+    for n in names
+        t = rg[String(n)].type
+        if t isa Parquet2.ParqDateTime && t.exponent < -3
+            out[n] = t.exponent == -6 ? "MICROSECOND" : t.exponent == -9 ? "NANOSECOND" : "10^$(t.exponent) s"
+        end
+    end
+    return out
+end
+function _check_subms(s::ParquetSource, n::Symbol)
+    u = get(s.subms, n, nothing)
+    u === nothing && return nothing
+    throw(ArgumentError("Parquet: column $(repr(n)) holds Timestamp($u) values, which ChuiFrames does not read yet (ADR-0001 rule 6: sub-millisecond timestamps wait for the ArrowTimestamp ADR); Parquet2 would truncate them to milliseconds"))
 end
 
 ChuiFrames.source_schema(s::ParquetSource) = s.schema
@@ -52,6 +77,7 @@ function ChuiFrames.read_partition(s::ParquetSource, (k, cols))
     names = cols === nothing ? s.names : cols
     out = AbstractColumn[]
     types = ChuiFrames.schema_types(s.schema)
+    foreach(n -> _check_subms(s, n), names)
     for n in names
         j = findfirst(==(n), s.names)::Int
         push!(out, conform_column(n, Parquet2.load(rg, String(n)), types[j]))
@@ -71,6 +97,7 @@ is absent, `missing` or NaN is `nothing`; `nnan` is always `nothing` (unknown).
 """
 function ChuiFrames.partition_stats(s::ParquetSource, (k, _), col::Symbol)
     col in s.names || return nothing
+    haskey(s.subms, col) && return nothing   # truncated bounds would prune wrongly (review M1)
     st = try
         Parquet2.ColumnStatistics(s.ds[k][String(col)])
     catch

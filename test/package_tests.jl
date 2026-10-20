@@ -34,6 +34,8 @@ end
         # Parquet2's documented reader/writer API, used by ext/ChuiFramesParquet2Ext.jl (ADR-0020);
         # checked only when a test has loaded Parquet2 (e.g. `ci.jl test -- all`)
         :Dataset, :FileWriter, :ColumnStatistics, :load, :writetable!, :finalize!,
+        # Parquet2's logical timestamp type, read to find a column's unit (review M1)
+        :ParqDateTime,
         # ChuiFrames internals used by its own Parquet2 extension (same package, not an API)
         :DEFAULT_MORSEL, :_tryclose, :_tryrm, :column, :isnullable, :schema_types,
         :AbstractColumn, :BinaryColumn, :DictColumn, :ListColumn, :StrView, :StringColumn,
