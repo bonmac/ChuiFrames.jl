@@ -128,6 +128,49 @@ equal grouping columns.
 frame_equal(a, b) =
     isequal(Tables.columntable(a), Tables.columntable(b)) && isequal(groupcols(a), groupcols(b))
 
+# Content equality of two frames: frame equality (above) plus the same drop flag, which changes
+# what later verbs give (a `drop = false` frame keeps empty groups). The group index is derived
+# data and is not compared. Element types are not compared (as `isequal` on vectors), so a
+# frame equals its round trip through a column table. Nested frames compare by content.
+_samestructure(a::Frame, b::Frame) =
+    a.names == b.names && a.nrow == b.nrow && a.groups == b.groups && a.drop == b.drop
+
+"`isequal(a::Frame, b::Frame)`: the same names in order, row count, grouping columns and drop flag, and `isequal` columns (NaN equals NaN, `-0.0` differs from `0.0`, `missing` equals `missing`)."
+function Base.isequal(a::Frame, b::Frame)
+    a === b && return true
+    _samestructure(a, b) || return false
+    for i in eachindex(a.columns)
+        isequal(a.columns[i], b.columns[i]) || return false
+    end
+    return true
+end
+
+"""
+    a::Frame == b::Frame
+
+`false` when the names, row counts, grouping columns or drop flags differ; otherwise `==` on
+the columns combined as `==` on vectors does: `false` if any value differs, else `missing` if a
+comparison involves `missing`, else `true` (so NaN makes it `false`, and `-0.0 == 0.0`).
+"""
+function Base.:(==)(a::Frame, b::Frame)
+    _samestructure(a, b) || return false
+    anymissing = false
+    for i in eachindex(a.columns)
+        r = a.columns[i] == b.columns[i]
+        r === false && return false
+        ismissing(r) && (anymissing = true)
+    end
+    return anymissing ? missing : true
+end
+
+function Base.hash(f::Frame, h::UInt)
+    h = hash(f.drop, hash(f.groups, hash(f.nrow, hash(f.names, hash(:ChuiFramesFrame, h)))))
+    for c in f.columns
+        h = hash(c, h)
+    end
+    return h
+end
+
 # ---------------------------------------------------------------------------------------------
 # Row selection on a whole frame (ungrouped helpers shared by verbs and I/O).
 
