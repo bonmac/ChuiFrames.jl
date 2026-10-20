@@ -24,6 +24,11 @@ end
         :schema, :Schema, :partitions, :Scan, :columntable, :rowtable,
         # DataAPI generics (README: "functions to be extended")
         :refarray, :refpool, :refvalue, :nrow, :ncol,
+        # DataAPI selector types, re-exported as the same bindings (ADR-0002 rule 7)
+        :Cols, :Between, :All,
+        # Base broadcasting interface (manual: "Customizing broadcasting"), the c.x capture
+        # mechanism of ADR-0002 rule 1, and `literal_pow` (rule 1's `.^` normalisation, GR-02)
+        :broadcasted, :broadcastable, :Broadcasted, :BroadcastStyle, :Unknown, :literal_pow,
     )
     if VERSION >= v"1.11"
         @test check_all_qualified_accesses_are_public(ChuiFrames; ignore = INTERFACE) === nothing

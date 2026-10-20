@@ -442,7 +442,8 @@ function _column_other(::Type{T}, v, nullable) where {T}
     end
     vals = Vector{T}(undef, length(v))
     for (i, x) in enumerate(v)
-        ismissing(x) || (vals[i] = x)
+        # an `Any`-like T is not "nullable" (nonmissingtype(Any) === Any), so `missing` is a value
+        (ismissing(x) && !(Missing <: T)) || (vals[i] = x)
     end
     return ObjectColumn(vals, _validity_of(v, nullable))
 end

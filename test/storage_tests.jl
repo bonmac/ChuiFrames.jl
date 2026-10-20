@@ -15,6 +15,7 @@
     @test column([Date(2020)]) isa PrimitiveColumn{Date}
     @test column([:a, :b]) isa ObjectColumn{Symbol}
     @test column(Any[1, "x"]) isa ObjectColumn{Any}
+    @test isequal(collect(column(Any[1, missing])), Any[1, missing])   # found by p2-engine
     @test column([[1, 2], Int[]]) isa ListColumn
     @test column([(a = 1, b = "x")]) isa StructColumn
     @test isequal(collect(column(["a", missing, "ccc"])), ["a", missing, "ccc"])
