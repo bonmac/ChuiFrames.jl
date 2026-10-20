@@ -201,6 +201,19 @@ off unless `--tune`; it adds a `time_to_load` entry of its own.
 compare`, `ci.jl bench: OK` (2.2 s). The merge base with `main` has no `benchmark/`, so the gate
 compares nothing on this branch; it runs once the suite is on `main`.
 
+The gate's noise floor, with the suite on both sides: `julia scripts/bench.jl --base 6250cad` at
+`ad2f852` (no `src/` or `benchmark/benchmarks.jl` difference between the two trees; load average
+7.6-7.8) → `.lanes/evidence/bench-gate-vs-6250cad-ad2f852.txt`, exit 1 in 457 s:
+```
+  REGRESSION io/write_arrow/n=10^5: 1.2x the merge base
+  REGRESSION summarise/Int few/n=10^6: 1.138x the merge base
+  REGRESSION filter/x > 0/n=10^6: 1.129x the merge base
+  REGRESSION io/write_csv/n=10^5: 1.124x the merge base
+bench.jl: 4 regressions beyond tolerance 0.1
+```
+All four are noise: on this shared machine a 10 % tolerance fails identical code, so the gate must
+stay warning-only until it runs on a quieter runner (ADR-0011, ADR-0022 rule 6).
+
 ## PF-14 The budget checks at 7f0d685 (budgets committed)
 
 | Command | Evidence | Result |
