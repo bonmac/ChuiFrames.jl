@@ -43,9 +43,11 @@ note.)
   `q |> s` return a new `LazyFrame`; nothing runs.
 - `collect(q; morsel = 65_536, threads = true)` → `Frame`. `optimize(q)` → the optimized
   `LazyFrame`. `explain([io,] q)` prints. `code_lowered([io,] q)` prints the rendered kernels.
-- `scan_file(path)` returns `lazy(source)` (its docstring already said the lazy entry point
-  would wrap it). `read_file` keeps reading eagerly. `Tables.jl` on a `LazyFrame`: it is not a
-  table (`Tables.istable` false); collect first. (CF-001 covers "the result of collecting".)
+- `scan_file(path)` keeps returning the format's `Source` (format registrations return sources,
+  CF-016). A verb applied to a `Source` starts a lazy query over it, and `collect(source)` reads
+  it through the engine, so CF-016's `collect(scan_file("t.arrow"))` works. `read_file` keeps
+  reading eagerly. A `LazyFrame` is not a Tables.jl table; collect first (CF-001 covers "the
+  result of collecting").
 
 ## 3. Plan IR (ADR-0003 rules 1, 4; ChuiCore R6 mirrored)
 

@@ -352,4 +352,58 @@ function aggregate(agg, xf::Transducer, parts)
     return final(agg, acc)
 end
 
+# ---------------------------------------------------------------------------------------------
+# Recursion schemes (ChuiCore R6, main b4f1ca3 and later, unreleased): the Functor class's `fmap`
+# through a constructor-class tag and a typed style argument (ChuiCore rule N5), `project`, and
+# `cata`/`para`/`ana` with ChuiCore's semantics. A node type that registers `fmap` is its own base
+# functor (`project(x) = x`), so the schemes traverse it without `Fix` wrappers. ChuiFrames' plan
+# nodes register here (src/lazy/plan.jl); the stand-ins move to ChuiCore at its release
+# (ADR-0014 rule 3).
+
+"The fallback constructor-class tag (ChuiCore's `NoTag`)."
+struct NoTag end
+"`constructorclass(::Type{T})`: the tag of `T` (ChuiCore); `NoTag()` unless registered."
+constructorclass(::Type) = NoTag()
+
+"The Functor class styles (ChuiCore's `IsFunctor`/`NotFunctor`)."
+struct IsFunctor end
+struct NotFunctor end
+"`FunctorStyle(tag)`: `IsFunctor()` for a registered tag, else `NotFunctor()`."
+FunctorStyle(::Any) = NotFunctor()
+
+"""
+    fmap(f, x)
+
+Functor map: `fmap(FunctorStyle(constructorclass(typeof(x))), f, x)`. Instances add the
+3-argument method with the style argument typed, `fmap(::IsFunctor, f, x::T)` (ChuiCore N5).
+"""
+fmap(f, x) = fmap(FunctorStyle(constructorclass(typeof(x))), f, x)
+fmap(::NotFunctor, f, x) =
+    throw(ArgumentError("$(typeof(x)) is not a Functor: register it with constructorclass and FunctorStyle"))
+
+"`project(x)`: the layer a scheme maps over; a node type with its own `fmap` is its own layer."
+project(x) = x
+
+struct _Cata{A} <: Function
+    alg::A
+end
+(c::_Cata)(x) = c.alg(fmap(c, project(x)))
+"`cata(alg, x)`: fold; `alg` sees one layer whose holes hold the children's results."
+cata(alg, x) = _Cata(alg)(x)
+
+struct _Para{A} <: Function
+    alg::A
+end
+(p::_Para)(x) = p.alg(fmap(c -> (c, p(c)), project(x)))
+"`para(alg, x)`: fold whose holes are `(original, result)` tuples (ChuiCore R6)."
+para(alg, x) = _Para(alg)(x)
+
+struct _Ana{C, E} <: Function
+    coalg::C
+    embed::E
+end
+(a::_Ana)(seed) = a.embed(fmap(a, a.coalg(seed)))
+"`ana(coalg, seed; embed)`: unfold; `embed = identity` builds a tree of bare layers."
+ana(coalg, seed; embed) = _Ana(coalg, embed)(seed)
+
 end # module Upstream
