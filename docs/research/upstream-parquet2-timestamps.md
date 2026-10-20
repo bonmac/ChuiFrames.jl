@@ -48,8 +48,8 @@ example: wrote 2038-12-29T21:04:52.561 read 2038-12-29T21:04:52.560
 
 **Cause.** Both conversions go through `Float64` seconds:
 
-- read, `src/schema.jl:185`: `Dates.DateTime(pdt::ParqDateTime, x) = unix2datetime(x*10.0^pdt.exponent)`
-- write, `src/write.jl:409`: `encodevalue(pdt::ParqDateTime, ::ParqInt64, x::DateTime) = floor(Int64, datetime2unix(x) * 10^(-pdt.exponent))`
+- read, Parquet2's schema.jl line 185: `Dates.DateTime(pdt::ParqDateTime, x) = unix2datetime(x*10.0^pdt.exponent)`
+- write, Parquet2's write.jl line 409: `encodevalue(pdt::ParqDateTime, ::ParqInt64, x::DateTime) = floor(Int64, datetime2unix(x) * 10^(-pdt.exponent))`
 
 `x * 1e-3` is not exact in binary floating point, so `unix2datetime` (and `floor` on the write
 side) can land 1 ms low. Files written by pyarrow show the same read error, so the reader is affected
