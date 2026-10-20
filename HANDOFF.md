@@ -87,6 +87,22 @@ Minors left open, with reasons:
 - The intermediate engine commits do not build on their own. Prefer a squash merge.
 - The review NITs (`glimpse` prints no trailing newline; `isempty(c.x)` is silently `false`; `take` on LargeUtf8 gives back Int32 offsets; LZ4/Zstd output size is not capped).
 
+## Upstream notes for phase 3 (ChuiCore phase 3 merged on its main b4f1ca3, NOT released)
+
+Keep the stand-ins until the release; then switch per ADR-0014 rule 3.
+- **First n rows:** keep `head`/limits on `Take` or `foldxl`, never an accumulator-dependent
+  `Reduced` from `op` under `foldparts` (ChuiCore S1). Phase 2 complies: `head` is a direct
+  `take`, and `Reduced` appears only inside the `Take` stand-in.
+- **Plan nodes:** use `Any`-typed child fields; parametric child fields recompile per tree shape.
+- **Instances:** type the style argument (`ap(::IsApplicative, …)`, ChuiCore rule N5). ChuiFrames
+  defines no instances yet.
+- **Available on ChuiCore main:** R6 `cata`/`ana`/`para` over an own node type with a
+  registered `fmap`, plus `Fix`; R7 transducers and `aggregate` (`isstateless` fail-closed); R9
+  `binding_conflicts`/`conflict_banner` (`CHUI_QUIET_CONFLICTS`). The banner stand-in
+  (`src/show/banner.jl`) differs in one point: it scans modules bound in `Main`, while R9 also
+  scans `Base.loaded_modules`. It takes an extra optional `others` argument. The difference
+  disappears at the switch.
+
 ## Next action
 
 The reviewer's re-check of the fixes, then the lead's reviewed merge (squash recommended).
