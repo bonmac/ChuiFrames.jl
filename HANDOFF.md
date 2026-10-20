@@ -26,12 +26,12 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| phase2-eager | the phase-2 lane (lead's teammate) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2-eager.md` | milestone done; review in progress | to the lead |
-| p2-ipc, p2-engine, p2-io, p2-show | sub-lanes (closed) | worktrees created, **unused**: the guard hooks blocked writes outside the active worktree, so each built in a scratch copy and its files were committed on `feat/phase2-eager` | integrated | to the phase-2 lane |
+| phase2-eager | the phase-2 lane (lead's teammate) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2-eager.md` | milestone done; reviewer **approved** `5f5f491` | to the lead |
 
-The four sub-lane worktrees (`.worktrees/p2-*`, branches `feat/p2-*` with no commits) can be
-removed with `scripts/lane remove <name>`. `.worktrees/p2-ipc` holds a stray gitignored
-`Manifest.toml` (needs `--allow-ignored`).
+The sub-lanes p2-ipc, p2-engine, p2-io and p2-show are closed and integrated. The guard hooks
+blocked writes outside the active worktree, so each sub-lane built in a scratch copy and its files
+were committed on `feat/phase2-eager`. Their worktrees are removed. The branches `feat/p2-*`
+remain at the foundation commit `7ba095f` with no commits of their own; deleting them is the lead's call.
 
 ## Evidence
 
