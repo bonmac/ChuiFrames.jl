@@ -61,7 +61,7 @@ performance ADR (ADR-0003 consequences).
 
 - TDD per sub-lane: failing test first.
 - Supposition properties: `@check record=false db=false …` plus an explicit `@test` on the
-  result; no `test/SuppositionDB` is ever committed.
+  result; no Supposition database directory under the test tree is ever committed.
 - Differential tests are tagged `:differential` (they need `Rscript`/`uv`) and run in this
   lane's scratchpad environment; their results are reported, not assumed.
 - Snapshot tests are tagged `:snapshot` (stable Julia only).
