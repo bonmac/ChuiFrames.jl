@@ -45,7 +45,8 @@ end
     conform_types(part, schema::Tables.Schema) -> Frame
 
 The partition `part` as a frame whose columns that `schema` declares have the declared element
-types ([`conform_column`](@ref); an `ArgumentError` when a value cannot be converted exactly).
+types ([`conform_column`](@ref)). A column `conform_column` cannot convert (an abstract declared
+type such as `Any`, `Date` values under a declared `DateTime`, an inexact number) is kept as read.
 Columns already of the declared type, and columns `schema` does not name, are kept as they are.
 Both the eager source reader and the lazy engine read partitions through it, so every partition
 reaches the verbs with the declared types (a source's partitions may differ, e.g. `Int` in one
@@ -63,8 +64,16 @@ function conform_types(part, sch::Tables.Schema)
         E = types[i]
         c = f.columns[j]
         eltype(c) === E && continue
+        # a declared type `conform_column` cannot reach (an abstract `Any`, `Date` values under a
+        # declared `DateTime`, as `TablesSource` merges them) keeps the column as read, as before
+        c2 = try
+            conform_column(n, c, E)
+        catch err
+            err isa ArgumentError || rethrow()
+            continue
+        end
         cols === nothing && (cols = copy(f.columns))
-        cols[j] = conform_column(n, c, E)
+        cols[j] = c2
     end
     cols === nothing && return f
     return Frame(copy(f.names), cols, copy(f.groups), nothing, f.nrow, f.drop)

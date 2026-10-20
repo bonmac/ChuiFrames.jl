@@ -2,7 +2,7 @@
 # reproducer, lazy against eager.
 
 @testsnippet RR begin
-    using Tables
+    using Tables, Dates
     const ⨟ = ChuiFrames.Upstream.:⨟
     col(x, n) = collect(Tables.getcolumn(x, n))
     function outcome(f)
@@ -46,6 +46,12 @@ end
         @test agrees(p, s; source = lazy)
     end
     @test col(collect((head(1) ⨟ mutate(y = string.(c.x)))(lazy(s))), :y) == ["4.0"]
+    # review pass 2, N1: kinds conform_column cannot reach are read as before, on both paths
+    for parts in ([(x = [1, 2],), (x = ["a"],)], [(x = [Dates.Date(2020)],), (x = [Dates.DateTime(2021)],)])
+        u = ChuiFrames.TablesSource(Tables.partitioner(parts))
+        @test ChuiFrames.read_source(u).nrow == sum(p -> length(p.x), parts)
+        @test agrees(filter(.!ismissing.(c.x)), u)
+    end
 end
 
 @testitem "review B4: dictionary columns keep their levels (drop = false)" tags = [:unit] setup = [RR] begin

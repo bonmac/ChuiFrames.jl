@@ -62,6 +62,12 @@
     pipe(steps) = isempty(steps) ? nothing : foldl(⨟, steps)
     run_eager(p, t) = p === nothing ? Frame(t) : p(t)
     run_lazy(p, t; kw...) = collect(p === nothing ? lazy(t) : p(lazy(t)); kw...)
+    # The engine without collect's eager replay (review pass 2, N2): it must never throw where
+    # eager succeeds, and must give the eager result then.
+    run_raw(p, t; morsel, threads) = ChuiFrames.execute(
+        ChuiFrames.physical(ChuiFrames.optimize(p === nothing ? lazy(t) : p(lazy(t))).plan); morsel, threads
+    )
+    raw_ok(e, r; approx = false) = e[1] === :err || (r[1] === :ok && frames_agree(e[2], r[2]; approx))
     pipestr(steps) = isempty(steps) ? "(no steps)" : sprint(show, pipe(steps))
 
     # A step whose floats come from a reduction (CF-008's tolerance applies).
@@ -147,8 +153,11 @@ end
         p = pipe(steps)
         e = outcome(() -> run_eager(p, input))
         l = outcome(() -> run_lazy(p, input; morsel = m, threads = th))
+        r = outcome(() -> run_raw(p, input; morsel = m, threads = th))
         e[1] === :err ? (nerr[] += 1) : (nok[] += 1)
-        outcomes_agree(e, l; approx = any(reduces, steps)) && return true
+        ap = any(reduces, steps)
+        outcomes_agree(e, l; approx = ap) && raw_ok(e, r; approx = ap) && return true
+        event!("raw engine", r[1] === :err ? r : :ok)
         return explain_failure(steps, e, l)
     end
     deadline!(300)
@@ -204,7 +213,10 @@ end
         e = outcome(() -> run_eager(p, t))
         l = outcome(() -> run_lazy(p, t; morsel = m, threads = th))
         pruned[] += npruned(lazyq(p, t); morsel = m, threads = th)
-        outcomes_agree(e, l; approx = any(reduces, steps)) && return true
+        r = outcome(() -> run_raw(p, t; morsel = m, threads = th))
+        ap = any(reduces, steps)
+        outcomes_agree(e, l; approx = ap) && raw_ok(e, r; approx = ap) && return true
+        event!("raw engine", r[1] === :err ? r : :ok)
         return explain_failure(steps, e, l)
     end
     deadline!(300)

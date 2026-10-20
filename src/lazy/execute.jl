@@ -248,10 +248,15 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     # Each morsel is pruned (from its statistics) when it is reached, so a stopped scan computes
     # no statistics for the morsels it never reads. Every partition is read with the declared
     # column types (`conform_types`, as `read_source` does), so the stage sees the eager types.
+    emptyout = Ref{Union{Nothing, Frame}}(nothing)    # computed once, by the first pruned morsel
+    emptylock = ReentrantLock()
     function part(i)
         if _pruned(scan, handles[i])
             Threads.atomic_add!(pruned, 1)
-            return _process_empty(ph)
+            return lock(emptylock) do
+                emptyout[] === nothing && (emptyout[] = _process_empty(ph))
+                emptyout[]::Frame
+            end
         end
         return _runstage(ph, _readpart(ph, residual, handles[i]))
     end
