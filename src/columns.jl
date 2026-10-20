@@ -35,8 +35,8 @@ The value written into a null slot of a column with value type `T` (ADR-0001 rul
 `zero(T)` for numbers, a fixed value for `Date`/`DateTime`.
 """
 nullvalue(::Type{T}) where {T <: Number} = zero(T)
-nullvalue(::Type{Date}) = Date(Dates.UTD(0))
-nullvalue(::Type{DateTime}) = DateTime(Dates.UTM(0))
+nullvalue(::Type{Date}) = Date(0, 12, 31)          # rata die 0
+nullvalue(::Type{DateTime}) = DateTime(0, 12, 31)  # instant 0
 
 _eltype(::Type{T}, ::Nothing) where {T} = T
 _eltype(::Type{T}, ::BitVector) where {T} = Union{Missing, T}
@@ -431,7 +431,7 @@ _column(::Type{Missing}, v, nullable) = ObjectColumn(Vector{Missing}(v), falses(
 _column(::Type{T}, v, nullable) where {T} = _column_other(T, v, nullable)
 function _column_other(::Type{T}, v, nullable) where {T}
     if T isa Union && T <: Real
-        P = promote_type(Base.uniontypes(T)...)
+        P = promote_type(_uniontypes(T)...)
         if P <: _PRIM && _lossless(P, v)
             return _column(P, map(x -> ismissing(x) ? missing : convert(P, x), v), nullable)
         end
@@ -446,6 +446,8 @@ function _column_other(::Type{T}, v, nullable) where {T}
     end
     return ObjectColumn(vals, _validity_of(v, nullable))
 end
+
+_uniontypes(T) = T isa Union ? Any[_uniontypes(T.a)..., _uniontypes(T.b)...] : Any[T]
 
 function _lossless(::Type{P}, v) where {P}
     for x in v
