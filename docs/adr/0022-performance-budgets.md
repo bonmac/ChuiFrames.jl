@@ -1,6 +1,8 @@
 # ADR-0022: ChuiFrames' performance budgets: per-entry time and allocation budgets, a load-plus-first-call budget, informational targets against DataFrames.jl and Polars
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the phase-2c ★): the time multiplier, the allocation and
+  memory multiplier, the one-way rule, and the checks run in lanes and at release rather than in CI.
+  The load budgets stay 500 / 800 ms; the 1.13 row is settled by a quiet-machine re-run before release.
 - **Date:** 2026-10-20
 - **Deciders:** the user at the phase-2c ★ (the policy items marked ★ below), the lead (the
   measured numbers)
