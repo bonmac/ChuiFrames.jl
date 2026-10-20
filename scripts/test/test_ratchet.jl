@@ -47,6 +47,12 @@
         write(joinpath(d, "ratchets.toml"), replace(cfg, "time_tolerance = 0.10" => "time_tolerance = 0.20"))
         rc, out = capture(() -> Ratchet.main(["--root", d]))
         @test rc == 1 && fails(out) == ["bench.time_tolerance raised 0.1 -> 0.2 (may only fall)"]
+        # 0.2.7 (factory-027 item 4): origin/main does not resolve (no remote): the local main is the base
+        rc, out = capture(() -> Ratchet.main(["--root", d, "--base", "origin/main"]))
+        @test rc == 1 && fails(out) == ["bench.time_tolerance raised 0.1 -> 0.2 (may only fall)"]   # 0.2.6: skipped, OK
+        @test occursin("ratchet.jl: note: `origin/main` does not resolve here", out)
+        rc, out = capture(() -> Ratchet.main(["--root", d, "--base", "origin/nope"]))      # no merge base: said so, not "no ratchets.toml"
+        @test occursin("NOT RUN: no merge base with `origin/nope`", out) && !occursin("no ratchets.toml at the merge base", out)
         write(joinpath(d, "ratchets.toml"), replace(cfg, r"\[\[size\]\]\nglob = \"CLAUDE.md\"\nmax_lines = 150\n" => ""))
         rc, out = capture(() -> Ratchet.main(["--root", d]))
         @test rc == 1 && fails(out) == ["size rule `CLAUDE.md` removed (may only tighten)"]

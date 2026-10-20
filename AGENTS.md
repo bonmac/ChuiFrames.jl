@@ -69,6 +69,7 @@ julia scripts/ci.jl quality         # Aqua, ExplicitImports
 julia scripts/ci.jl jet             # JET, own env test/jet/ (stable Julia only)
 julia scripts/ci.jl format          # Runic --check
 julia scripts/ci.jl guards          # gen --check, ratchets, doc references, factory tests
+julia scripts/ci.jl test --timeout 1800   # bound a run (or CI_TIMEOUT=1800): kills the whole process group, exits 124
 julia scripts/dod.jl --base main    # definition of done for the current branch
 ```
 

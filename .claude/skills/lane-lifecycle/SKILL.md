@@ -24,6 +24,11 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
 
 **Monitor**
 - Wait for completion notifications; do not poll output files.
+- Bound every long run with `julia scripts/ci.jl <job> --timeout SECONDS` (or `CI_TIMEOUT`), and
+  put that in the brief. Never use `perl -e 'alarm N; exec @ARGV'` or `timeout`: they kill only
+  ci.jl, and Pkg.test's child julia runs on (a hung property test ran ~6 h at 97% CPU). On expiry
+  ci.jl kills the whole process group and exits 124, which is TIMED OUT, not a pass. Ctrl-C does the
+  same and exits 130. Killing ci.jl with any other signal (`kill`, `timeout`) orphans the group.
 - Reviewers may send a preview first. Wait for the final report.
 
 **Idle**

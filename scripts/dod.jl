@@ -117,6 +117,8 @@ module DoD
         labels = filter(!isempty, strip.(split(get(opts, "--labels", get(ENV, "PR_LABELS", "")), ',')))
         body = haskey(opts, "--body-file") ? read(opts["--body-file"], String) : get(opts, "--body", "")
         mb = merge_base(root, base, head)
+        note = base_note(root, base)   # 0.2.7: say when a local branch stands in for `origin/<b>`
+        note === nothing || println("dod.jl: ", note)
         if mb === nothing
             println(stderr, "dod.jl: no merge base between $base and $head")
             return 2

@@ -91,6 +91,11 @@
         rc, out = capture(() -> DoD.main(["--root", d, "--base", "main"]))
         @test rc == 0 && occursin("dod.jl: DONE", out) && isempty(fails(out))
         @test capture(() -> DoD.main(["--root", d, "--base", "nope"]))[1] == 2
+        # 0.2.7 (factory-027 item 4): no remote here, so origin/main does not resolve: the local main stands in
+        rc, out = capture(() -> DoD.main(["--root", d, "--base", "origin/main"]))
+        @test rc == 0 && occursin("dod.jl: DONE", out) || (print(out); false)   # 0.2.6: rc 2, "no merge base"
+        @test occursin("dod.jl: note: `origin/main` does not resolve here", out)   # review S1: the fallback is visible
+        @test capture(() -> DoD.main(["--root", d, "--base", "origin/nope"]))[1] == 2
         # moving a protected file out of its path still counts as touching it (T3)
         mkpath(joinpath(d, ".claude/hooks")); commit!(d, Dict(".claude/hooks/g.sh" => "x\n"), "add hook")
         sh(`git -C $d checkout -q main`); sh(`git -C $d merge -q --ff-only feat/x`)

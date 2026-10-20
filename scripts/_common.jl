@@ -44,16 +44,35 @@ The ref that stands for `base` (factory 0.2.6): the local `base` when it contain
 `origin/<base>` (local ahead or equal) or there is no `origin/<base>`; `origin/<base>` when the
 local branch is missing, behind or diverged. Before 0.2.6 `origin/<base>` always won, so work
 merged locally but not pushed counted as the lane's own changes (`lane audit`, `dod.jl`).
+An explicit `origin/<b>` is taken as given, except when it does not resolve here (no remote, a
+pruned tracking ref) and a local branch `<b>` exists: then `<b>` (0.2.7; 0.2.6 returned the
+missing ref and `dod.jl --base origin/main` failed with "no merge base"). An expression over it
+follows the same rule (`origin/main~1` -> `main~1`). `base_note` says when this happened.
 """
 function base_ref(dir, base)
-    startswith(base, "origin/") && return base
     has(ref) = git(dir, "rev-parse", "--verify", "--quiet", "$ref^{commit}") !== nothing
+    if startswith(base, "origin/")
+        b = base[(length("origin/") + 1):end]
+        return !isempty(b) && !has(base) && has("refs/heads/$b") ? b : base
+    end
     # a SHA, tag or expression (`HEAD~1`, `feat/x~2`) that is not a local branch is taken as given
     has("refs/heads/$base") || !has(base) || return base
     has("refs/remotes/origin/$base") || return base
     has("refs/heads/$base") || return "origin/$base"
     # `merge-base --is-ancestor A B` exits 0 (git returns "") when A is an ancestor of B
     return git(dir, "merge-base", "--is-ancestor", "origin/$base", base) === nothing ? "origin/$base" : base
+end
+
+"""
+    base_note(dir, base) -> String or nothing
+
+A one-line notice when `base_ref` put a local branch in place of an `origin/<b>` that does not
+resolve here (0.2.7 review S1: the fallback must be visible), else `nothing`. Callers print it.
+"""
+function base_note(dir, base)
+    r = base_ref(dir, base)
+    return r == base ? nothing : startswith(base, "origin/") ?
+        "note: `$base` does not resolve here (no remote, or a pruned tracking ref); using the local `$r`" : nothing
 end
 
 "The merge base of `head` with `base` (the ref `base_ref` picks, then the other spelling of a branch). `nothing` if none."

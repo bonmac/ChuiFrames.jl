@@ -28,7 +28,7 @@
     rc, out = ev("lint", "--", "sh", "-c", "echo boom; exit 3")
     @test rc == 3 && occursin("DIRTY", out)                                   # the command's exit code is evidence.jl's
     h = Evidence.header(joinpath(d, ".lanes/evidence/lint-$(first(head, 7)).txt"))
-    @test h["exit"] == "3" && h["dirty"] == "true" && h["cmd"] == "sh -c echo boom; exit 3"
+    @test h["exit"] == "3" && h["dirty"] == "true" && h["cmd"] == "sh -c echo boom; exit 3" && h["termsignal"] == "0"
     @test ev("latest", "tests") == (0, ".lanes/evidence/tests-$(first(head, 7)).txt\n")
     sh(`git -C $d checkout -q -- a.txt`)
     commit!(d, Dict("b.txt" => "y\n"), "next")                                # HEAD moved: the ancestor's evidence is the latest
@@ -39,6 +39,36 @@
     @test rc == 1
     @test ev("BAD KIND", "--", "true")[1] == 2 && ev("tests")[1] == 2 && ev("latest", "--", "true")[1] == 2
     @test capture(() -> Evidence.main(["x", "--root", mktempdir(), "--", "true"]))[1] == 2   # not a git checkout
+end
+
+@testset "evidence.jl: a run killed by a signal is not a pass (0.2.7)" begin
+    # factory-027 item 3: Julia gives exitcode 0 for a signalled process, so 0.2.6 wrote `exit: 0` and returned 0
+    d = tmp_repo(Dict(".gitignore" => "/.lanes/\n", "a.txt" => "x\n"))
+    sha7 = first(readchomp(`git -C $d rev-parse HEAD`), 7)
+    ev(args...) = capture(() -> Evidence.main(["--root", d, args...]))
+    for (sig, name) in ((15, "TERM"), (9, "KILL"), (2, "INT"))
+        rc, out = ev("sig", "--", "sh", "-c", "echo partial; kill -$name \$\$")
+        h = Evidence.header(joinpath(d, ".lanes/evidence/sig-$sha7.txt"))
+        @test rc == 128 + sig && h["exit"] == string(128 + sig) && h["termsignal"] == string(sig) ||
+            (println("SIG$name: rc=$rc ", h); false)
+        @test occursin("KILLED by signal $sig", out) && occursin("partial", Evidence.output(joinpath(d, ".lanes/evidence/sig-$sha7.txt")))
+    end
+    rc, _ = ev("ok", "--", "true")
+    @test rc == 0 && Evidence.header(joinpath(d, ".lanes/evidence/ok-$sha7.txt"))["termsignal"] == "0"
+    # check_claims takes no test totals from a killed run, even when it printed a summary table first
+    jl = [Base.julia_cmd().exec; "--startup-file=no"]
+    # julia exits normally, THEN the shell kills itself: a Julia that signals itself can take the signal
+    # inside its atexit hooks and spin forever at 100% CPU (review B3, 1.13.2), or lose its buffered
+    # summary (ec48de8). Here no signal ever reaches Julia, and the run still ends by SIGTERM.
+    rc, _ = ev("tests", "--", "sh", "-c", "\"\$0\" \"\$@\"; kill -TERM \$\$", jl..., "-e", "using Test; @testset \"t\" begin @test true end")
+    @test rc == 143
+    path = joinpath(d, ".lanes/evidence/tests-$sha7.txt")
+    @test Evidence.test_totals(Evidence.output(path))["pass"] == 1                  # the table is there ...
+    tt, src = CheckClaims.evidence_totals(d, nothing)
+    @test tt === nothing && occursin("killed by signal 15", src)                   # ... and is not evidence
+    # an evidence file from 0.2.6 (no termsignal line) still reads as before
+    write(path, replace(read(path, String), r"termsignal: \d+\n" => ""))
+    @test CheckClaims.evidence_totals(d, nothing)[1]["pass"] == 1
 end
 
 @testset "evidence.jl: real Julia summaries (0.2.4 review)" begin

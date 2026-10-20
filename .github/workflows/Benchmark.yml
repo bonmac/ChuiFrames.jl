@@ -1,10 +1,14 @@
-# Factory-managed (see .factory-version). ADR-0011: AirspeedVelocity compares the PR head with
-# the default branch on benchmark/benchmarks.jl (`const SUITE = BenchmarkGroup()`) and writes
-# a time/memory table to the job summary. WARNING-ONLY: `continue-on-error: true`, and
-# AirspeedVelocity reports without failing on a slowdown (UNVERIFIED: its README names no
-# failure threshold). To make it blocking once baselines settle (a T3 change, in the repo's
-# CHANGELOG): drop `continue-on-error` and add the step `julia scripts/ci.jl bench -- --base
-# origin/<default branch>`, which fails beyond ratchets.toml bench.time_tolerance.
+# Factory-managed (see .factory-version). ADR-0011: benchmark/benchmarks.jl (`const SUITE =
+# BenchmarkGroup()`) on the PR head vs its merge base with the base branch, through the factory's
+# own `scripts/bench.jl` (BenchmarkTools; `julia scripts/ci.jl bench`). Factory 0.2.7 dropped the
+# AirspeedVelocity action: AirspeedVelocity 0.6.6 cannot be installed next to CSV.jl 1.x (the
+# JSON3 1.14.3 it pulls in caps Parsers at <= 2.8.8; CSV 1.x needs Parsers 3), so the job did
+# nothing for such packages. WARNING-ONLY (ADR-0011): `continue-on-error: true`. bench.jl fails
+# beyond ratchets.toml bench.time_tolerance, which only means something on a quiet runner: a
+# loaded machine gave false regressions of 1.12-1.20x on identical trees. To make it blocking once
+# baselines settle (a T3 change, in the repo's CHANGELOG): drop `continue-on-error`.
+# On workflow_dispatch github.base_ref is empty, so the base is origin/main: in a repo whose
+# default branch is not `main`, bench.jl finds no merge base (exit 2), hidden by continue-on-error.
 name: Benchmark
 on:
   pull_request:
@@ -13,7 +17,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 permissions:
-  contents: read          # job-summary mode posts no PR comment, so needs no write permission
+  contents: read
 env:
   ECOSYSTEM_REGISTRY_URL: ${{ vars.ECOSYSTEM_REGISTRY_URL }}
 jobs:
@@ -22,16 +26,18 @@ jobs:
     timeout-minutes: 60
     continue-on-error: true  # warning-only (ADR-0011)
     steps:
+      # full history: bench.jl checks out the merge base with origin/<base> as a second worktree
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: julia-actions/setup-julia@v3
         with:
           version: '1'
-      # the personal registry (ADR-0005) for unregistered ecosystem dependencies; the action's
-      # own setup-julia shares ~/.julia (UNVERIFIED that it keeps added registries)
+      - uses: julia-actions/cache@v3
+      # the personal registry (ADR-0005) for unregistered ecosystem dependencies
       - run: julia scripts/ci.jl setup
-      # inputs from the action's action.yml (read 2026-10-19): julia-version, job-summary,
-      # mode (default time,memory), rev, bench-on, filter, script, tune, exeflags, extra-pkgs
-      - uses: MilesCranmer/AirspeedVelocity.jl@action-v1
-        with:
-          julia-version: '1'
-          job-summary: 'true'
+      # no benchmark/ directory yet: a NOT RUN (waiting) notice, exit 0
+      # the base branch goes through env:, never into the shell line (a branch name may hold `$(...)`)
+      - run: julia scripts/ci.jl bench -- --base "origin/$BASE"
+        env:
+          BASE: ${{ github.base_ref || 'main' }}

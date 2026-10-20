@@ -5,6 +5,10 @@
 #
 #   julia scripts/bench.jl [--base main] [--root DIR]
 #
+# CI (Benchmark.yml, 0.2.7): `julia scripts/ci.jl bench -- --base origin/<base branch>`, warning-only.
+# The tolerance only means something on a quiet runner: on a loaded machine identical trees
+# measured 1.12-1.20x slower (false regressions). Rerun a regression before believing it.
+#
 # The benchmark environment is benchmark/Project.toml (must list BenchmarkTools); each tree
 # is `Pkg.develop`ed into a temporary copy of it. Medians are exchanged as TOML
 # ("group/name" = nanoseconds) so the comparison below is stdlib-only and unit-tested.
@@ -51,6 +55,8 @@ module Bench
         root = abspath(get(opts, "--root", normpath(joinpath(@__DIR__, ".."))))
         tol = get(get(TOML.parsefile(joinpath(root, "ratchets.toml")), "bench", Dict()), "time_tolerance", 0.1)
         mb = merge_base(root, get(opts, "--base", "main"))
+        note = base_note(root, get(opts, "--base", "main"))   # 0.2.7: a local branch standing in for `origin/<b>`
+        note === nothing || println("bench.jl: ", note)
         mb === nothing && (println(stderr, "bench.jl: no merge base"); return 2)
         basetree = joinpath(mktempdir(), "base")
         git(root, "worktree", "add", "--detach", basetree, mb; strict = true)
