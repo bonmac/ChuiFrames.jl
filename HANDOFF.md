@@ -37,13 +37,17 @@ Sub-lanes, all closed:
 - `lane audit` passed on each before its `--no-ff` merge here.
 - Their worktrees are removed; the branches are kept.
 
-## Evidence (`.lanes/evidence/`, clean tree `fd30b98` unless noted)
+## Evidence (`.lanes/evidence/`, clean tree `e62ccdc`, after review round 1, unless noted)
 
 - Tests:
-  - `tests-fd30b98.txt` (1.13.2): 4785 pass, 2 broken.
-  - `tests-lts-fd30b98.txt` (1.10.12): 4785 pass, 2 broken.
-  - `tests-all-fd30b98.txt` (`-- all`): 6439 pass, 2 broken.
-- quality, jet, format, guards, docs: OK (`<job>-fd30b98.txt`).
+  - `tests-e62ccdc.txt` (1.13.2): 4833 pass, 2 broken.
+  - `tests-lts-e62ccdc.txt` (1.10.12): 4833 pass, 2 broken.
+  - `tests-all-e62ccdc.txt` (`-- all`): 6487 pass, 2 broken.
+- quality, jet, format, guards, docs, dod: OK / DONE (`<job>-e62ccdc.txt`).
+- Merge with `main` `20c2225` (scratch clone, merge `f999fdf`): `test` 4833 pass / 2 broken,
+  guards OK; `contracts` NOT RUN (no upstream release).
+- The review-round-1 fixes (`case_when`, `head`/`pivot_longer` on `drop = false`) were not
+  re-benchmarked: `case_when` is not in the `SUITE`, and `head` changes only on `drop = false`.
 - Budgets on the merged tree `30c36b8` (only docs uncommitted):
   - `bench-check-113-30c36b8.txt` and `bench-check-110-30c36b8.txt`: 47/47 within budget.
   - `ttfx-check-113-30c36b8.txt`: load 486.6 ms against a 500 ms budget, at load average
