@@ -29,3 +29,4 @@ phase-1 ADRs that carry many binding rules (0001–0004) run longer than that gu
 | 0019 | [Depend on CSV.jl 1.x for the built-in CSV reader and writer](0019-dep-csv.md) | Accepted (2026-10-20, user at the ChuiFrames phase-1 ★) |
 | 0020 | [Read and write Parquet through Parquet2.jl, in a package extension](0020-dep-parquet2.md) | Accepted (2026-10-20, user at the ChuiFrames phase-1 ★) |
 | 0021 | [Timestamps that `DateTime` cannot hold are `ArrowTimestamp{U,TZ}` values compared by exact instant; zones are display metadata](0021-arrow-timestamp.md) | Accepted (2026-10-20, user at the phase-2b ★) |
+| 0022 | [ChuiFrames' performance budgets: per-entry time and allocation budgets, a load-plus-first-call budget, informational targets against DataFrames.jl and Polars](0022-performance-budgets.md) | Accepted (2026-10-20, user at the phase-2c ★) |

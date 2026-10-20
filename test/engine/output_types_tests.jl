@@ -45,3 +45,80 @@ end
     @test getcol(f, :y) isa PrimitiveColumn{Float64}
     @test collect(getcol(f, :y)) == [1.0, 2.5]
 end
+
+@testitem "case_when: element type from the value and default types, not the data" tags = [:unit] begin
+    using ChuiFrames
+    using ChuiFrames: getcol, StrView
+    using Statistics: mean
+    const ⨟ = ChuiFrames.Upstream.:⨟
+    et(cw, t) = eltype(getcol(mutate(k = cw)(t), :k))
+    fires = (x = [1.0, 2.0, 3.0],)   # row 1 takes the default
+    never = (x = [2.0, 3.0],)        # every row takes the first branch
+    empty = (x = Float64[],)
+    # R (dplyr 1.2.0), x <- c(1, 2, 3): the type is the common type of the values and .default,
+    # whichever branches fire; an NA default adds nothing (here: only nullability).
+    # class(case_when(x > 1 ~ 1L)) "integer"; case_when(x > 0 ~ 1L) "integer";
+    # case_when(x > 1 ~ 1L, .default = 2.5) "numeric"; case_when(x > 1 ~ TRUE, .default = 0L)
+    # "integer"; case_when(x > 1 ~ x, .default = 0L) "numeric"; case_when(x > 1 ~ TRUE)
+    # "logical"; case_when(numeric() > 1 ~ 1L, .default = 2.5) numeric(0).
+    cases = [
+        (case_when((c.x .> 1) => 1), Union{Missing, Int}),
+        (case_when((c.x .> 1) => 1; default = 2.5), Float64),
+        (case_when((c.x .> 1) => true; default = 0), Int),
+        (case_when((c.x .> 1) => c.x; default = 0), Float64),
+        (case_when((c.x .> 1) => c.x), Union{Missing, Float64}),
+        (case_when((c.x .> 1) => true), Union{Missing, Bool}),
+        (case_when((c.x .> 1) => true; default = false), Bool),
+        (case_when((c.x .> 2) => 1, (c.x .> 1) => 2.5), Union{Missing, Float64}),
+        (case_when((c.x .> 1) => "a"; default = "b"), StrView),
+        (case_when((c.x .> 1) => "a"), Union{Missing, StrView}),
+        (case_when((c.x .> 1) => c.x .* 2; default = c.x), Float64),
+    ]
+    for (cw, T) in cases
+        @test et(cw, fires) === T
+        @test et(cw, never) === T
+        @test et(cw, empty) === T
+    end
+    # values are converted to the common type
+    @test isequal(collect(getcol(mutate(k = case_when((c.x .> 1) => 1; default = 2.5))(fires), :k)), [2.5, 1.0, 1.0])
+    # a mix with no common type is an error whatever fires, as in dplyr
+    # (R: case_when(x > 1 ~ "a", .default = 1) -> "Can't combine <character> and `.default` <double>")
+    mixed = case_when((c.x .> 1) => "a"; default = 1)
+    @test_throws ArgumentError mutate(k = mixed)(fires)
+    @test_throws ArgumentError mutate(k = mixed)(never)
+    @test_throws ArgumentError mutate(k = mixed)(empty)
+    # a value whose type is not known exactly (an untyped column) is narrowed by the data, as before
+    @test et(case_when((c.x .> 1) => c.a; default = 0), (x = [2.0], a = Any[1])) === Int
+    # an Int that Float64 cannot hold is an error, not a silent rounding
+    big = case_when((c.x .> 1) => 2^53 + 1; default = 0.5)
+    @test_throws ArgumentError mutate(k = big)(fires)
+    @test et(big, (x = [0.0],)) === Float64
+    # grouped windows: a group where the default fires and one where it does not
+    g = (g = ["a", "a", "b"], x = [1.0, 3.0, 2.0])
+    r = (group_by(:g) ⨟ mutate(k = case_when((c.x .>= mean(c.x)) => 1)))(g)
+    @test eltype(getcol(r, :k)) === Union{Missing, Int} && isequal(collect(getcol(r, :k)), [missing, 1, 1])
+    r = (group_by(:g) ⨟ mutate(k = case_when((c.x .>= mean(c.x)) => 1)))((g = ["b"], x = [2.0]))
+    @test eltype(getcol(r, :k)) === Union{Missing, Int}
+    # scalar (reduction) values
+    @test et(case_when((c.x .> 1) => maximum(c.x)), fires) === Union{Missing, Float64}
+    # an unsigned common type that cannot hold a value is the documented ArgumentError, not an
+    # InexactError (review m3)
+    @test_throws ArgumentError mutate(k = case_when((c.x .> 2) => -1; default = c.u))((x = [1.0, 3.0], u = UInt[1, 2]))
+end
+
+@testitem "case_when: timestamps of different units promote exactly (ADR-0021 rule 7)" tags = [:unit] begin
+    using ChuiFrames, Dates
+    using ChuiFrames: getcol
+    ms, us = ArrowTimestamp{Dates.Millisecond, nothing}, ArrowTimestamp{Dates.Microsecond, nothing}
+    t = (x = [1, 2], a = [ms(1), ms(2)], b = [us(3), us(4)], d = [DateTime(2024), DateTime(2025)])
+    r = getcol(mutate(y = case_when((c.x .> 1) => c.a; default = c.b))(t), :y)
+    @test eltype(r) === us && isequal(collect(r), [us(3), us(2000)])
+    r = getcol(mutate(y = case_when((c.x .> 1) => c.a; default = c.d))(t), :y)
+    @test eltype(r) === ms && isequal(collect(r), [ms(DateTime(2024)), ms(2)])
+    # a missing default only makes it nullable
+    r = getcol(mutate(y = case_when((c.x .> 1) => c.a, (c.x .> 5) => c.b))(t), :y)
+    @test eltype(r) === Union{Missing, us}
+    # naive with zoned has no common type (ADR-0021 rule 5)
+    z = ArrowTimestamp{Dates.Millisecond, :UTC}
+    @test_throws ArgumentError mutate(y = case_when((c.x .> 1) => c.a; default = c.z))(merge(t, (z = [z(1), z(2)],)))
+end

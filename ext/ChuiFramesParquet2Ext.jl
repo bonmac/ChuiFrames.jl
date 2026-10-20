@@ -4,7 +4,8 @@
 # - Source: one partition per row group; projection pushed down (only the needed column chunks
 #   are decoded); statistics from `Parquet2.ColumnStatistics` with ADR-0004 rule 4's rules: a
 #   NaN or `missing` bound is reported as `nothing`, and `nnan` is always `nothing` (Parquet
-#   statistics carry no NaN count, and pyarrow leaves NaN out of min/max, LC-11).
+#   statistics carry no NaN count, and pyarrow leaves NaN out of min/max, LC-11). Timestamp
+#   bounds are decoded from the raw statistics bytes (exact; `nothing` when unsure).
 # - Sink: one row group per partition, statistics on. Parquet2 drops min/max for a chunk that
 #   holds a `missing` (ADR-0020 rule 3), so pruning on ChuiFrames-written files works only for
 #   null-free chunks. Temporary file + rename; abort deletes.
@@ -35,6 +36,8 @@ struct ParquetSource <: ChuiFrames.Source
     # timestamp columns (ADR-0021 rule 11): name => the value type they read as (`DateTime` or
     # an `ArrowTimestamp`), or a String saying why they cannot be read exactly
     ts::Dict{Symbol, Any}
+    # timestamp columns whose raw statistics may be decoded (`_exact_stats_columns`)
+    ts_stats::Set{Symbol}
 end
 function ParquetSource(src::Union{AbstractString, Vector{UInt8}}; kw...)
     ds = Parquet2.Dataset(src; kw...)
@@ -47,7 +50,7 @@ function ParquetSource(src::Union{AbstractString, Vector{UInt8}}; kw...)
         V isa Type && (types[j] = Missing <: sch.types[j] ? Union{Missing, V} : V)
     end
     label = src isa AbstractString ? "Parquet $(basename(src))" : "Parquet ($(length(src)) bytes)"
-    return ParquetSource(label, ds, names, Tables.Schema(names, types), ts)
+    return ParquetSource(label, ds, names, Tables.Schema(names, types), ts, _exact_stats_columns(ds, ts))
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -66,7 +69,7 @@ function _timestamp_columns(ds::Parquet2.Dataset, names::Vector{Symbol})
     out = Dict{Symbol, Any}()
     length(ds) == 0 && return out
     rg = ds[1]
-    utc = _adjusted_to_utc(ds)
+    utc = Dict(n => a for (n, (a, _)) in _schema_timestamps(ds))
     zones = _arrow_schema_zones(ds)
     for n in names
         t = rg[String(n)].type
@@ -91,10 +94,12 @@ function _timestamp_columns(ds::Parquet2.Dataset, names::Vector{Symbol})
     return out
 end
 
-# name => isAdjustedToUTC for top-level timestamp columns (the legacy TIMESTAMP_* converted
-# types mean UTC, per the Parquet spec). Empty when the metadata layout is not as expected.
-function _adjusted_to_utc(ds::Parquet2.Dataset)
-    out = Dict{Symbol, Bool}()
+# name => (isAdjustedToUTC, unit exponent) for top-level timestamp columns, from the file's own
+# schema elements (the legacy TIMESTAMP_* converted types mean UTC, per the Parquet spec). The
+# exponent (-3/-6/-9) is `nothing` unless the column is INT64 with a known unit. Empty when the
+# metadata layout is not as expected.
+function _schema_timestamps(ds::Parquet2.Dataset)
+    out = Dict{Symbol, Tuple{Bool, Union{Nothing, Int}}}()
     try
         els = getfield(ds, :meta_orig).schema       # depth-first, the root first
         # the subtree of element i spans _span(i) elements (itself included)
@@ -111,10 +116,15 @@ function _adjusted_to_utc(ds::Parquet2.Dataset)
             se = els[i]
             n = Symbol(se.name)
             lt = se.logicalType
+            int64 = se.type !== nothing && string(se.type) == "INT64"
             if _nch(i) == 0 && lt !== nothing && lt.TIMESTAMP !== nothing
-                out[n] = lt.TIMESTAMP.isAdjustedToUTC
+                u = lt.TIMESTAMP.unit
+                e = u.MILLIS !== nothing ? -3 : u.MICROS !== nothing ? -6 : u.NANOS !== nothing ? -9 : nothing
+                out[n] = (lt.TIMESTAMP.isAdjustedToUTC, int64 ? e : nothing)
             elseif _nch(i) == 0 && se.converted_type !== nothing && occursin("TIMESTAMP", string(se.converted_type))
-                out[n] = true
+                ct = string(se.converted_type)
+                e = ct == "TIMESTAMP_MILLIS" ? -3 : ct == "TIMESTAMP_MICROS" ? -6 : nothing
+                out[n] = (true, int64 ? e : nothing)
             end
             i += _span(i)
         end
@@ -193,6 +203,109 @@ function _check_timestamp(s::ParquetSource, n::Symbol)
     throw(ArgumentError("Parquet: column $(repr(n)) cannot be read exactly: $V (ADR-0021 rule 11)"))
 end
 
+# ---------------------------------------------------------------------------------------------
+# Exact timestamp statistics. Parquet2's `ColumnStatistics` decodes timestamp bounds through the
+# same lossy Float64 path as the values (a pyarrow ms minimum comes back 1 ms late, which would
+# prune a matching row), so ChuiFrames decodes the raw bytes itself: the column chunk's
+# `Statistics` from the file metadata (`meta_orig`, a Parquet2 internal), PLAIN-encoded INT64,
+# 8 bytes little-endian, signed, a count in the column's unit. Every step fails closed: anything
+# unexpected gives `nothing` for that bound (or for the whole chunk), never an error.
+
+const _V_EXP = Dict{Any, Int}(Dates.Millisecond => -3, Dates.Microsecond => -6, Dates.Nanosecond => -9)
+_value_exponent(::Type{DateTime}) = -3
+_value_exponent(::Type{V}) where {V <: ArrowTimestamp} = get(_V_EXP, timestamp_unit(V), nothing)
+_value_exponent(::Any) = nothing
+
+# Timestamp columns read exactly whose unit in the file's own schema element (INT64, logical or
+# converted type) agrees with the type they read as. `DateTime` is only ever read from naive ms
+# (`_timestamp_columns`), so a bound needs no rounding; µs/ns read as `ArrowTimestamp`.
+function _exact_stats_columns(ds::Parquet2.Dataset, ts::Dict{Symbol, Any})
+    out = Set{Symbol}()
+    sch = _schema_timestamps(ds)
+    for (n, V) in ts
+        V isa Type || continue
+        e = get(sch, n, nothing)
+        e === nothing && continue
+        e[2] !== nothing && e[2] == _value_exponent(V) && push!(out, n)
+    end
+    return out
+end
+
+# The metadata of row group `k`'s chunk of column `col`, or `nothing`. Parquet2 keeps the file's
+# `FileMetaData` as `meta_orig`; its row groups are the dataset's only for a single-file dataset,
+# and the chunk must agree with the `Column` Parquet2 built (rows, values, offsets, INT64).
+function _raw_chunk(ds::Parquet2.Dataset, k::Int, col::Symbol)
+    length(getfield(ds, :row_group_index)) == 1 || return nothing
+    meta = getfield(ds, :meta_orig)
+    length(meta.row_groups) == length(ds) || return nothing
+    mrg = meta.row_groups[k]
+    rg = ds[k]
+    mrg.num_rows == DataAPI.nrow(rg) || return nothing
+    pcol = rg[String(col)]
+    d = pcol.data
+    d === nothing && return nothing
+    found = nothing
+    for c in mrg.columns
+        md = c.meta_data
+        md === nothing && continue
+        md.path_in_schema == [String(col)] || continue
+        found === nothing || return nothing                 # two chunks for one column
+        found = md
+    end
+    md = found
+    md === nothing && return nothing
+    string(md.type) == "INT64" || return nothing
+    (md.num_values == pcol.n && md.data_page_offset == d.data_page_offset && md.total_compressed_size == d.compressed_ℓ) ||
+        return nothing
+    return md
+end
+
+"""
+    _raw_bound(st, field, deprecated, V)
+
+One bound of a raw INT64 timestamp `Statistics` struct as a `V` (`DateTime` for ms, else an
+`ArrowTimestamp`), or `nothing`. `field` is `:min_value`/`:max_value`; when it is absent the
+deprecated `:min`/`:max` is used: the Parquet spec defines those by signed comparison, which is
+the sort order of INT64 timestamps (pyarrow writes both, identical).
+"""
+function _raw_bound(st, field::Symbol, deprecated::Symbol, ::Type{V}) where {V}
+    return try
+        b = getfield(st, field)
+        b === nothing && (b = getfield(st, deprecated))
+        b isa AbstractVector{UInt8} && length(b) == 8 || return nothing
+        x = Int64(0)
+        for i in 8:-1:1
+            x = (x << 8) | Int64(b[i])
+        end
+        V === DateTime ? _ms_datetime(:stats, x) : V(x)
+    catch
+        nothing
+    end
+end
+
+# Bounds that contradict each other (min > max: a corrupt chunk) are both dropped.
+_ordered_bounds(lo, hi) = lo !== nothing && hi !== nothing && hi < lo ? (nothing, nothing) : (lo, hi)
+
+function _timestamp_stats(s::ParquetSource, k::Int, col::Symbol)
+    return try
+        col in s.ts_stats || return nothing
+        md = _raw_chunk(s.ds, k, col)
+        md === nothing && return nothing
+        st = md.statistics
+        st === nothing && return nothing
+        V = s.ts[col]::Type
+        nn, nd = st.null_count, st.distinct_count
+        lo, hi = _ordered_bounds(_raw_bound(st, :min_value, :min, V), _raw_bound(st, :max_value, :max, V))
+        (;
+            lo, hi,
+            nnull = nn isa Integer ? Int(nn) : nothing, nnan = nothing,
+            ndistinct = nd isa Integer ? Int(nd) : nothing,
+        )
+    catch
+        nothing
+    end
+end
+
 ChuiFrames.source_schema(s::ParquetSource) = s.schema
 ChuiFrames.source_label(s::ParquetSource) = s.label
 function ChuiFrames.plan_partitions(s::ParquetSource, scan::Tables.Scan; morsel::Int = ChuiFrames.DEFAULT_MORSEL)
@@ -227,8 +340,9 @@ is absent, `missing` or NaN is `nothing`; `nnan` is always `nothing` (unknown).
 function ChuiFrames.partition_stats(s::ParquetSource, (k, _), col::Symbol)
     col in s.names || return nothing
     # Parquet2 decodes timestamp bounds through the same lossy Float64 path: shifted bounds
-    # would prune wrongly (review M1; ADR-0021 rule 11), so timestamp columns report none.
-    haskey(s.ts, col) && return nothing
+    # would prune wrongly (review M1; ADR-0021 rule 11), so timestamp bounds come from the raw
+    # statistics bytes, or are not reported.
+    haskey(s.ts, col) && return _timestamp_stats(s, k, col)
     st = try
         Parquet2.ColumnStatistics(s.ds[k][String(col)])
     catch

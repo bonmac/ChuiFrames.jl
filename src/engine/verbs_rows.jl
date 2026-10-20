@@ -70,7 +70,12 @@ end
 "`head(n = 6)`: the first `n` rows, ignoring groups (negative `n`: all but the last `-n`). `first(3)` is Base's, so the verb is `head` (CF-009)."
 head(n::Integer = 6) = HeadStep(Int(n))
 Base.show(io::IO, s::HeadStep) = print(io, "head(", s.n, ")")
-apply(s::HeadStep, f::Frame) = take(f, collect(1:(s.n >= 0 ? min(s.n, f.nrow) : max(f.nrow + s.n, 0))))
+function apply(s::HeadStep, f::Frame)
+    out = take(f, collect(1:(s.n >= 0 ? min(s.n, f.nrow) : max(f.nrow + s.n, 0))))
+    # dplyr's head goes through `[.grouped_df`, which regroups: with `drop = false` only the
+    # empty dictionary levels survive, not every earlier group (review m1)
+    return f.drop ? out : regroup(out, out.groups; drop = false)
+end
 
 _count(len, n, prop) = n !== nothing ? (n >= 0 ? min(n, len) : max(len + n, 0)) :
     (prop >= 0 ? min(floor(Int, prop * len), len) : max(len + floor(Int, prop * len), 0))
@@ -288,7 +293,7 @@ function apply(s::DistinctStep, f::Frame)
     g = take(f, firstrows)
     s.keep_all && return g
     sel = [i for (i, n) in enumerate(g.names) if n in keys]
-    return Frame(g.names[sel], g.columns[sel], copy(g.groups), nothing, g.nrow)
+    return Frame(g.names[sel], g.columns[sel], copy(g.groups), g.gindex, g.nrow, g.drop)   # keys hold the groups
 end
 
 struct CountStep <: Step
@@ -333,16 +338,18 @@ function apply(s::CountStep, f::Frame)
     nm = _countname(f, s.name)
     wt = s.wt === nothing ? nothing : _ordnode(s.wt)
     nnode = wt === nothing ? NRows() : Reduce(:sum, SkipMiss(wt), (), (), _NOKW)
-    g = regroup(f, allkeys)
+    # the existing groups are counted as they are (empty ones too, with drop = false); extra keys
+    # regroup, with the input's drop flag (dplyr's `.drop = group_by_drop_default(x)`)
+    g = allkeys == f.groups ? f : regroup(f, allkeys; drop = f.drop)
     if s.add
         out = apply(MutateStep(_outs((nm => nnode,)), nothing, :all, nothing, nothing), g)
-        out = Frame(copy(out.names), copy(out.columns), copy(f.groups), nothing, out.nrow)
+        out = Frame(copy(out.names), copy(out.columns), copy(f.groups), allkeys == f.groups ? out.gindex : nothing, out.nrow, f.drop)
         s.sort && (out = apply(ArrangeStep(Node[Desc(Col(nm))], false), out))
         return out
     end
     groupsafter = istally ? :drop_last : :drop
     out = apply(SummariseStep(_outs((nm => nnode,)), nothing, groupsafter, false), g)
-    out = istally ? out : (isempty(f.groups) ? out : regroup(out, copy(f.groups)))
+    out = istally ? out : (isempty(f.groups) ? out : regroup(out, copy(f.groups); drop = f.drop))
     s.sort && (out = apply(ArrangeStep(Node[Desc(Col(nm))], false), out))
     return out
 end

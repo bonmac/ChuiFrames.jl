@@ -172,9 +172,113 @@ end
     @test col(filter(c.x .> 1)(gd), :x) == [2.0, 3.0]
     @test occursin("[4]", sprint(show, MIME("text/plain"), gd))
     @test sprint(show, group_by(:f; drop = false)) == "group_by(:f; drop = false)"
-    # dplyr keeps the empty groups after filter (the drop flag is a grouped_df attribute); here
-    # the flag is not stored on the Frame yet, so filter rebuilds the index with drop = true
-    @test_broken col((filter(c.x .> 1) ⨟ summarise(n = n_rows()))(gd), :n) == [1, 1, 0, 0]
+    # dplyr keeps the empty groups after filter (the drop flag is a grouped_df attribute, and the
+    # Frame stores it too): R `filter(gd, x > 1) |> summarise(n = n())` gives c 0, b 1, a 1, d 0
+    @test col((filter(c.x .> 1) ⨟ summarise(n = n_rows()))(gd), :n) == [1, 1, 0, 0]
+end
+
+@testitem "group_by(drop = false): the flag survives row verbs (dplyr 1.2.0)" tags = [:unit] setup = [RT] begin
+    # R (dplyr 1.2.0), with df <- tibble(f = factor(c("b", "a", "b"), levels = c("c", "b", "a", "d")),
+    # g = c(1, 2, 1), x = c(1, 2, 3)); gd <- group_by(df, f, .drop = FALSE);
+    # sn <- function(d) summarise(d, n = n())$n. R lists groups in level order c, b, a, d;
+    # ChuiFrames in CF-008's order a, b, c, d, so R's `c0 b2 a1 d0` is [1, 2, 0, 0] here.
+    df = Frame((f = fkey(), g = [1.0, 2.0, 1.0], x = [1.0, 2.0, 3.0]))
+    gd = group_by(:f; drop = false)(df)
+    sn(d) = col(summarise(n = n_rows())(d), :n)
+    @test !gd.drop && sn(gd) == [1, 2, 0, 0]
+    @test (group_by(:f)(df)).drop                                  # the default
+    # filter: R sn(filter(gd, x > 1)) -> c0 b1 a1 d0; filter_out keeps the complement
+    @test sn(filter(c.x .> 1)(gd)) == [1, 1, 0, 0]
+    @test sn(filter_out(c.x .> 1)(gd)) == [0, 1, 0, 0]
+    @test !filter(c.x .> 1)(gd).drop
+    # arrange: R sn(arrange(gd, desc(x))) -> c0 b2 a1 d0
+    @test sn(arrange(desc(c.x))(gd)) == [1, 2, 0, 0]
+    @test col(arrange(desc(c.x))(gd), :x) == [3.0, 2.0, 1.0]
+    # slices: R slice_head(n = 1), slice_tail(n = 1), slice(1), slice_min(x), slice_max(x),
+    # slice_sample(n = 1) -> c0 b1 a1 d0 each
+    for s in (slice_head(n = 1), slice_tail(n = 1), slice(1), slice_min(c.x), slice_max(c.x), slice_sample(n = 1, rng = Xoshiro(1)))
+        @test sn(s(gd)) == [1, 1, 0, 0]
+    end
+    # head ignores groups (dplyr's head on a grouped_df too): R sn(head(gd, 1)) -> c0 b1 a0 d0
+    @test sn(head(1)(gd)) == [0, 1, 0, 0]
+    # distinct: R sn(distinct(gd, f, g)) -> c0 b1 a1 d0; sn(distinct(gd)) -> c0 b2 a1 d0
+    @test sn(distinct(:f, :g)(gd)) == [1, 1, 0, 0]
+    @test sn(distinct()(gd)) == [1, 2, 0, 0]
+    # mutate, select, rename (also of the key), relocate: R -> c0 b2 a1 d0 each, still .drop = FALSE
+    @test sn(mutate(y = c.x .+ 1)(gd)) == [1, 2, 0, 0]
+    @test sn((mutate(y = c.x .+ 1) ⨟ filter(c.x .> 1))(gd)) == [1, 1, 0, 0]
+    @test sn((select(:f, :x) ⨟ filter(c.x .> 1))(gd)) == [1, 1, 0, 0]
+    @test sn((rename(xx = :x) ⨟ filter(c.xx .> 1))(gd)) == [1, 1, 0, 0]
+    r = (rename(ff = :f) ⨟ filter(c.x .> 1))(gd)
+    @test groupcols(r) == [:ff] && sn(r) == [1, 1, 0, 0]
+    @test sn((relocate(:x) ⨟ filter(c.x .> 1))(gd)) == [1, 1, 0, 0]
+    # summarise keeping groups: R k <- summarise(gd2, s = sum(x), .groups = "keep") with
+    # gd2 <- group_by(df, f, g, .drop = FALSE) is grouped by f, g with .drop = FALSE;
+    # filter(k, s > 2) |> summarise(n = n()) -> (c, NA) 0, (b, 1) 1, (a, 2) 0, (d, NA) 0
+    gd2 = group_by(:f, :g; drop = false)(df)
+    k = summarise(s = sum(c.x); groups = :keep)(gd2)
+    @test groupcols(k) == [:f, :g] && !k.drop
+    r = (filter(c.s .> 2) ⨟ summarise(n = n_rows()))(k)
+    @test col(r, :f) == ["a", "b", "c", "d"] && eq(col(r, :g), [2.0, 1.0, missing, missing]) && col(r, :n) == [0, 1, 0, 0]
+    # .groups = "drop_last": R filter(summarise(gd2, s = sum(x)), s > 2) |> summarise(n = n())
+    # -> c0 b1 a0 d0
+    dl = summarise(s = sum(c.x))(gd2)
+    @test groupcols(dl) == [:f] && !dl.drop
+    @test sn(filter(c.s .> 2)(dl)) == [0, 1, 0, 0]
+    # .groups = "drop": ungrouped, so the flag resets (R group_by_drop_default -> TRUE)
+    @test summarise(s = sum(c.x); groups = :drop)(gd2).drop
+    # count_by / tally / add_count: R count(gd, g) -> (c, NA) 0, (b, 1) 2, (a, 2) 1, (d, NA) 0,
+    # grouped by f; tally(filter(gd, x > 1)) -> c0 b1 a1 d0; add_count keeps .drop = FALSE
+    r = count_by(:g)(gd)
+    @test col(r, :f) == ["a", "b", "c", "d"] && eq(col(r, :g), [2.0, 1.0, missing, missing]) && col(r, :n) == [1, 2, 0, 0]
+    @test groupcols(r) == [:f] && !r.drop
+    @test col((filter(c.x .> 1) ⨟ tally())(gd), :n) == [1, 1, 0, 0]
+    @test !add_count(:g)(gd).drop
+    # ungroup resets (R group_by(ungroup(gd), f) has .drop = TRUE): sn -> b2 a1
+    @test ungroup()(gd).drop && sn((ungroup() ⨟ group_by(:f))(gd)) == [1, 2]
+    # partial ungroup keeps the flag (R group_by_drop_default(ungroup(gd2, g)) -> FALSE)
+    @test !ungroup(:g)(gd2).drop && sn((ungroup(:g) ⨟ filter(c.x .> 1))(gd2)) == [1, 1, 0, 0]
+    # A fresh group_by takes its own `drop` (default true). Difference from dplyr: R's
+    # group_by(gd, f) inherits .drop = FALSE (`.drop = group_by_drop_default(.data)`), so
+    # sn(group_by(gd, f) |> filter(x > 1)) is c0 b1 a1 d0 there, [1, 1] here.
+    @test group_by(:f)(gd).drop && sn((group_by(:f) ⨟ filter(c.x .> 1))(gd)) == [1, 1]
+end
+
+@testitem "group_by(drop = false): empty groups of non-dictionary keys survive row verbs" tags = [:unit] setup = [RT] begin
+    # R: g <- group_by(tibble(a = c("x", "y", "y"), v = 1:3), a, .drop = FALSE)
+    # filter(g, a == "x") |> summarise(n = n()) -> x 1, y 0; slice_head(g, n = 0) -> x 0, y 0;
+    # filter |> distinct(a) -> x 1, y 0; group_by(filter(g, a == "x"), a) -> x 1 only.
+    # Row verbs keep the existing groups (dplyr does not recompute them when .drop = FALSE).
+    g = group_by(:a; drop = false)((a = ["x", "y", "y"], v = 1:3))
+    sn(d) = col(summarise(n = n_rows())(d), :n)
+    @test sn(filter(c.a .== "x")(g)) == [1, 0]
+    @test sn(slice_head(n = 0)(g)) == [0, 0]
+    @test sn((filter(c.a .== "x") ⨟ arrange(c.v))(g)) == [1, 0]
+    @test sn((filter(c.a .== "x") ⨟ mutate(w = 1))(g)) == [1, 0]
+    @test sn((filter(c.a .== "x") ⨟ distinct(:a))(g)) == [1, 0]
+    # head and pivot_longer(values_drop_na) regroup as dplyr/tidyr do (review m1, m2):
+    # R summarise(head(g, 1), n = n()) -> x 1 only (`[.grouped_df` regroups, keeping factor
+    # levels only); tidyr pivot_longer(..., values_drop_na = TRUE) on g recomputes its groups.
+    @test sn(head(1)(g)) == [1]
+    h = group_by(:a; drop = false)((a = ["x", "y"], p = [missing, 1.0], q = [missing, 2.0]))
+    @test sn(pivot_longer(Cols(:p, :q); values_drop_na = true)(h)) == [2]
+    # R filter(g, a == "x") |> select(aa = a, v) |> summarise(n = n()) -> x 1, y 0
+    r = (filter(c.a .== "x") ⨟ select(:aa => c.a, :v))(g)
+    @test groupcols(r) == [:aa] && sn(r) == [1, 0]
+    # a select that overwrites a grouping column's values cannot keep the old index
+    @test groupcols(select(:a => c.v)(g)) == [:a] && sn(select(:a => c.v)(g)) == [1, 1, 1]
+    @test sn((filter(c.a .== "x") ⨟ group_by(:a; drop = false))(g)) == [1]
+    # rows of each group stay in row order after a reordering
+    a = arrange(desc(c.v))(g)
+    @test col(mutate(r = row_number())(a), :r) == [1, 2, 1]
+end
+
+@testitem "Frame: the drop flag is an optional trailing argument" tags = [:unit] setup = [RT] begin
+    cols = ChuiFrames.AbstractColumn[ChuiFrames.column([1, 2])]
+    @test ChuiFrames.Frame([:a], cols).drop
+    @test ChuiFrames.Frame([:a], cols, [:a], nothing, 2).drop
+    @test !ChuiFrames.Frame([:a], cols, [:a], nothing, 2, false).drop
+    @test ChuiFrames.Frame([:a], cols, Symbol[], nothing, 2, false).drop   # ungrouped: always true
 end
 
 @testitem "group_by(drop = false): several keys, missing, non-dictionary keys" tags = [:unit] setup = [RT] begin

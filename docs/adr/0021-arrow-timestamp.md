@@ -127,6 +127,9 @@ Facts ([timestamps.md](../research/timestamps.md)):
       - Timestamp columns report no statistics, because Parquet2 decodes their bounds the lossy
         way. That gives up row-group pruning on timestamps, until the raw statistics bytes are
         decoded the exact way.
+        *Amended 2026-10-20 (phase 2c, implementation only):* the raw INT64 statistics bytes are
+        now decoded exactly from Parquet2's `meta_orig` into the type the column reads as;
+        anything unexpected reports `nothing` (fail closed, as this rule requires).
       - The `isAdjustedToUTC` flag is read from the root's direct children only. Parquet2 0.2.37
         cannot open files with nested timestamp columns at all (critic probe).
     - **Writing:** `DateTime` and naive s/ms `ArrowTimestamp` columns go through an owned

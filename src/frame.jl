@@ -26,6 +26,10 @@ ChuiFrames' eager frame: an immutable, ordered set of named columns (`ChuiFrames
 length, optionally grouped. `Frame(table)` converts any Tables.jl source (CF-001); keyword
 arguments build one from vectors. Column element types come from the input's declared types
 (ADR-0001 rule 1).
+
+A grouped frame also carries `drop` (dplyr's `.drop` attribute of a grouped_df; `true` unless
+grouped with `group_by(…; drop = false)`, and always `true` for an ungrouped frame). With
+`drop = false`, row verbs keep every existing group, empty or not (see `group_by`).
 """
 struct Frame
     names::Vector{Symbol}
@@ -34,7 +38,8 @@ struct Frame
     nrow::Int
     groups::Vector{Symbol}
     gindex::Union{Nothing, GroupIndex}
-    function Frame(names::Vector{Symbol}, columns::Vector{AbstractColumn}, groups::Vector{Symbol} = Symbol[], gindex::Union{Nothing, GroupIndex} = nothing, nrow::Int = -1)
+    drop::Bool
+    function Frame(names::Vector{Symbol}, columns::Vector{AbstractColumn}, groups::Vector{Symbol} = Symbol[], gindex::Union{Nothing, GroupIndex} = nothing, nrow::Int = -1, drop::Bool = true)
         length(names) == length(columns) || throw(ArgumentError("$(length(names)) names for $(length(columns)) columns"))
         lookup = Dict{Symbol, Int}()
         for (i, n) in enumerate(names)
@@ -51,7 +56,7 @@ struct Frame
             haskey(lookup, g) || throw(ArgumentError("grouping column $(repr(g)) is not a column"))
         end
         isempty(groups) && gindex !== nothing && throw(ArgumentError("a group index needs grouping columns"))
-        return new(names, columns, lookup, n, groups, gindex)
+        return new(names, columns, lookup, n, groups, gindex, drop || isempty(groups))
     end
 end
 
@@ -93,7 +98,7 @@ getcol(f::Frame, i::Int) = f.columns[i]
 "Rebuild a frame with new columns, keeping the grouping when all grouping columns survive."
 function with_columns(f::Frame, names::Vector{Symbol}, columns::Vector{AbstractColumn}; groups = f.groups, gindex = nothing)
     g = Symbol[x for x in groups if x in names]
-    return Frame(names, columns, g, length(g) == length(groups) && g == f.groups ? gindex : nothing)
+    return Frame(names, columns, g, length(g) == length(groups) && g == f.groups ? gindex : nothing, -1, f.drop)
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -123,12 +128,65 @@ equal grouping columns.
 frame_equal(a, b) =
     isequal(Tables.columntable(a), Tables.columntable(b)) && isequal(groupcols(a), groupcols(b))
 
+# Content equality of two frames: frame equality (above) plus the same drop flag, which changes
+# what later verbs give (a `drop = false` frame keeps empty groups). The group index is derived
+# data and is not compared. Element types are not compared (as `isequal` on vectors), so a
+# frame equals its round trip through a column table. Nested frames compare by content.
+_samestructure(a::Frame, b::Frame) =
+    a.names == b.names && a.nrow == b.nrow && a.groups == b.groups && a.drop == b.drop
+
+"`isequal(a::Frame, b::Frame)`: the same names in order, row count, grouping columns and drop flag, and `isequal` columns (NaN equals NaN, `-0.0` differs from `0.0`, `missing` equals `missing`)."
+function Base.isequal(a::Frame, b::Frame)
+    a === b && return true
+    _samestructure(a, b) || return false
+    for i in eachindex(a.columns)
+        isequal(a.columns[i], b.columns[i]) || return false
+    end
+    return true
+end
+
+"""
+    a::Frame == b::Frame
+
+`false` when the names, row counts, grouping columns or drop flags differ; otherwise `==` on
+the columns combined as `==` on vectors does: `false` if any value differs, else `missing` if a
+comparison involves `missing`, else `true` (so NaN makes it `false`, and `-0.0 == 0.0`).
+"""
+function Base.:(==)(a::Frame, b::Frame)
+    _samestructure(a, b) || return false
+    anymissing = false
+    for i in eachindex(a.columns)
+        r = a.columns[i] == b.columns[i]
+        r === false && return false
+        ismissing(r) && (anymissing = true)
+    end
+    return anymissing ? missing : true
+end
+
+function Base.hash(f::Frame, h::UInt)
+    h = hash(f.drop, hash(f.groups, hash(f.nrow, hash(f.names, hash(:ChuiFramesFrame, h)))))
+    for c in f.columns
+        h = hash(c, h)
+    end
+    return h
+end
+
 # ---------------------------------------------------------------------------------------------
 # Row selection on a whole frame (ungrouped helpers shared by verbs and I/O).
 
-"`take(f::Frame, idx)`: the rows `idx` of every column; grouping columns are kept, the index dropped."
-take(f::Frame, idx::AbstractVector{<:Integer}) =
-    Frame(copy(f.names), AbstractColumn[take(c, idx) for c in f.columns], copy(f.groups), nothing, length(idx))
+"""
+    take(f::Frame, idx)
+
+The rows `idx` of every column; grouping columns and the drop flag are kept. With `drop = true`
+the group index is dropped (rebuilt on demand, so groups left empty disappear); with
+`drop = false` every existing group is kept, as dplyr's row verbs do on a `.drop = FALSE`
+grouped_df (see `take_gindex`).
+"""
+function take(f::Frame, idx::AbstractVector{<:Integer})
+    cols = AbstractColumn[take(c, idx) for c in f.columns]
+    gi = f.drop ? nothing : take_gindex(gindex(f)::GroupIndex, idx)   # drop = false implies grouped
+    return Frame(copy(f.names), cols, copy(f.groups), gi, length(idx), f.drop)
+end
 
 "`vcat_frames(fs)`: concatenate frames with identical column names, in order."
 function vcat_frames(fs::AbstractVector{Frame})

@@ -27,9 +27,168 @@ end
     @test Dates.value(Tables.getcolumn(f, :ns)[1]) == 1_704_067_200_123_456_789
     @test collect(Tables.getcolumn(f, :ms)) == [DateTime(2024, 1, 1, 0, 0, 0, 123)]
     @test collect(Tables.getcolumn(f, :d)) == [Date(2024, 1, 2)]
-    # Parquet2 decodes timestamp bounds through its lossy Float64 path: no bounds, no pruning
+    # bounds decoded from the raw statistics bytes, exactly, as the values read (one row each)
     h, _ = ChuiFrames.plan_partitions(s, Tables.Scan(); morsel = 10)
-    @test all(ChuiFrames.partition_stats(s, h[1], col) === nothing for col in (:us, :ns, :ms))
+    for col in (:us, :ns, :ms)
+        st = ChuiFrames.partition_stats(s, h[1], col)
+        x = only(collect(Tables.getcolumn(f, col)))
+        @test st.lo === x && st.hi === x && st.nnull == 0
+    end
+end
+
+@testsnippet PqStats begin
+    using ChuiFrames, Tables, Dates, Parquet2
+    # Row-group pruning as ADR-0004 rule 4 states it, for `c <= t` and `c >= t`: neither can be
+    # true on NaN or `missing`, so only the bounds matter; a `nothing` bound keeps the group.
+    function kept(s, hs, c, op, t)
+        return [
+            k for (k, h) in enumerate(hs) if begin
+                    st = ChuiFrames.partition_stats(s, h, c)
+                    b = st === nothing ? nothing : op === (<=) ? st.lo : st.hi
+                    b === nothing || (op === (<=) ? b <= t : b >= t)
+                end
+        ]
+    end
+    # the row ids (column :i) where `c op t`, from the given row groups only
+    function rows(s, hs, ks, c, op, t)
+        out = Int[]
+        for k in ks
+            p = ChuiFrames.read_partition(s, hs[k])
+            for (i, x) in zip(Tables.getcolumn(p, :i), Tables.getcolumn(p, c))
+                ismissing(x) || op(x, t) && push!(out, i)
+            end
+        end
+        return out
+    end
+end
+
+@testitem "Parquet: exact timestamp statistics prune row groups (pyarrow, several row groups)" tags = [:unit] setup = [PqStats] begin
+    # pyarrow-written fixture (test/io/data/README.md): 3 row groups of 4, ascending and disjoint,
+    # whose bounds Parquet2's Float64 path decodes 1 ms late (min) or truncates (µs/ns)
+    p = joinpath(@__DIR__, "data", "timestamps_stats.parquet")
+    s = ChuiFrames.scan_file(p)
+    hs, _ = ChuiFrames.plan_partitions(s, Tables.Scan(); morsel = 10)
+    @test length(hs) == 3
+    tscols = (:ms, :us, :ns, :ms_utc, :ns_utc, :us_b, :ms_null)
+    for c in tscols, (k, h) in enumerate(hs)
+        v = collect(skipmissing(Tables.getcolumn(ChuiFrames.read_partition(s, h), c)))
+        st = ChuiFrames.partition_stats(s, h, c)
+        @test keys(st) == (:lo, :hi, :nnull, :nnan, :ndistinct)
+        @test st.lo === minimum(v) && st.hi === maximum(v)        # exact, and the type read
+        @test st.nnull == (c === :ms_null && k == 2 ? 1 : 0) && st.nnan === nothing
+    end
+    @test ChuiFrames.partition_stats(s, hs[1], :ms).lo === DateTime(1900, 9, 21, 1, 37, 28, 300)
+    @test typeof(ChuiFrames.partition_stats(s, hs[3], :us_b).hi) == ArrowTimestamp{Dates.Microsecond, Symbol("Europe/Berlin")}
+    # Parquet2's own statistics are off by 1 ms for this bound: pruning on them would drop a row
+    @test Parquet2.ColumnStatistics(s.ds[1]["ms"]).min == DateTime(1900, 9, 21, 1, 37, 28, 301)
+    # other columns keep their statistics
+    @test ChuiFrames.partition_stats(s, hs[2], :i) == (lo = 4, hi = 7, nnull = 0, nnan = nothing, ndistinct = nothing)
+    # Pruning: `c <= (min of group k)` keeps groups 1:k, `c >= (max of group k)` keeps k:3, and
+    # the kept groups give exactly the rows of the unpruned read.
+    for c in tscols, k in 1:3
+        lo, hi = ChuiFrames.partition_stats(s, hs[k], c)[(:lo, :hi)]
+        @test kept(s, hs, c, <=, lo) == 1:k
+        @test kept(s, hs, c, >=, hi) == k:3
+        for (op, t) in ((<=, lo), (>=, hi))
+            ks = kept(s, hs, c, op, t)
+            @test rows(s, hs, ks, c, op, t) == rows(s, hs, 1:3, c, op, t)
+            @test !isempty(rows(s, hs, ks, c, op, t)) || (c === :ms_null && k == 2)
+        end
+    end
+    # the same filter through the source's own read gives the same rows
+    t = ChuiFrames.partition_stats(s, hs[2], :ms).lo
+    got = ChuiFrames.read_source(s; scan = Tables.Scan(; filter = Tables.colcmp(<=, Tables.col(:ms), t)))
+    @test collect(Tables.getcolumn(got, :i)) == rows(s, hs, 1:3, :ms, <=, t)
+end
+
+@testitem "Parquet: no timestamp statistics in the file, none reported" tags = [:unit] setup = [PqStats] begin
+    # the same table written with write_statistics=False (test/io/data/README.md)
+    s = ChuiFrames.scan_file(joinpath(@__DIR__, "data", "timestamps_stats_none.parquet"))
+    hs, _ = ChuiFrames.plan_partitions(s, Tables.Scan(); morsel = 10)
+    for c in (:ms, :us, :ns, :ms_utc, :ns_utc, :us_b, :ms_null), h in hs
+        @test ChuiFrames.partition_stats(s, h, c) === nothing
+    end
+    @test kept(s, hs, :ms, <=, DateTime(1800)) == 1:3                  # nothing prunes
+    full = read_file(joinpath(@__DIR__, "data", "timestamps_stats.parquet"))
+    @test isequal(collect(Tables.getcolumn(read_file(joinpath(@__DIR__, "data", "timestamps_stats_none.parquet")), :ns)), collect(Tables.getcolumn(full, :ns)))
+end
+
+@testitem "Parquet: exact timestamp statistics on ChuiFrames-written files" tags = [:unit] setup = [PqStats] begin
+    using Random
+    rng = Random.MersenneTwister(11)
+    xs = sort!(rand(rng, (-3 * 10^12):(10^13), 300))
+    dt(x) = DateTime(Dates.UTM(x + Dates.UNIXEPOCH))
+    parts = [
+        (i = collect(1:100), t = dt.(xs[1:100]), m = Union{Missing, DateTime}[dt.(xs[1:99]); missing], s = ArrowTimestamp{Dates.Second}.(fld.(xs[1:100], 1000))),
+        (i = collect(101:200), t = dt.(xs[101:200]), m = Union{Missing, DateTime}[dt.(xs[101:200])...], s = ArrowTimestamp{Dates.Second}.(fld.(xs[101:200], 1000))),
+        (i = collect(201:300), t = dt.(xs[201:300]), m = Union{Missing, DateTime}[dt.(xs[201:300])...], s = ArrowTimestamp{Dates.Second}.(fld.(xs[201:300], 1000))),
+    ]
+    p = joinpath(mktempdir(), "w.parquet")
+    write_file(Tables.partitioner(parts), p)
+    s = ChuiFrames.scan_file(p)
+    hs, _ = ChuiFrames.plan_partitions(s, Tables.Scan(); morsel = 10)
+    @test length(hs) == 3
+    for (k, h) in enumerate(hs), c in (:t, :m, :s)
+        st = ChuiFrames.partition_stats(s, h, c)
+        v = collect(skipmissing(Tables.getcolumn(ChuiFrames.read_partition(s, h), c)))
+        if c === :m && k == 1
+            # Parquet2 drops min/max for a chunk holding a missing (ADR-0020 rule 3)
+            @test st.lo === nothing && st.hi === nothing && st.nnull == 1
+        else
+            @test st.lo === minimum(v) && st.hi === maximum(v) && st.nnull == 0
+        end
+    end
+    @test ChuiFrames.partition_stats(s, hs[2], :t).lo === dt(xs[101])
+    for k in 1:3
+        lo = ChuiFrames.partition_stats(s, hs[k], :t).lo
+        @test kept(s, hs, :t, <=, lo) == 1:k
+        @test rows(s, hs, kept(s, hs, :t, <=, lo), :t, <=, lo) == rows(s, hs, 1:3, :t, <=, lo)
+    end
+    # from bytes too
+    sb = Base.get_extension(ChuiFrames, :ChuiFramesParquet2Ext).ParquetSource(read(p))
+    @test ChuiFrames.partition_stats(sb, hs[3], :t).hi === dt(xs[300])
+end
+
+@testitem "Parquet: raw timestamp statistics fail closed" tags = [:unit] begin
+    using ChuiFrames, Tables, Dates, Parquet2
+    X = Base.get_extension(ChuiFrames, :ChuiFramesParquet2Ext)
+    St = Parquet2.Meta.Statistics
+    le(x::Int64) = collect(reinterpret(UInt8, [htol(x)]))
+    V = ArrowTimestamp{Dates.Microsecond, nothing}
+    @test X._raw_bound(St(min_value = le(-5), max_value = le(7)), :min_value, :min, V) === V(-5)
+    @test X._raw_bound(St(min_value = le(-5), max_value = le(7)), :max_value, :max, V) === V(7)
+    # the deprecated fields hold signed-order bounds, which is INT64's order: used when alone
+    @test X._raw_bound(St(min = le(typemin(Int64))), :min_value, :min, V) === V(typemin(Int64))
+    @test X._raw_bound(St(), :min_value, :min, V) === nothing                   # absent
+    @test X._raw_bound(St(min_value = UInt8[1, 2, 3, 4]), :min_value, :min, V) === nothing   # 4 bytes
+    @test X._raw_bound(St(min_value = UInt8[]), :min_value, :min, V) === nothing
+    # a millisecond count outside the DateTime range is no bound (never an error)
+    @test X._raw_bound(St(min_value = le(typemax(Int64))), :min_value, :min, DateTime) === nothing
+    @test X._raw_bound(St(min_value = le(1)), :min_value, :min, DateTime) === DateTime(1970, 1, 1, 0, 0, 0, 1)
+    # a struct without the expected fields (a changed Parquet2): no bound
+    @test X._raw_bound((; a = 1), :min_value, :min, V) === nothing
+    # bounds that contradict each other (min > max, a corrupt chunk) are both dropped (review n3)
+    @test X._ordered_bounds(V(7), V(-5)) === (nothing, nothing)
+    @test X._ordered_bounds(V(-5), V(7)) === (V(-5), V(7))
+    @test X._ordered_bounds(nothing, V(7)) === (nothing, V(7))
+end
+
+@testitem "Parquet: a multi-file dataset reports no timestamp statistics (fail closed)" tags = [:unit] begin
+    # `_raw_chunk` reads `meta_orig`, the metadata of one file: with two files it must give up
+    # (review m5)
+    using ChuiFrames, Tables, Parquet2
+    X = Base.get_extension(ChuiFrames, :ChuiFramesParquet2Ext)
+    p = joinpath(@__DIR__, "data", "timestamps_stats.parquet")
+    dir = mktempdir()
+    cp(p, joinpath(dir, "a.parquet"))
+    cp(p, joinpath(dir, "b.parquet"))
+    s = X.ParquetSource(dir; load_initial = true)   # a directory loads its row groups lazily otherwise
+    hs, _ = ChuiFrames.plan_partitions(s, Tables.Scan(); morsel = 10)
+    @test length(hs) == 6
+    for c in (:ms, :us, :ns, :ms_utc, :ns_utc, :us_b), h in hs
+        @test ChuiFrames.partition_stats(s, h, c) === nothing
+    end
+    @test ChuiFrames.partition_stats(s, hs[2], :i) !== nothing      # other columns keep theirs
 end
 
 @testitem "Parquet: millisecond timestamps exact where Parquet2's own decoding is 1 ms off (ADR-0021 TS-12)" tags = [:unit] begin

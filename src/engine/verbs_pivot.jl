@@ -7,7 +7,7 @@ _colname(x) = throw(ArgumentError("expected a column name (a Symbol or a string)
 
 # The frame with `names`/`cols`; grouping columns that survive stay grouping columns.
 _reshaped(f::Frame, names::Vector{Symbol}, cols::Vector{AbstractColumn}, nrow::Int) =
-    Frame(names, cols, Symbol[g for g in f.groups if g in names], nothing, nrow)
+    Frame(names, cols, Symbol[g for g in f.groups if g in names], nothing, nrow, f.drop)
 
 function _pivot_checkunique(verb, names::Vector{Symbol})
     allunique(names) && return nothing
@@ -175,6 +175,8 @@ function apply(s::PivotLongerStep, f::Frame)
     if s.values_drop_na
         rows = [r for r in 1:out.nrow if !all(c -> ismissing(out.columns[c][r]), vcols)]
         out = take(out, rows)
+        # tidyr recomputes the groups of the reshaped frame (review m2)
+        out.drop || (out = regroup(out, out.groups; drop = false))
     end
     return out
 end

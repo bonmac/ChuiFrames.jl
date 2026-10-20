@@ -19,13 +19,20 @@ frame carries a group index: groups in ascending key order, NaN/-NaN one group, 
 Arrow dictionary column), every dictionary entry is a level, and absent levels are kept as empty
 groups, so `summarise(n = n_rows())` gives 0 for them (`sum` gives 0, `mean` NaN, and `maximum`
 an `ArgumentError`, CC-007, where R warns and gives `-Inf`). For other keys it changes nothing,
-as in dplyr for character and numeric keys. Differences from dplyr:
+as in dplyr for character and numeric keys.
+
+The flag is stored on the frame (dplyr's `.drop` attribute) and survives the verbs that keep the
+grouping: row verbs (`filter`, `filter_out`, `arrange`, the slices, `distinct`) keep
+every existing group, even one they leave empty and whatever the key type (as dplyr does);
+`head` and `pivot_longer(values_drop_na = true)` regroup (only empty dictionary levels stay, as
+dplyr's `head` and tidyr do); and
+`mutate`, `select`, `rename`, `relocate`, a partial `ungroup`, `count_by`/`tally`/`add_count`
+and a `summarise` that keeps groups carry it on. `ungroup()` resets it. Differences from dplyr:
 - groups stay in CF-008's ascending order of the key values, not in level order;
 - `mutate`/`filter` do not evaluate empty groups (they have no rows), so a `maximum` there does
   not raise, where dplyr evaluates and warns;
-- the flag is not stored on the frame yet: `mutate`, `select`, `rename` and `relocate` keep the
-  index with its empty groups, but verbs that rebuild the index (`filter`, `arrange`, the
-  slices, `count_by`, a `summarise` that keeps groups) drop them, where dplyr keeps them.
+- a later `group_by` uses its own `drop` (default `true`), where dplyr's `.drop` defaults to
+  the input's (`group_by_drop_default`).
 """
 function group_by(keys...; add::Bool = false, drop::Bool = true, kw...)
     ks = Any[]
@@ -66,7 +73,7 @@ Base.show(io::IO, s::UngroupStep) = print(io, "ungroup(", join(_selrepr.(s.sels)
 function apply(s::UngroupStep, f::Frame)
     isempty(s.sels) && return Frame(copy(f.names), copy(f.columns), Symbol[], nothing, f.nrow)
     drop = Set(f.names[i] for i in resolve(s.sels, f))
-    return regroup(f, Symbol[g for g in f.groups if !(g in drop)])
+    return regroup(f, Symbol[g for g in f.groups if !(g in drop)]; drop = f.drop)   # dplyr keeps .drop
 end
 
 # =============================================================================================
@@ -189,5 +196,5 @@ function apply(s::SummariseStep, f0::Frame)
         keynames[1:(end - 1)]
     end
     out = Frame(allnames, allcols, Symbol[], nothing, length(keyrows))
-    return isempty(groups) ? out : regroup(out, groups)
+    return isempty(groups) ? out : regroup(out, groups; drop = f.drop)
 end
