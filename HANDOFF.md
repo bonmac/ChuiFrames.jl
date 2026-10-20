@@ -91,7 +91,7 @@ Other decisions:
 
 - Pruning: nothing in `src/` reads `partition_stats` yet (lazy pruning is phase 3). The exact
   timestamp statistics are ready for it.
-- The losses of ADR-0022's rule 7 table (large-frame verbs 3.5–43× slower than DataFrames.jl) are
+- The losses of ADR-0022's rule 7 table (large-frame verbs 3.4–43× slower than DataFrames.jl) are
   phase-4 engine work (codegen, typed kernels).
 - The PrecompileTools workload buys almost nothing for the first call (PF-05); why is UNVERIFIED.
 

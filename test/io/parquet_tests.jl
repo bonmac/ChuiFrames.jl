@@ -167,6 +167,28 @@ end
     @test X._raw_bound(St(min_value = le(1)), :min_value, :min, DateTime) === DateTime(1970, 1, 1, 0, 0, 0, 1)
     # a struct without the expected fields (a changed Parquet2): no bound
     @test X._raw_bound((; a = 1), :min_value, :min, V) === nothing
+    # bounds that contradict each other (min > max, a corrupt chunk) are both dropped (review n3)
+    @test X._ordered_bounds(V(7), V(-5)) === (nothing, nothing)
+    @test X._ordered_bounds(V(-5), V(7)) === (V(-5), V(7))
+    @test X._ordered_bounds(nothing, V(7)) === (nothing, V(7))
+end
+
+@testitem "Parquet: a multi-file dataset reports no timestamp statistics (fail closed)" tags = [:unit] begin
+    # `_raw_chunk` reads `meta_orig`, the metadata of one file: with two files it must give up
+    # (review m5)
+    using ChuiFrames, Tables, Parquet2
+    X = Base.get_extension(ChuiFrames, :ChuiFramesParquet2Ext)
+    p = joinpath(@__DIR__, "data", "timestamps_stats.parquet")
+    dir = mktempdir()
+    cp(p, joinpath(dir, "a.parquet"))
+    cp(p, joinpath(dir, "b.parquet"))
+    s = X.ParquetSource(dir; load_initial = true)   # a directory loads its row groups lazily otherwise
+    hs, _ = ChuiFrames.plan_partitions(s, Tables.Scan(); morsel = 10)
+    @test length(hs) == 6
+    for c in (:ms, :us, :ns, :ms_utc, :ns_utc, :us_b), h in hs
+        @test ChuiFrames.partition_stats(s, h, c) === nothing
+    end
+    @test ChuiFrames.partition_stats(s, hs[2], :i) !== nothing      # other columns keep theirs
 end
 
 @testitem "Parquet: millisecond timestamps exact where Parquet2's own decoding is 1 ms off (ADR-0021 TS-12)" tags = [:unit] begin

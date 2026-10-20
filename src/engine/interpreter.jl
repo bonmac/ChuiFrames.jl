@@ -137,6 +137,10 @@ function _casewhen_type(ts)
         String
     elseif all(T -> T <: Number, S) && isconcretetype(promote_type(S...))
         promote_type(S...)
+    elseif all(T -> T <: Union{ArrowTimestamp, DateTime}, S) && isconcretetype(promote_type(S...))
+        # naive timestamps of any units and `DateTime` promote exactly (ADR-0021 rule 7);
+        # naive with zoned, or two zones, have no concrete common type and raise below
+        promote_type(S...)
     else
         throw(ArgumentError("case_when: the values and the default have no common type ($(join(unique(S), ", "))); convert them to one type (dplyr: \"Can't combine\")"))
     end
@@ -147,8 +151,13 @@ _valtype(v) = v isa Scalar ? typeof(v.x) : eltype(v)
 function _cwvalue(@nospecialize(E), x)
     x isa E && return x
     x isa AbstractString && return String(x)
-    y = convert(nonmissingtype(E), x)
-    isequal(y, x) || throw(ArgumentError("case_when: the value $(repr(x)) cannot be represented as $(nonmissingtype(E)), the common type of the values and the default; convert the values first"))
+    y = try
+        convert(nonmissingtype(E), x)
+    catch err
+        err isa InexactError || rethrow()
+        nothing
+    end
+    y !== nothing && isequal(y, x) || throw(ArgumentError("case_when: the value $(repr(x)) cannot be represented as $(nonmissingtype(E)), the common type of the values and the default; convert the values first"))
     return y
 end
 

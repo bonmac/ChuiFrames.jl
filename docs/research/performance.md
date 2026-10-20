@@ -157,8 +157,9 @@ I/O at 10^5 rows (DF / Polars 1t): `read_csv` 5.8 / 5.4, `write_csv` 1.5 / 2.2, 
 and `filter` are 2-5× faster than DataFrames.jl and faster than Polars; `select` shares buffers;
 `write_arrow` matches DataFrames + Arrow.jl; `distinct` is within 1.1-1.6× of DataFrames at every
 size; TTFX (PF-07).
-**Losses:** from 10^4 rows on, every row-wise family except `distinct` is 3.5-43× slower than
-DataFrames.jl, and at 10^6 rows 13-126× slower than single-threaded Polars; `arrange` is the worst (2.9 s for 10^6 Float64 rows,
+**Losses:** from 10^4 rows on, every row-wise family except `distinct` (and `slice_head` at
+10^4 rows, 1.5×) is 3.4-43× slower than DataFrames.jl, and at 10^6 rows 13-126× slower than
+single-threaded Polars (`distinct`: 2.5×); `arrange` is the worst (2.9 s for 10^6 Float64 rows,
 DataFrames 0.16 s, Polars 0.047 s); `slice_head` costs O(n) (PF-11).
 
 ## PF-11 Allocation profile: the interpreter allocates per row

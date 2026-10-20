@@ -27,8 +27,9 @@
     workload 33 ms / 58 ms; precompile 16.5 s / 14.1 s (41.8 s / 26.6 s at load average 56-90).
     The PrecompileTools workload changes the first call by 0-10 ms (PF-05).
   - Against the same operations on the same data (PF-06 to PF-10): from 10^4 rows on ChuiFrames
-    is 3.5-43× slower than DataFrames.jl 1.8.2 for every row-wise family except `distinct`
-    (1.1-1.5×), and 13-126× slower than single-threaded Polars 2.0.0 at 10^6 rows. On 10-row
+    is 3.4-43× slower than DataFrames.jl 1.8.2 for every row-wise family except `distinct`
+    (1.1-1.5×) and `slice_head` at 10^4 rows (1.5×), and 13-126× slower than single-threaded
+    Polars 2.0.0 at 10^6 rows (except `distinct`, 2.5×). On 10-row
     frames the grouped verbs are 2-5× faster than DataFrames.jl. TTFX: 0.48 s to a first result
     against DataFrames + CSV + Arrow's 8.8 s.
   - AirspeedVelocity 0.6.6 cannot build ChuiFrames' benchmark environment: it adds JSON3, which

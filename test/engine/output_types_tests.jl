@@ -101,4 +101,24 @@ end
     @test eltype(getcol(r, :k)) === Union{Missing, Int}
     # scalar (reduction) values
     @test et(case_when((c.x .> 1) => maximum(c.x)), fires) === Union{Missing, Float64}
+    # an unsigned common type that cannot hold a value is the documented ArgumentError, not an
+    # InexactError (review m3)
+    @test_throws ArgumentError mutate(k = case_when((c.x .> 2) => -1; default = c.u))((x = [1.0, 3.0], u = UInt[1, 2]))
+end
+
+@testitem "case_when: timestamps of different units promote exactly (ADR-0021 rule 7)" tags = [:unit] begin
+    using ChuiFrames, Dates
+    using ChuiFrames: getcol
+    ms, us = ArrowTimestamp{Dates.Millisecond, nothing}, ArrowTimestamp{Dates.Microsecond, nothing}
+    t = (x = [1, 2], a = [ms(1), ms(2)], b = [us(3), us(4)], d = [DateTime(2024), DateTime(2025)])
+    r = getcol(mutate(y = case_when((c.x .> 1) => c.a; default = c.b))(t), :y)
+    @test eltype(r) === us && isequal(collect(r), [us(3), us(2000)])
+    r = getcol(mutate(y = case_when((c.x .> 1) => c.a; default = c.d))(t), :y)
+    @test eltype(r) === ms && isequal(collect(r), [ms(DateTime(2024)), ms(2)])
+    # a missing default only makes it nullable
+    r = getcol(mutate(y = case_when((c.x .> 1) => c.a, (c.x .> 5) => c.b))(t), :y)
+    @test eltype(r) === Union{Missing, us}
+    # naive with zoned has no common type (ADR-0021 rule 5)
+    z = ArrowTimestamp{Dates.Millisecond, :UTC}
+    @test_throws ArgumentError mutate(y = case_when((c.x .> 1) => c.a; default = c.z))(merge(t, (z = [z(1), z(2)],)))
 end

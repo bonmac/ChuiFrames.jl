@@ -175,6 +175,8 @@ function apply(s::PivotLongerStep, f::Frame)
     if s.values_drop_na
         rows = [r for r in 1:out.nrow if !all(c -> ismissing(out.columns[c][r]), vcols)]
         out = take(out, rows)
+        # tidyr recomputes the groups of the reshaped frame (review m2)
+        out.drop || (out = regroup(out, out.groups; drop = false))
     end
     return out
 end

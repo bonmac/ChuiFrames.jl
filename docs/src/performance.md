@@ -2,8 +2,9 @@
 
 ChuiFrames 0.0.1 (phase 2, eager and single-threaded) is **fast to start and fast on small
 frames, and slow on large ones**. On a 10-row frame most verbs cost 3-36 μs, and grouped verbs are
-2-5× faster than DataFrames.jl. From 10^4 rows on, every row-wise verb except `distinct` is
-3.5-43× slower than DataFrames.jl, and at 10^6 rows 13-126× slower than single-threaded Polars. The engine work of later phases targets that gap
+2-5× faster than DataFrames.jl. From 10^4 rows on, every row-wise verb except `distinct` (and
+`slice_head` at 10^4 rows) is 3.4-43× slower than DataFrames.jl, and at 10^6 rows 13-126×
+slower than single-threaded Polars (`distinct`: 2.5×). The engine work of later phases targets that gap
 (ADR-0003; budgets and targets in ADR-0022). The numbers below come from
 `docs/research/performance.md` (evidence PF-01 to PF-13).
 

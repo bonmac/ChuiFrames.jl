@@ -22,8 +22,10 @@ an `ArgumentError`, CC-007, where R warns and gives `-Inf`). For other keys it c
 as in dplyr for character and numeric keys.
 
 The flag is stored on the frame (dplyr's `.drop` attribute) and survives the verbs that keep the
-grouping: row verbs (`filter`, `filter_out`, `arrange`, `head`, the slices, `distinct`) keep
-every existing group, even one they leave empty and whatever the key type (as dplyr does), and
+grouping: row verbs (`filter`, `filter_out`, `arrange`, the slices, `distinct`) keep
+every existing group, even one they leave empty and whatever the key type (as dplyr does);
+`head` and `pivot_longer(values_drop_na = true)` regroup (only empty dictionary levels stay, as
+dplyr's `head` and tidyr do); and
 `mutate`, `select`, `rename`, `relocate`, a partial `ungroup`, `count_by`/`tally`/`add_count`
 and a `summarise` that keeps groups carry it on. `ungroup()` resets it. Differences from dplyr:
 - groups stay in CF-008's ascending order of the key values, not in level order;

@@ -100,9 +100,12 @@ not true (ADR-0002 rule 10). Conditions and values are column expressions or con
 The element type comes from the values' and the default's types only, never from which branches
 fire (as dplyr's common type): equal types stay, numbers promote (`Int` and `Float64` give
 `Float64`, `Bool` and `Int` give `Int`), strings give `String`, and a `missing` default (the
-default) makes the result nullable even where it never fires. Values with no common type (a
-string and a number) are an `ArgumentError`, as in dplyr; so is an `Int` that the promoted
-`Float64` cannot hold exactly.
+default) makes the result nullable even where it never fires; naive timestamps of any units and
+`DateTime` promote exactly (ADR-0021 rule 7). Values with no common type (a string and a
+number, naive and zoned timestamps) are an `ArgumentError`, as dplyr's "Can't combine"; so is a
+value the common type cannot hold exactly (a big `Int` as `Float64`, `-1` as `UInt`). Unlike
+dplyr, a `Date` and a `DateTime` are not combined (dplyr gives `POSIXct`), nor are `Char` and
+`String` or `Rational` and `Float64`.
 """
 function case_when(pairs::Pair...; default = missing)
     isempty(pairs) && throw(ArgumentError("case_when needs at least one cond => value pair"))

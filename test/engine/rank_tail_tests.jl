@@ -256,6 +256,12 @@ end
     @test sn((filter(c.a .== "x") ⨟ arrange(c.v))(g)) == [1, 0]
     @test sn((filter(c.a .== "x") ⨟ mutate(w = 1))(g)) == [1, 0]
     @test sn((filter(c.a .== "x") ⨟ distinct(:a))(g)) == [1, 0]
+    # head and pivot_longer(values_drop_na) regroup as dplyr/tidyr do (review m1, m2):
+    # R summarise(head(g, 1), n = n()) -> x 1 only (`[.grouped_df` regroups, keeping factor
+    # levels only); tidyr pivot_longer(..., values_drop_na = TRUE) on g recomputes its groups.
+    @test sn(head(1)(g)) == [1]
+    h = group_by(:a; drop = false)((a = ["x", "y"], p = [missing, 1.0], q = [missing, 2.0]))
+    @test sn(pivot_longer(Cols(:p, :q); values_drop_na = true)(h)) == [2]
     # R filter(g, a == "x") |> select(aa = a, v) |> summarise(n = n()) -> x 1, y 0
     r = (filter(c.a .== "x") ⨟ select(:aa => c.a, :v))(g)
     @test groupcols(r) == [:aa] && sn(r) == [1, 0]

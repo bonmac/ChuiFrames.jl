@@ -283,6 +283,9 @@ function _raw_bound(st, field::Symbol, deprecated::Symbol, ::Type{V}) where {V}
     end
 end
 
+# Bounds that contradict each other (min > max: a corrupt chunk) are both dropped.
+_ordered_bounds(lo, hi) = lo !== nothing && hi !== nothing && hi < lo ? (nothing, nothing) : (lo, hi)
+
 function _timestamp_stats(s::ParquetSource, k::Int, col::Symbol)
     return try
         col in s.ts_stats || return nothing
@@ -292,8 +295,9 @@ function _timestamp_stats(s::ParquetSource, k::Int, col::Symbol)
         st === nothing && return nothing
         V = s.ts[col]::Type
         nn, nd = st.null_count, st.distinct_count
+        lo, hi = _ordered_bounds(_raw_bound(st, :min_value, :min, V), _raw_bound(st, :max_value, :max, V))
         (;
-            lo = _raw_bound(st, :min_value, :min, V), hi = _raw_bound(st, :max_value, :max, V),
+            lo, hi,
             nnull = nn isa Integer ? Int(nn) : nothing, nnan = nothing,
             ndistinct = nd isa Integer ? Int(nd) : nothing,
         )
