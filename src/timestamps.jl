@@ -118,7 +118,7 @@ function Base.hash(t::ArrowTimestamp, h::UInt)
     ms, r = fldmod(ns, 1_000_000)
     if r == 0
         inst = ms + _UNIX_EPOCH_MS
-        _DT_MIN_MS <= inst <= _DT_MAX_MS && return hash(DateTime(Dates.UTM(Int64(inst))), h)
+        _DT_MIN_MS <= inst <= _DT_MAX_MS && return hash(_datetime_of(inst), h)
     end
     return hash(ns, h ⊻ _TS_SALT_NAIVE)
 end
@@ -135,8 +135,11 @@ value gives its UTC time. Throws an `InexactError` outside `DateTime`'s range.
 function Dates.DateTime(t::ArrowTimestamp)
     ms = fld(_instant_ns(t), 1_000_000) + _UNIX_EPOCH_MS
     _DT_MIN_MS <= ms <= _DT_MAX_MS || throw(InexactError(:DateTime, DateTime, Dates.value(t)))
-    return DateTime(Dates.UTM(Int64(ms)))
+    return _datetime_of(ms)
 end
+# The DateTime whose `Dates.value` is `inst` (ms since 0000-12-31), through Dates' public
+# `convert(DateTime, ::Millisecond)`: exact over DateTime's whole range (Dates.UTM is internal).
+_datetime_of(inst::Integer) = convert(DateTime, Dates.Millisecond(Int64(inst)))
 Dates.Date(t::ArrowTimestamp) = Dates.Date(DateTime(t))
 
 function ArrowTimestamp{U, TZ}(dt::DateTime) where {U, TZ}

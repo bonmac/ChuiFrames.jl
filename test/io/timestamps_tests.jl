@@ -209,8 +209,8 @@ end
     kinds = Data.SampledFrom(Any[units..., DateTime])
     zones = Data.SampledFrom([:UTC, Symbol("Europe/Berlin")])
     ugen = Data.SampledFrom(collect(units))
-    count(u, x) = u === Second ? fld(x, 10^6) : u === Millisecond ? fld(x, 10^3) : u === Microsecond ? x : x * 1000
-    mk(k, x, z) = k === DateTime ? DateTime(1970) + Millisecond(fld(x, 10^3)) : TS{k, z}(count(k, x))
+    rawcount(u, x) = u === Second ? fld(x, 10^6) : u === Millisecond ? fld(x, 10^3) : u === Microsecond ? x : x * 1000
+    mk(k, x, z) = k === DateTime ? DateTime(1970) + Millisecond(fld(x, 10^3)) : TS{k, z}(rawcount(k, x))
     # pairs drawn from one instant (plus a step of -2..2 µs), so ties across units are common
     naivepair = @composed function np(k1 = kinds, k2 = kinds, x = raw, d = near)
         return (mk(k1, x, nothing), mk(k2, x + d, nothing))

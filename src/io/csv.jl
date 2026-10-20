@@ -79,11 +79,12 @@ end
 function _csv_ts_exact(name, ::Type{V}, ns::Int128, x) where {V}
     U = V === DateTime ? Dates.Millisecond : timestamp_unit(V)
     q, r = fldmod(ns, _ns_per(U))
-    if r != 0 || !(typemin(Int64) <= q <= typemax(Int64))
+    lo, hi = V === DateTime ? (_DT_MIN_MS - _UNIX_EPOCH_MS, _DT_MAX_MS - _UNIX_EPOCH_MS) : (typemin(Int64), typemax(Int64))
+    if r != 0 || !(lo <= q <= hi)
         hint = V === DateTime ? "ArrowTimestamp{Nanosecond} (ArrowTimestamp{Microsecond} outside 1677-2262)" : "a finer ArrowTimestamp, or String"
         throw(ArgumentError("column $(repr(name)): timestamp $x has digits that $V cannot hold (the first batch set the column type); read it with col_types = ($(repr(name)) => $hint)"))
     end
-    return V === DateTime ? DateTime(Dates.UTM(Int64(q) + _UNIX_EPOCH_MS)) : V(Int64(q))
+    return V === DateTime ? _datetime_of(Int64(q) + _UNIX_EPOCH_MS) : V(Int64(q))
 end
 
 # ISO 8601 text to an exact ArrowTimestamp (ADR-0021 rule 12): `yyyy-mm-ddTHH:MM:SS`, a space
@@ -104,7 +105,7 @@ function parse_timestamp(::Type{DateTime}, s::AbstractString)
     q, r = fldmod(ns, Int128(1_000_000))
     (r == 0 && _DT_MIN_MS <= q + _UNIX_EPOCH_MS <= _DT_MAX_MS) ||
         throw(ArgumentError("$(repr(s)) has digits that DateTime cannot hold; read it as ArrowTimestamp{Nanosecond} (ArrowTimestamp{Microsecond} outside 1677-2262)"))
-    return DateTime(Dates.UTM(Int64(q + _UNIX_EPOCH_MS)))
+    return _datetime_of(q + _UNIX_EPOCH_MS)
 end
 # nanoseconds since the Unix epoch, in UTC for a zoned target
 function _iso_ns(::Type{V}, s::AbstractString) where {V}
@@ -430,8 +431,11 @@ Divergences from readr, measured against readr 2.1.6 by the `:differential` test
   `ArrowTimestamp{Nanosecond}` (exact; ADR-0021 rule 12); a later batch with finer digits than
   a `DateTime` first batch raises. `col_types = (t = ArrowTimestamp{U,TZ},)` parses ISO 8601 text itself,
   with `Z`/`±HH:MM` suffixes for zoned types; so does `T`/`DateTime`, which raises on digits finer
-  than a millisecond (readr keeps them; read such columns as `ArrowTimestamp{Nanosecond}`). readr reads `Z`/offset text as UTC automatically;
-  ChuiFrames reads it as strings unless `col_types` says otherwise;
+  than a millisecond (readr keeps them; read such columns as `ArrowTimestamp{Nanosecond}`). Both
+  need the full `yyyy-mm-ddTHH:MM:SS` form: a date alone, a time without seconds, or (for naive
+  targets) a `Z`/offset raises, where readr parses them (`CSVSource` with `dateformat` takes
+  other forms). Inferred `Z`/offset text: readr reads it as UTC; ChuiFrames reads it as strings
+  unless `col_types` says otherwise;
 - a time of day (readr `hms`) is an object column of `Dates.Time`.
 """
 function read_csv(path::Union{AbstractString, Vector{UInt8}}; col_names = true, col_types = nothing, col_select = nothing, na = ["", "NA"], skip::Integer = 0, comment = nothing, n_max = nothing, delim = _default_delim(path), trim_ws::Bool = true, quotechar = '"')

@@ -29,6 +29,9 @@ end
         # Arrow.jl storage types for Date32/Timestamp(ms), so no JuliaLang.* extension type is
         # written. NOT documented by Arrow.jl: revisit with ADR-0010's Arrow.jl 3.0 trigger.
         :DATE, :DATETIME,
+        # ... and for every Timestamp unit and zone (ADR-0021 rule 10, TS-06): `Arrow.Timestamp`
+        # with its `Arrow.Meta.TimeUnit` enum. Same status and revisit trigger as the line above.
+        :Timestamp, :Meta, :TimeUnit,
         # Dates' documented abstract type (Dates manual, "Dates.AbstractDateTime")
         :AbstractDateTime,
         # Parquet2's documented reader/writer API, used by ext/ChuiFramesParquet2Ext.jl (ADR-0020);
