@@ -294,7 +294,9 @@ function apply(s::MutateStep, f0::Frame)
                 i === nothing || (deleteat!(names, i); deleteat!(cols, i))
             else
                 _usedcols!(used, x)
-                col = column(eval_column(x, Env(cur), gi))
+                # Element type from the static type, not the data (ADR-0001 rule 1; review B1).
+                v = eval_column(x, Env(cur), gi)
+                col = v isa AbstractColumn ? v : typed_column(v, static_type(x, SelectCtx(cur)))
                 if i === nothing
                     push!(names, nm)
                     push!(cols, col)

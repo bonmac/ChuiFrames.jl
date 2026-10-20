@@ -155,7 +155,56 @@ function _envctx(e::Env)
     return SelectCtx(names, types, f.groups)
 end
 
-_narrowvec(v::AbstractVector) = isempty(v) ? v : [x for x in v]
+"""
+Narrow a vector of values whose type is not known statically. A few distinct element types
+become a small `Union` (so `column` can promote `Union{Int,Float64}` losslessly, ADR-0001
+rule 12) instead of the `typejoin` (`Real`) a comprehension would give.
+"""
+function _narrowvec(v::AbstractVector)
+    isempty(v) && return v
+    isconcretetype(eltype(v)) && return v
+    ts = Set{Any}()
+    for x in v
+        push!(ts, typeof(x))
+        length(ts) > 4 && return [x for x in v]
+    end
+    return collect(Union{ts...}, v)
+end
+
+"""
+    typed_column(v, T) -> AbstractColumn
+
+The output column of an expression whose static type (from the declared schema, ADR-0002
+rule 11) is `T`. When `nonmissingtype(T)` is concrete, the column has that value type
+(nullable when `T` admits `missing` or a value is `missing`), whatever the values happen to be:
+an all-`missing` group, or an empty group's neutral `0` in a `Float64` sum (ADR-0001 rule 1).
+Values are converted only when nothing is lost (`isequal`); otherwise, and when `T` is not
+known, the values are narrowed with [`_narrowvec`](@ref).
+"""
+function typed_column(v::AbstractVector, @nospecialize(T))
+    S = nonmissingtype(T)
+    if T !== Any && isconcretetype(S)
+        E = (Missing <: T || any(ismissing, v)) ? Union{Missing, S} : S
+        out = Vector{E}(undef, length(v))
+        ok = true
+        for (i, x) in enumerate(v)
+            if ismissing(x) || x isa S
+                out[i] = x
+            else
+                y = try
+                    convert(S, x)
+                catch
+                    ok = false
+                    break
+                end
+                isequal(y, x) || (ok = false; break)
+                out[i] = y
+            end
+        end
+        ok && return column(out)
+    end
+    return column(_narrowvec(v))
+end
 
 # ---------------------------------------------------------------------------------------------
 # Row-wise detection: a node that needs no other rows can run ungrouped even on grouped frames.
@@ -277,7 +326,12 @@ function static_type(x::Reduce, ctx::SelectCtx)
     return Any
 end
 function static_type(x::Window, ctx::SelectCtx)
-    x.kind in (:row_number, :min_rank, :dense_rank) && return isempty(x.args) ? Int : Union{Missing, Int}
+    if x.kind in (:row_number, :min_rank, :dense_rank)
+        # a rank is `missing` only where its argument is, so it is nullable only when the
+        # argument's declared type is (review B1)
+        isempty(x.args) && return Int
+        return any(a -> _nullable(static_type(a, ctx)) || static_type(a, ctx) === Any, x.args) ? Union{Missing, Int} : Int
+    end
     x.kind === :consecutive_id && return Int
     return Any
 end

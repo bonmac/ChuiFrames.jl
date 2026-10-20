@@ -154,12 +154,13 @@ function apply(s::SummariseStep, f0::Frame)
     outcols = AbstractColumn[]
     for nm in names
         v = vals[nm]
+        x = last(outs[findlast(o -> o.first == nm, outs)])
+        T = static_type(x, ctx)
         if isempty(v)
-            x = last(outs[findlast(o -> o.first == nm, outs)])
-            T = static_type(x, ctx)
             push!(outcols, column(Vector{isconcretetype(nonmissingtype(T)) ? T : Any}()))
         else
-            push!(outcols, column(_narrowvec(v)))
+            # Element type from the static type, not the data (ADR-0001 rule 1; review B1).
+            push!(outcols, typed_column(v, T))
         end
     end
     allnames = [keynames; names]
