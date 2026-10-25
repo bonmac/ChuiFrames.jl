@@ -61,8 +61,8 @@ function _printphysical(io::IO, ph::Physical)
     else
         println(io, "  execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential")
     end
-    println(io, "  then materialize (concatenate in morsel order)")
-    return isempty(ph.rest) || println(io, "  then eagerly: ", join(string.(ph.rest), " ⨟ "))
+    _explain_kernel(io, ph)
+    return _explain_rest(io, ph)
 end
 
 function _printpruning(io::IO, ph::Physical, morsel::Int)

@@ -161,12 +161,9 @@ end
 # and the streamed stage.
 _readpart(ph::Physical, residual::Tables.Scan, h) =
     apply_scan(conform_types(_read(ph.scan.source, h), source_schema(ph.scan.source)), residual)
-function _runstage(ph::Physical, f::Frame)
+function _runstage(ph::Physical, f::Frame, kernel = interpret_stage(ph))
     isempty(ph.engine) || (f = apply(FilterStep(ph.engine, false), f))
-    for s in ph.stage
-        f = apply(s, f)
-    end
-    return f
+    return kernel(f)
 end
 
 _coltypes(f::Frame) = Type[eltype(c) for c in f.columns]
@@ -245,6 +242,8 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     handles, residual = plan_partitions(src, pushed_scan(scan); morsel)
     stats.planned = length(handles)
     pruned = Threads.Atomic{Int}(0)
+    # The streamed stage's kernel: compiled or the interpreter (`stage_kernel`, kernels.jl).
+    kernel = stage_kernel(ph, _estimated_rows(src))
     # Each morsel is pruned (from its statistics) when it is reached, so a stopped scan computes
     # no statistics for the morsels it never reads. Every partition is read with the declared
     # column types (`conform_types`, as `read_source` does), so the stage sees the eager types.
@@ -258,7 +257,7 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
                 emptyout[]::Frame
             end
         end
-        return _runstage(ph, _readpart(ph, residual, handles[i]))
+        return _runstage(ph, _readpart(ph, residual, handles[i]), kernel)
     end
     frames = _run(ph, part, length(handles), threads, stats)
     stats.pruned = pruned[]
@@ -268,6 +267,16 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
         out = apply(s, out)
     end
     return out
+end
+
+"The source's row count when it reports one, else `nothing` (for `stage_kernel`)."
+function _estimated_rows(src)
+    n = try
+        row_count(src)
+    catch
+        nothing
+    end
+    return n === nothing ? nothing : first(n)
 end
 
 # The stage's output on no rows: the declared schema through the scan's projection and the stage.
