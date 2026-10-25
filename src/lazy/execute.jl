@@ -266,14 +266,13 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     return run_rest(ph, out; morsel, threads)
 end
 
-"The source's row count when it reports one, else `nothing` (for `stage_kernel`)."
+"""
+The source's row count (an upper bound when not exact) when it reports one, else `nothing`
+(for `stage_kernel`). `row_count` returns `nothing` when unknown (src/io/interface.jl).
+"""
 function _estimated_rows(src)
-    n = try
-        row_count(src)
-    catch
-        nothing
-    end
-    return n === nothing ? nothing : first(n)
+    n = row_count(src)
+    return n === nothing ? nothing : Int(first(n))
 end
 
 # The stage's output on no rows: the declared schema through the scan's projection and the stage.
@@ -286,10 +285,7 @@ function _process_empty(ph::Physical)
     f = apply_scan(src isa FrameSource ? take(src.frame, Int[]) : empty_frame(source_schema(src)), sel)
     isempty(scan.groups) || (f = regroup(f, scan.groups; drop = scan.drop))
     isempty(scan.preds) || (f = apply(FilterStep(scan.preds, false), f))
-    for s in ph.stage
-        f = apply(s, f)
-    end
-    return f
+    return interpret_stage(ph)(f)
 end
 
 # A row limit in morsel order: a sequential foldxl over the kept partitions. Once the frames
