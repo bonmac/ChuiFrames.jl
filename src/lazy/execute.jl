@@ -263,10 +263,7 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     stats.pruned = pruned[]
     out = _gather(frames, () -> _process_empty(ph))
     ph.limit === nothing || (out = apply(HeadStep(ph.limit), out))
-    for s in ph.rest
-        out = apply(s, out)
-    end
-    return out
+    return run_rest(ph, out; morsel, threads)
 end
 
 "The source's row count when it reports one, else `nothing` (for `stage_kernel`)."
