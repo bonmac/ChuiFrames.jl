@@ -158,8 +158,8 @@ Bytes (binding): broadcast allocated less than partitioned in every cell (e.g. n
 
 `julia benchmark/run.jl --toml …` at `23881b4`: `.lanes/evidence/bench-113-23881b4.txt` (Julia
 1.13.2, exit 0, suite wall time 695.5 s, load 6.6 before / 9.8 after) and
-`.lanes/evidence/bench-110-23881b4.txt` (Julia 1.10.12, exit 0, 707.6 s, load 11.2 / 12.9). 135
-entries (86 new). Every row: the evidence files and `benchmark/budgets.toml` (each row's comment
+`.lanes/evidence/bench-110-23881b4.txt` (Julia 1.10.12, exit 0, 707.6 s, load 11.2 / 12.9). 138
+entries (86 new; `bench-check-113-5689c2e.txt` ends `OK (138 benchmarks within budget)`). Every row: the evidence files and `benchmark/budgets.toml` (each row's comment
 is its baseline).
 
 Group-by, 1.13.2 medians (allocs) at 10⁶ rows; eager Int/String are the existing `summarise/*`

@@ -5,7 +5,7 @@
 Phase 4 added hash joins, a typed-key group-by with a streaming aggregate for lazy queries, and
 compiled stage kernels. On 10⁷-row tables in the style of
 [db-benchmark](https://github.com/h2oai/db-benchmark) (one thread, a shared and loaded machine:
-treat every time as approximate), eager group-by is **2–6× faster than the previous release** and
+treat every time as approximate), eager group-by is **2–6× faster than before phase 4 (`main`)** and
 lazy group-by 6–33× faster. The details, raw numbers and evidence are in
 `docs/research/performance-phase4.md`; the scripts are in `benchmark/compare/`.
 

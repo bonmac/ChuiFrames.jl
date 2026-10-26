@@ -31,7 +31,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Agent | File scope | Status |
 |---|---|---|---|
-| p4-bench | benchmarker | `benchmark/**`, new docs/research/performance-phase4.md, `docs/research/README.md`, `docs/src/performance.md`, the `RADIX_SWITCH`/`BROADCAST_MAX_*` lines | running |
+| p4-perf | implementer | `src/columns.jl`, `src/engine/{join_shapes,hashagg_sink,verbs_bind,verbs_groups}.jl`, `benchmark/budgets.toml`, named test files | starting |
 
 ## Evidence (`.lanes/evidence/`)
 
@@ -80,10 +80,29 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 1. **Quiet-machine timings.** `benchmark/ttfx.jl --check` and `benchmark/run.jl --check` on 1.13
    and LTS, at 1-minute load < 2, at the final head. The ecosystem lead provides the window.
 2. ~~p4-joinfix lands~~: done, merged in `a06a090` (reviewer APPROVE FINAL).
-3. **p4-bench lands** with its ADR-0022 rows. It also tightens any existing allocation or
-   memory row whose measured value fell by more than half.
-4. **Reviewer APPROVE (FINAL)** on the full `main...feat/phase4` diff, and `dod.jl`.
-5. **The user accepts ADRs 0023–0025** at the phase-4 merge ★.
+3. ~~p4-bench lands~~: done, merged in `5956626` (reviewer APPROVE WITH CONDITIONS FINAL).
+   - It added 86 SUITE rows and 516 budget rows, tightened 21 rows, and set `RADIX_SWITCH` to 2²⁰.
+   - The DoD `tests` check was waived in the merge commit: the only src change is that constant.
+4. **p4-perf lands** (approved by the ecosystem lead). It fixes:
+   - the quadratic concatenations in `vcat_columns` and `_partitioned_join`, plus the same
+     `init` pattern in `verbs_bind.jl` and `verbs_groups.jl`;
+   - the per-row allocation of String keys in the sink.
+
+   Then it re-tightens the memory and time rows of the join, lazy-join and lazy-gather budgets
+   (p4-bench review MINOR-5).
+5. **`julia scripts/ci.jl bench` against `main`**, in the quiet window (p4-bench review MINOR-4).
+6. **ADR-0022 rule 1's "public API only":** the SUITE now uses the internal switches
+   `_FORCE_JOIN`/`_FORCE_KERNEL` (p4-bench review MINOR-3). A dated note needs the
+   user/lead decision.
+7. **Reviewer APPROVE (FINAL)** on the full `main...feat/phase4` diff, and `dod.jl`.
+8. **The user accepts ADRs 0023–0025** at the phase-4 merge ★.
+
+## Process deviations
+
+- p4-bench edited new `benchmark/compare` files with a `python3` heredoc before their first
+  commit, against the Edit/Write-only rule. The reviewer read the committed content: sane.
+- The phase-4 seam's first `src/lazy/execute.jl` edit (`b51ca4e`) was made by a script. The
+  reviewer diffed it line by line against `bc8c97a`: clean.
 
 ## Follow-ups (phase 5 or later)
 
@@ -105,7 +124,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## Next action
 
-1. Merge p4-bench after its reviewer FINAL.
+1. Run lane p4-perf, then merge it after its reviewer FINAL.
 2. Run `dod.jl` and the full gates at the final head.
 3. Ask the ecosystem lead for the quiet window.
 4. Run the final reviewer on `main...feat/phase4`.
