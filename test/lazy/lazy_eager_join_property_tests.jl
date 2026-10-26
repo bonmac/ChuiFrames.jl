@@ -81,9 +81,11 @@
         return true
     end
     joutcomes_agree(e, l) = e[1] === l[1] && (e[1] === :err ? e[2] === l[2] : jagree(e[2], l[2]))
-    "Every forcing pair for a run: the join strategy, and the group-by lane's radix switch when present."
-    forcepairs(v) = isdefined(ChuiFrames, :_FORCE_RADIX_SWITCH) ?
-        (ChuiFrames._FORCE_JOIN => v, getfield(ChuiFrames, :_FORCE_RADIX_SWITCH) => 4) : (ChuiFrames._FORCE_JOIN => v,)
+    "Every forcing pair for a run: the join strategy, the group-by lane's radix switch at 4, and the stage kernel (`:auto` or `:compiled`)."
+    forcepairs(v, kernel::Symbol = :auto) =
+        (ChuiFrames._FORCE_JOIN => v, ChuiFrames._FORCE_RADIX_SWITCH => 4, ChuiFrames._FORCE_KERNEL => kernel)
+    "Every (join strategy, kernel) combination: the probe stays off the kernel whitelist, so a compiled kernel covers only the steps before the join."
+    const COMBOS = [(v, k) for v in JFORCES for k in (:auto, :compiled)]
     quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())
 end
 
@@ -99,12 +101,12 @@ end
         p = pipe(steps)
         e = quiet(() -> outcome(() -> run_eager(p, xt)))
         e[1] === :err ? (nerr[] += 1) : (nok[] += 1)
-        for v in JFORCES
-            l = quiet(() -> withforce(() -> outcome(() -> run_lazy(p, xt; morsel = m, threads = th)), forcepairs(v)...))
-            r = quiet(() -> withforce(() -> outcome_raw(() -> run_raw_join(p(lazy(xt)); morsel = m, threads = th)), forcepairs(v)...))
+        for (v, kn) in COMBOS
+            l = quiet(() -> withforce(() -> outcome(() -> run_lazy(p, xt; morsel = m, threads = th)), forcepairs(v, kn)...))
+            r = quiet(() -> withforce(() -> outcome_raw(() -> run_raw_join(p(lazy(xt)); morsel = m, threads = th)), forcepairs(v, kn)...))
             ok = joutcomes_agree(e, l) && joutcomes_agree(e, r)
             if !ok
-                event!("force", v)
+                event!("force", (v, kn))
                 event!("raw engine", r[1] === :err ? r : (:ok, Tables.columntable(r[2])))
                 return explain_failure(steps, e, l)
             end
@@ -137,10 +139,10 @@ end
         p = js ⨟ FILTERS[fi]
         any(r -> occursin("below join(", r), last(ChuiFrames.optimize_plan(p(lazy(xt)).plan)).fired) && (npushed[] += 1)
         e = outcome(() -> run_eager(p, xt))
-        for v in JFORCES
-            l = withforce(() -> outcome(() -> run_lazy(p, xt; morsel = m, threads = th)), forcepairs(v)...)
-            r = withforce(() -> outcome_raw(() -> run_raw_join(p(lazy(xt)); morsel = m, threads = th)), forcepairs(v)...)
-            (joutcomes_agree(e, l) && joutcomes_agree(e, r)) || (event!("force", v); return explain_failure(Any[js, FILTERS[fi]], e, r))
+        for (v, kn) in COMBOS
+            l = withforce(() -> outcome(() -> run_lazy(p, xt; morsel = m, threads = th)), forcepairs(v, kn)...)
+            r = withforce(() -> outcome_raw(() -> run_raw_join(p(lazy(xt)); morsel = m, threads = th)), forcepairs(v, kn)...)
+            (joutcomes_agree(e, l) && joutcomes_agree(e, r)) || (event!("force", (v, kn)); return explain_failure(Any[js, FILTERS[fi]], e, r))
         end
         return true
     end
@@ -152,6 +154,58 @@ end
     show_failure(sr)
     @test Supposition.results(sr).ispass
     @test npushed[] > 0
+    @test time() - t0 < 600
+end
+
+@testitem "join property: cross-type keys (★ K4: Int32/Float64, Int32/Int64, Int64/Float64 at 2^53)" tags = [:property] setup = [LazyProp, Force, JoinProp, Oracle] begin
+    # x's and y's key columns of different types; the compare type is `_keypair_compare_type`.
+    # Values sit at the 2^53 boundary, so lossy Int64/Float64 pairs really round.
+    const IVALS = [0, 1, 2, 2^53 - 1, 2^53, 2^53 + 1, -(2^53 + 1), typemax(Int64)]
+    # String/SubString: a frame's string column holds StringViews, so the SubString side is an
+    # object column of `SubString{String}` (a concrete key type; compare type `String`)
+    const PAIRS = ((Int32, Float64), (Int32, Int64), (Int64, Float64), (Float64, Int64), (Int64, Int64), (String, SubString{String}))
+    tofloat(v) = Float64(v)
+    function keyvec(T, idx)
+        T === String && return ChuiFrames.column(String[string(IVALS[i] % 7) for i in idx])
+        sub(s) = SubString(s * "_", 1, lastindex(s))          # a SubString of a longer String
+        T === SubString{String} && return ChuiFrames.ObjectColumn(SubString{String}[sub(string(IVALS[i] % 7)) for i in idx])
+        T <: AbstractFloat && return T[tofloat(IVALS[i]) for i in idx]
+        T === Int32 && return T[Int32(clamp(IVALS[i], typemin(Int32), typemax(Int32))) for i in idx]
+        return T[IVALS[i] for i in idx]
+    end
+    idxgen = Data.Vectors(Data.Integers(1, length(IVALS)); max_size = 6)
+    const KK = (:inner, :left, :right, :full, :semi, :anti, :nest)
+    const KPOST = Any[nothing, filter(c.k .== 2^53 + 1), filter(c.k .> 1)]
+    function k4_eq(xi, yi, pi, ki, fi, m, th)
+        checktime()
+        Tx, Ty = PAIRS[pi]
+        x = Frame(k = keyvec(Tx, xi), a = collect(1:length(xi)))
+        y = Frame(k = keyvec(Ty, yi), b = collect(1:length(yi)))
+        kind = KK[ki]
+        js = mkjoin(kind, :k, false, :all, :drop, :na, y)
+        post = Tx === String ? (fi == 1 ? nothing : filter(c.k .== "1")) : KPOST[fi]
+        p = post === nothing ? js : (js ⨟ post)
+        e = outcome(() -> run_eager(p, x))
+        # the oracle, with the pair's compare type
+        T = ChuiFrames._keypair_compare_type(Tx, Ty)
+        if post === nothing
+            o = Oracle.ojoin(kind, Oracle.OTable((k = collect(x.columns[1]), a = collect(x.columns[2]))), Oracle.OTable((k = collect(y.columns[1]), b = collect(y.columns[2]))); by = [:k => :k], T = Any[T])
+            (e[1] === :ok && Oracle.agree(e[2], o)) || (event!("eager", e); event!("oracle", o); return false)
+        end
+        for (v, kn) in COMBOS
+            l = withforce(() -> outcome(() -> run_lazy(p, x; morsel = m, threads = th)), forcepairs(v, kn)...)
+            r = withforce(() -> outcome_raw(() -> run_raw_join(p(lazy(x)); morsel = m, threads = th)), forcepairs(v, kn)...)
+            (joutcomes_agree(e, l) && joutcomes_agree(e, r)) || (event!("force", (v, kn)); event!("types", (Tx, Ty)); return explain_failure(Any[js], e, r))
+        end
+        return true
+    end
+    deadline!(300)
+    t0 = time()
+    sr = @check record = false db = false max_examples = 800 k4_eq(
+        idxgen, idxgen, Data.Integers(1, length(PAIRS)), Data.Integers(1, length(KK)), Data.Integers(1, length(KPOST)), morselgen, threadgen,
+    )
+    show_failure(sr)
+    @test Supposition.results(sr).ispass
     @test time() - t0 < 600
 end
 
@@ -197,9 +251,9 @@ end
     x = (a = [1, 2],)
     e = outcome(() -> b(x))
     @info "MAJOR-1: eager outcome" e
-    for v in JFORCES, m in 1:7, th in (false, true)
-        l = withforce(() -> outcome(() -> run_lazy(b, x; morsel = m, threads = th)), forcepairs(v)...)
-        r = withforce(() -> outcome_raw(() -> run_raw_join(b(lazy(x)); morsel = m, threads = th)), forcepairs(v)...)
+    for (v, kn) in COMBOS, m in 1:7, th in (false, true)
+        l = withforce(() -> outcome(() -> run_lazy(b, x; morsel = m, threads = th)), forcepairs(v, kn)...)
+        r = withforce(() -> outcome_raw(() -> run_raw_join(b(lazy(x)); morsel = m, threads = th)), forcepairs(v, kn)...)
         @test joutcomes_agree(e, l)
         @test joutcomes_agree(e, r)
     end

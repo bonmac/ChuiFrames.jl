@@ -121,6 +121,8 @@ end
     r = @test_logs (:info, "Joining with by = [:k]") collect(qs)
     @test isequal(r, inner_join(mutate(d = c.w .- maximum(c.w))(yy); by = :k)(x))
     @test occursin("by = nothing (resolved at collect)", sprint(explain, qs))
+    @test occursin("by = (keys resolved at collect)", sprint(explain, qs))
+    @test !occursin("by = []", sprint(explain, qs))
 end
 
 @testitem "lazy join: filter pushdown fires (spec §1.3)" tags = [:unit] setup = [Force, LazyJoin] begin
@@ -187,6 +189,35 @@ end
     @test lazy_matches(b, x)
 end
 
+@testitem "lazy join: key predicates under ★ K4 compare types (N2)" tags = [:unit] setup = [Force, LazyJoin] begin
+    # the 2^53 case: x Int64 keys [2^53, 2^53 + 1] against y Float64 2.0^53; T = Float64 ≠ Int64,
+    # so `filter(c.k .== 2^53 + 1)` is not pushed: both rows match and show 2.0^53, so 0 rows
+    x = Frame(k = [2^53, 2^53 + 1], a = [1, 2])
+    y = Frame(k = [2.0^53], b = [10])
+    b = t -> (inner_join(y; by = :k) ⨟ filter(c.k .== 2^53 + 1))(t)
+    @test b(x).nrow == 0
+    @test !pushed(b(lazy(x)))
+    @test lazy_matches(b, x; morsels = 1:7)
+    @test lazy_matches(t -> (left_join(y; by = :k) ⨟ filter(c.k .== 2^53 + 1))(t), x)
+    # Int32 vs Float64: T = Float64 ≠ Int32 (lossless, but converted): not pushed
+    x32 = Frame(k = Int32[1, 2, 3], a = [1, 2, 3])
+    yf = Frame(k = [2.0, 3.0], b = [20, 30])
+    b32 = t -> (inner_join(yf; by = :k) ⨟ filter(c.k .> 2))(t)
+    @test !pushed(b32(lazy(x32)))
+    @test lazy_matches(b32, x32)
+    # fires: x Float64 vs y Int64 (T = Float64 = x's type): the key predicate moves to x
+    xf = Frame(k = [1.0, 2.0, 3.0], a = [1, 2, 3])
+    yi = Frame(k = [2, 3], b = [20, 30])
+    bf = t -> (inner_join(yi; by = :k) ⨟ filter(c.k .> 2.0))(t)
+    @test pushed(bf(lazy(xf)))
+    @test lazy_matches(bf, xf)
+    # fires: a semi join returns x unconverted, so a key predicate moves to x (x Int64 vs y Float64)
+    bs = t -> (semi_join(y; by = :k) ⨟ filter(c.k .== 2^53 + 1))(t)
+    @test pushed(bs(lazy(x)))
+    @test lazy_matches(bs, x)
+    @test bs(x).nrow == 1
+end
+
 @testitem "lazy join: projection keeps keys and clashing columns per side (M3)" tags = [:unit] setup = [Force, LazyJoin] begin
     x = Frame(k = [1, 2], v = [1, 2], extra = ["p", "q"])
     y = Frame(k = [1, 3], v = [10, 30], other = [0.5, 1.5])
@@ -224,6 +255,18 @@ end
     @test occursin("not rendered (the stage holds a join probe)", withforce(() -> sprint(explain, q), ChuiFrames._FORCE_JOIN => :broadcast_y))
     # code_lowered on a join plan does not throw
     @test occursin("nothing to render", sprint(code_lowered, q))
+end
+
+@testitem "lazy join: a stage holding a probe runs the interpreter, even when compiled is forced" tags = [:unit] setup = [Force, LazyJoin] begin
+    x = Frame(k = [1, 2, 3], v = [1.0, 2.0, 3.0])
+    y = Frame(k = [2, 3], w = [20, 30])
+    q = (mutate(z = c.v .* 2) ⨟ inner_join(y; by = :k) ⨟ mutate(u = c.z .+ 1))(lazy(x))
+    ph = ChuiFrames.physical(ChuiFrames._lower_joins(optimize(q).plan))
+    @test any(s -> s isa ChuiFrames.ProbeStep, ph.stage)
+    kind = withforce(() -> first(ChuiFrames.kernel_decision(ph, 3)), ChuiFrames._FORCE_KERNEL => :compiled)
+    @test kind === :interpreter
+    @test lazy_matches(t -> (mutate(z = c.v .* 2) ⨟ inner_join(y; by = :k) ⨟ mutate(u = c.z .+ 1))(t), x)
+    @test withforce(() -> isequal(collect(q), (mutate(z = c.v .* 2) ⨟ inner_join(y; by = :k) ⨟ mutate(u = c.z .+ 1))(x)), ChuiFrames._FORCE_KERNEL => :compiled)
 end
 
 @testitem "lazy join: a mutated key whose type differs per morsel (MAJOR-1)" tags = [:unit] setup = [Force, LazyJoin] begin
