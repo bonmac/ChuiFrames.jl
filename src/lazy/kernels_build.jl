@@ -214,6 +214,26 @@ end
 
 _bstep!(b::_Builder, s::Step, names, slots) = throw(_NotCompilable("$(nameof(typeof(s))) steps do not compile"))
 
+# §3.2's whitelist of steps and nodes, checked from the stage's structure alone (no schema, no
+# shape key, no hash): the steps and nodes `_bstep!`/`_checktypes` can build. A stage that fails
+# it never compiles, so `_decide` rejects it before it computes a shape key or hash, or touches
+# the cache (p4-join review m5: a `ProbeStep` carries its build table, so its key would be new
+# on every `collect`). The type checks (static types, the probe check) still need the schema.
+_wlnode(::Col) = true
+_wlnode(x::Lit) = x.scalar
+_wlnode(x::Call) = all(_wlnode, x.args)
+_wlvalue(x) = x isa Col || (x isa Lit && x.scalar)
+_wlnode(x::CaseWhen) = all(_wlnode, x.conds) && all(_wlvalue, x.vals) && _wlvalue(x.default)
+_wlnode(::Any) = false
+_wlout(o) = o isa Pair && (o.second === nothing || _wlnode(o.second))
+_wlstep(s::FilterStep) = all(_wlnode, s.preds)
+_wlstep(s::MutateStep) = s.by === nothing && s.keep === :all && all(_wlout, s.outs)
+_wlstep(s::SelectStep) = all(it -> !(it isa Pair) || _wlnode(it.second), s.items)
+_wlstep(::Union{RenameStep, RenameWithStep, RelocateStep}) = true
+_wlstep(::Any) = false
+"The first step of `stage` off §3.2's whitelist, or `nothing`."
+_offwhitelist(stage) = (i = findfirst(!_wlstep, stage); i === nothing ? nothing : stage[i])
+
 # An empty frame with the state's names and types, every column a distinct object.
 _stateprobe(b::_Builder, names, slots) =
     Frame(copy(names), AbstractColumn[column(Vector{_slottype(b, s)}()) for s in slots])
@@ -302,8 +322,11 @@ function _small_set!(ph, verdict::Bool)
 end
 
 # The shape (as `_stageshape`, literal values left out), the projection and, for a frame source,
-# its column names and kinds, hashed into one accumulator. The helpers return `nothing`, so the
-# dynamic dispatch over steps and nodes boxes no `UInt` (the lazy `n=10` rows count allocations).
+# its column names and kinds; for any other source its type and declared schema (codegen review
+# n1: without them a verdict cached for one source's types showed as "compiled (cached)" for
+# another source with the same stage and other column types). Hashed into one accumulator. The
+# helpers return `nothing`, so the dynamic dispatch over steps and nodes boxes no `UInt` (the
+# lazy `n=10` rows count allocations).
 mutable struct _HAcc
     h::UInt
 end
@@ -318,10 +341,30 @@ function _shapehash(ph)
         for (n, col) in zip(src.frame.names, src.frame.columns)
             acc.h = hash(typeof(col), hash(n, acc.h))
         end
+    else
+        _hmix!(acc, typeof(src))
+        _hschema!(acc, src)
     end
     return acc.h
 end
 _hmix!(acc::_HAcc, x::Union{Symbol, Bool, DataType}) = (acc.h = hash(x, acc.h); nothing)
+# a non-frame source's declared column names and element types (none when it reports no schema)
+function _hschema!(acc::_HAcc, src)
+    sch = try
+        source_schema(src)
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
+    if sch isa Tables.Schema
+        for (n, T) in zip(sch.names, sch.types)
+            acc.h = hash(T, hash(n, acc.h))
+        end
+    else
+        _hmix!(acc, :noschema)
+    end
+    return nothing
+end
 # a value of unknown type (a selector, a `before`/`after`): `nothing` without a dynamic call
 _hany!(acc::_HAcc, @nospecialize(x)) = (acc.h = x === nothing ? hash(:nothing, acc.h) : hash(x, acc.h)::UInt; nothing)
 _hnode!(acc::_HAcc, x::Col) = (_hmix!(acc, :c); _hmix!(acc, x.name))

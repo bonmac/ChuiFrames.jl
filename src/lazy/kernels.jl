@@ -86,7 +86,9 @@ const MAX_KERNEL_NODES = 50
 
 `(:compiled | :interpreter, why)` for `ph`'s streamed stage, given the source's estimated row
 count (`nothing`: unknown). Forced by `_FORCE_KERNEL`; otherwise a compilable stage (§3.2) is
-compiled when its shape is in the session cache, or when `est_rows >= INTERP_THRESHOLD`.
+compiled when its shape is in the session cache, or when `est_rows >= INTERP_THRESHOLD`. A stage
+with a step or node off §3.2's whitelist (`_offwhitelist`) is the interpreter before any shape
+key or hash is computed, and leaves nothing in the cache.
 """
 function kernel_decision(ph, est_rows::Union{Nothing, Integer})
     kind, why = _decide(ph, est_rows)
@@ -104,6 +106,9 @@ function _decide(ph, est_rows::Union{Nothing, Integer})
         throw(ArgumentError("_FORCE_KERNEL must be :auto, :compiled or :interpreter, got $(repr(force))"))
     isempty(ph.stage) && return (:interpreter, :nostage)
     force === :interpreter && return (:interpreter, :forced)
+    # off §3.2's whitelist: never compiles, so no shape key, hash or cache entry (review m5)
+    off = _offwhitelist(ph.stage)
+    off === nothing || return (:interpreter, "$(nameof(typeof(off))) is not on the kernel whitelist (spec §3.2)")
     if force === :auto && (est_rows === nothing || est_rows < INTERP_THRESHOLD)
         _KERNEL_ANY_COMPILED[] || return (:interpreter, :small)
         h = _shapehash(ph)
@@ -456,7 +461,11 @@ function _compile(k::CompiledStage, f::Frame, key)
         _build(k.ph.stage, probe)
     catch err
         err isa InterruptException && rethrow()
+        # as `_decline!`: these types, the decision and the small path all say "rejected", so a
+        # stage that does not build never shows as "compiled (cached)" (codegen review n1)
         _cache_set!(key, false)
+        _cache_set!(_decision_key(k.ph.stage, probe), false)
+        _small_set!(k.ph, false)
         return nothing
     end
     verdict === true && return prog
