@@ -561,9 +561,10 @@ design exists** ([parity-dplyr.md](../../research/parity-dplyr.md) "UNVERIFIED" 
     - dplyr's default `name` is the deparsed `y` argument (verified: `nest_join(x, yy)` names the
       column `yy`). A Julia function cannot see the argument expression, so the default is
       `:y`, as the parity matrix already sketches;
-    - `name` equal to an x column: dplyr silently replaces x's column (verified: x's column `y`
-      is lost). ChuiFrames raises `ArgumentError` naming the clash and suggesting `name = …`,
-      because silently dropping a column is a data-loss hazard.
+  - **`name` equal to an x column (user, phase-4 ★, 2026-10-26):** as dplyr, the nested column
+    replaces x's column (verified: x's column `y` is lost), so the result is identical to dplyr's.
+    ChuiFrames adds a warning: a `@warn` log record (silenceable with `with_logger`) naming the
+    overwritten column. This is a "warning added" note in parity-dplyr.md, not a divergence.
   - **Physical shapes (§1.2):**
     - (a) build y: per x morsel, each x row's chain gives `take(ysub, rows)`, one `Frame` per x
       row (an allocation per row, measured by p4-bench). Under `unmatched = :error` the probe
@@ -959,8 +960,9 @@ It asserts that the before/after difference of `_KERNEL_DISAGREE` is 0. The gene
     integer/float → `Float64`, `Union{}`, rejected `Date`/`DateTime`, `Int64`/`UInt64`,
     string/number); the 2⁵³ matches in both orientations; output key types under `keep = false`
     (`T`) and `keep = true` (unconverted);
-  - `nest_join`: empty matches (0-row frames with y's names and types), `keep`, `name` clash
-    `ArgumentError`, `na_matches = :never`, y-only `unmatched`, grouped x and y; on inputs with
+  - `nest_join`: empty matches (0-row frames with y's names and types), `keep`, a `name` clash
+    (x's column replaced as dplyr — differential — and the `@warn` naming it fires, `@test_logs`),
+    `na_matches = :never`, y-only `unmatched`, grouped x and y; on inputs with
     no clashing non-key names, `unnest(name)` of the result equals the inner join (the clash
     case is excluded because the inner join suffixes and `unnest` refuses duplicate names);
   - `join_by` forms equal the `by` forms; a node passed to `join_by` → `ArgumentError`;
