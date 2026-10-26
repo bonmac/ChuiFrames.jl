@@ -81,15 +81,16 @@ end
 # ---------------------------------------------------------------------------------------------
 # Execution
 
-"Counters an execution reports to `explain` (partitions planned, pruned, read)."
+"Counters an execution reports to `explain` (partitions planned, pruned, read; the sink that consumed the morsels: `:none` (gathered) or `:hashagg`)."
 mutable struct ExecStats
     planned::Int
     pruned::Int
     read::Int
     parallel::Bool
     tasks::Int
+    sink::Symbol
 end
-ExecStats() = ExecStats(0, 0, 0, false, 0)
+ExecStats() = ExecStats(0, 0, 0, false, 0, :none)
 
 
 # A `FrameSource` is handed no filter: its residual would apply it through Tables.jl's generic
@@ -235,6 +236,11 @@ statistics, read (behind the source lock unless `isthreadsafe`), passed through 
 the re-applied scan predicates and the streamed stage, and gathered in morsel order. The stage
 runs in parallel (contiguous morsel ranges) when it is stateless (`isstateless`) and there is no
 limit; a limit runs sequentially through `foldxl`, stopping early only when allowed (R-total).
+
+When the steps after the stage start with a summary the hash-aggregate sink computes
+(`_hashagg_plan`, phase-4 spec §2.1), the morsels are folded per task into partial aggregates
+instead of being gathered (`_run_hashagg`, src/lazy/sinks.jl); every morsel still runs through
+`_runstage` with the stage's kernel. The steps after the summary then run eagerly.
 """
 function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = true, stats::ExecStats = ExecStats())
     scan = ph.scan
@@ -258,6 +264,13 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
             end
         end
         return _runstage(ph, _readpart(ph, residual, handles[i]), kernel)
+    end
+    sink = _hashagg_plan(ph)
+    if sink isa Tuple
+        spec, nsteps = sink
+        agg = _run_hashagg(ph, spec, part, handles, threads, stats)
+        stats.pruned = pruned[]
+        return run_rest(ph, agg; morsel, threads, from = nsteps + 1)
     end
     frames = _run(ph, part, length(handles), threads, stats)
     stats.pruned = pruned[]
