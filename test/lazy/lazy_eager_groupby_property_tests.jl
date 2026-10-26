@@ -4,7 +4,8 @@
 # with and without threads, with the radix switch forced at 4 groups or not. Inputs: the table; a
 # `DictColumn` key with an unused level (so `group_by(drop = false)` shows it, N3); and a Source
 # whose partitions carry permuted dictionaries of their own (per-batch dictionaries, M6). Results
-# agree with approximate frame equality for floats (rtol = 1e-12) and in element types; exception
+# agree with approximate frame equality for floats (LazyProp's rtol = 1e-12 on Float64 data,
+# stricter than CF-008's CC-004 tolerance) and in element types; exception
 # types agree. Must pass under `julia -t 1` and `-t 4`.
 
 @testitem "lazy property: grouped sinks == eager (hash aggregate, grouped windows; CF-008)" tags = [:property] setup = [LazyProp, Force] begin

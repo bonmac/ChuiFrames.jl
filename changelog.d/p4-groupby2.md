@@ -8,7 +8,9 @@
   dictionaries); a task's table that passes `RADIX_SWITCH` groups flushes into radix partitions
   (adaptive switch); partitions merge in morsel order, so `first`, `last` and `reduce` see row
   order. Rows are sorted by the keys as eager sorts them, `drop = false` keeps the empty levels,
-  and results equal eager (floats within CF-008's `rtol = 1e-12`), element types included.
+  and results equal eager, element types included: exactly, except floats from reductions,
+  which agree within CF-008's tolerance (CC-004's `√eps(T)` relative plus its per-aggregator
+  absolute term), because partial sums associate per morsel.
 - The grouped-window sink: a grouped `mutate` (after `group_by`, or with `by`) after the gather
   runs over contiguous group ranges in parallel when threads > 1, scattered back in row order.
 - `explain` names the hash-aggregate sink, or says why a summary is not one (e.g. "not a simple
@@ -18,14 +20,17 @@
 
 ### Changed
 - Eager `group_by` builds its group index through the typed keys and one open-addressing table
-  (no `Dict` per row): same index, about 10× faster at 10^4–10^6 rows, and faster at 10 rows.
+  (no `Dict` per row) and allocates per group, not per row; the index is the same.
   Grouped `summarise` still makes the same per-group Base calls, so its results are bitwise equal.
 - Join key pairs (internal, for the phase-4 joins): an integer (or `Bool`) key paired with a float
-  key is now allowed and compared as `Float64`, as dplyr does (the user's ★ K4 answer,
-  2026-10-26). New internal `_keypair_compare_type(Sx, Sy)` gives the type both sides are
-  converted to; above 2^53 two different integer keys can match the same `Float64` key.
+  key is now allowed, as dplyr does (the user's ★ K4 answer, 2026-10-26). New internal
+  `_keypair_compare_type(Sx, Sy)` gives the type both sides are converted to, or `nothing` for a
+  pair that cannot be a join key: `promote_type` for lossless pairs, `Float64` for the other
+  integer/float pairs (above 2^53 two different integer keys can then match the same `Float64`
+  key). `_lossless_key_promotion` stays strictly lossless.
 
 ### Fixed
 - A lazy query on a source whose partitions carry different dictionaries gathered a lone
   non-empty partition's dictionary column as is, so `group_by(drop = false)` showed levels the
-  eager read (which decodes) does not. The gather now follows the eager read's column kind.
+  eager read (which decodes) does not. The gather now follows the eager read's column kind,
+  counting a partition pruned by statistics too when a later step shows dictionary levels.

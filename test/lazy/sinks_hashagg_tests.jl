@@ -1,7 +1,9 @@
 # The lazy hash-aggregate sink (phase-4 spec §2.1, §2.3; plan task 5): `group_by ⨟ summarise`
 # and `summarise(...; by)` with simple aggregates fold the streamed stage's morsels per task
 # (typed keys, typed accumulators), merge in morsel order and sort by the keys, with no gathered
-# frame; the result equals eager (CF-008: exactly, floats within rtol = 1e-12), element types too.
+# frame; the result equals eager (CF-008: exactly; floats from reductions within CC-004's
+# tolerance, test/contracts/chui-core.md; the Float64 checks here use the stricter rtol = 1e-12,
+# the Float32 test CC-004's √eps(Float32) and τ), element types too.
 
 @testsnippet SK begin
     using Tables, Statistics
@@ -116,6 +118,65 @@ end
         @test agrees(p, t)
     end
     @test outcome(() -> (group_by(:g) ⨟ summarise(s = sum(c.s)))(t))[1] === :err
+end
+
+@testitem "hash-aggregate sink: Float32 sums and moments within CC-004's tolerance (review m1)" tags = [:unit] setup = [SK] begin
+    # CF-008's tolerance for floats from reductions is CC-004's (test/contracts/chui-core.md,
+    # "Float tolerance"): ε = √eps(T) of the input's float type, atol τ(agg, v) per aggregator.
+    n = 3_000
+    g = [string("k", mod(i * 31, 7)) for i in 1:n]
+    f = Float32[sin(i) * 10.0f0^mod(i, 4) for i in 1:n]
+    w = (g = g, f = f)
+    p = group_by(:g) ⨟ summarise(s = sum(c.f), m = mean(c.f), v = var(c.f), sd = std(c.f))
+    e = p(w)
+    ε = sqrt(eps(Float32))
+    τs = Dict(
+        :s => v -> ε * sum(abs, v), :m => v -> ε * sum(abs, v) / length(v),
+        :v => v -> ε * sum(abs2, v) / length(v), :sd => v -> sqrt(ε * sum(abs2, v) / length(v)),
+    )
+    for m in (7, 64, 1_000), th in (true, false)
+        r, st = rawrun(p(lazy(w)); morsel = m, threads = th)
+        @test st.sink === :hashagg
+        @test r.names == e.names && collect(r.columns[1]) == collect(e.columns[1])
+        @test all(eltype(a) == eltype(b) for (a, b) in zip(r.columns, e.columns))
+        for (j, nm) in enumerate(e.names[2:end]), (k, key) in enumerate(e.columns[1])
+            v = f[g .== key]
+            a, b = e.columns[j + 1][k], r.columns[j + 1][k]
+            @test isequal(a, b) || isapprox(a, b; atol = τs[nm](v), rtol = ε)
+        end
+    end
+end
+
+@testitem "dictionary levels with a statistics-pruned partition (review MAJOR 1, CF-008)" tags = [:unit] setup = [SK] begin
+    # Two partitions with their own dictionaries; partition 2 is pruned by `y` statistics. Eager
+    # (`read_source`) concatenates both, so `g` decodes and `drop = false` adds no level; the lazy
+    # run must not keep partition 1's dictionary (with its unobserved level "zz") either.
+    struct StatDictSource <: CF.Source
+        parts::Vector{Frame}
+    end
+    CF.source_schema(s::StatDictSource) = Tables.Schema((:g, :y), (eltype(s.parts[1].columns[1]), Int))
+    CF.source_label(::StatDictSource) = "dictionary source with y statistics"
+    CF.plan_partitions(s::StatDictSource, scan::Tables.Scan; morsel::Int = 1) = (collect(eachindex(s.parts)), scan)
+    CF.read_partition(s::StatDictSource, p::Int) = s.parts[p]
+    function CF.partition_stats(s::StatDictSource, p::Int, col::Symbol)
+        col === :y || return nothing
+        y = s.parts[p].columns[2]
+        return (; lo = minimum(y), hi = maximum(y), nnull = 0, nnan = 0, ndistinct = nothing)
+    end
+    mk(lv, g, y) = Frame(g = CF.DictColumn(UInt8[findfirst(==(v), lv) for v in g], CF.column(lv)), y = y)
+    src = StatDictSource([mk(["a", "b", "zz"], ["a", "b", "a"], [1, 2, 3]), mk(["c", "a"], ["c", "a"], [10, 11])])
+    for (red, sink) in ((summarise(n = n_rows()), true), (summarise(m = median(c.y)), false))
+        p = filter(c.y .< 10) ⨟ group_by(:g; drop = false) ⨟ red
+        e = p(CF.read_source(src))
+        @test e.nrow == 2                                  # "a", "b": no "zz" level (decoded)
+        for th in (true, false)
+            r, st = rawrun(p(lazy(src)); morsel = 1, threads = th)
+            @test st.pruned == 1                           # the partition is still pruned
+            @test st.sink === (sink ? :hashagg : :none)
+            @test same(e, r)
+            @test same(e, collect(p(lazy(src)); threads = th))
+        end
+    end
 end
 
 @testitem "hash-aggregate sink: forced radix switch at 4 groups (First, Last, ReduceM(string *))" tags = [:unit] setup = [SK, Force] begin

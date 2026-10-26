@@ -38,14 +38,18 @@ function _hashagg_plan(ph)
     else
         return nothing
     end
+    # the stage on the empty frame can raise whatever the stage raises (any exception means the
+    # eager path runs and raises it on the data); an interrupt is never swallowed
     f0 = try
         _process_empty(ph)
-    catch
+    catch err
+        err isa InterruptException && rethrow()
         return "the stage's output schema is not known"
     end
     keys = try
         Symbol[f0.names[i] for i in resolve(keysel, f0)]
-    catch
+    catch err
+        err isa ArgumentError || rethrow()             # an unknown column (eager raises it)
         return "a group key is not a column of the stage's output"
     end
     isempty(keys) && return "no group keys"
@@ -80,11 +84,14 @@ end
 function _starts_radix(src, handles, keys::Vector{Symbol}, limit::Int)
     isempty(handles) && return false
     for k in keys
-        nd = try
-            partition_stats(src, handles[1], k).ndistinct
-        catch
+        # a source's statistics may fail for a column it does not know (as `_pruned` allows)
+        st = try
+            partition_stats(src, handles[1], k)
+        catch err
+            err isa InterruptException && rethrow()
             nothing
         end
+        nd = st isa NamedTuple && haskey(st, :ndistinct) ? st.ndistinct : nothing
         nd isa Integer && nd > limit && return true
     end
     return false
@@ -106,6 +113,9 @@ function _run_hashagg(ph, spec::HashAggSpec, part, handles, threads::Bool, stats
     stats.sink = :hashagg
     ntasks > 1 && (stats.parallel = true; stats.tasks = ntasks)
     gds = Union{Nothing, _GlobalDict}[dm ? _GlobalDict() : nothing for dm in spec.dictmode]
+    # decided before the partial phase: the merge is partitioned from the start (it never
+    # changes the result; each task still flushes its table past `limit` groups)
+    radix = _starts_radix(ph.scan.source, handles, spec.keys, limit)
     tasks = [_AggTask(spec) for _ in 1:ntasks]
     errs = Vector{Any}(nothing, n)
     failed = Threads.Atomic{Int}(typemax(Int))   # lowest failing range
@@ -140,7 +150,6 @@ function _run_hashagg(ph, spec::HashAggSpec, part, handles, threads::Bool, stats
     end
     i = findfirst(!isnothing, errs)
     i === nothing || throw(MorselError(i, errs[i]))
-    radix = _starts_radix(ph.scan.source, handles, spec.keys, limit)
     results = _hashagg_merge(tasks, spec; radix, threads = ntasks > 1)
     fallback() = something(tasks[1].first, _process_empty(ph))
     return _hashagg_finish(results, tasks, spec, fallback)

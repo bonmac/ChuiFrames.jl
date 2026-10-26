@@ -272,9 +272,13 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     # column types (`conform_types`, as `read_source` does), so the stage sees the eager types.
     emptyout = Ref{Union{Nothing, Frame}}(nothing)    # computed once, by the first pruned morsel
     emptylock = ReentrantLock()
+    levels = _needs_levels(ph)
     function part(i)
         if _pruned(scan, handles[i])
             Threads.atomic_add!(pruned, 1)
+            # A later step shows dictionary levels: the pruned partition's column kinds still
+            # count (its empty slice through the stage), as eager `read_source` concatenates it.
+            levels && return _runstage(ph, take(_readpart(ph, residual, handles[i]), Int[]), kernel)
             return lock(emptylock) do
                 emptyout[] === nothing && (emptyout[] = _process_empty(ph))
                 emptyout[]::Frame
@@ -296,6 +300,18 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     ph.limit === nothing || (out = apply(HeadStep(ph.limit), out))
     return run_rest(ph, out; morsel, threads)
 end
+
+"""
+    _needs_levels(ph) -> Bool
+
+Does a step after the streamed stage show dictionary levels (a `group_by(...; drop = false)`, or
+a `drop = false` scan)? Then a gathered dictionary column must have exactly the kind the eager
+read gives it (`_gathered_kind`): eager `read_source` concatenates every partition, so a
+partition pruned by statistics still decides whether the column stays a dictionary column
+(review MAJOR 1, CF-008). Such a pruned partition is read and its empty slice runs through the
+stage: no rows are processed, its column kinds are seen.
+"""
+_needs_levels(ph) = !ph.scan.drop || any(s -> s isa GroupByStep && s.drop === false, ph.rest)
 
 """
 The source's row count (an upper bound when not exact) when it reports one, else `nothing`
