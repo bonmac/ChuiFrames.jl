@@ -145,25 +145,65 @@ end
 # ---------------------------------------------------------------------------------------------
 # Shapes and cache keys
 
-_shape(x::Col) = (:col, x.name)
-_shape(x::Lit) = (:lit, typeof(x.value), x.scalar)
-_shape(x::Call) = (:call, x.f, map(_shape, x.args)...)
-_shape(x::CaseWhen) = (:case, Tuple(map(_shape, x.conds)), Tuple(map(_shape, x.vals)), _shape(x.default))
-_shape(x) = (:other, x)
-_outshape(o::Pair) = (o.first, o.second === nothing ? nothing : _shape(o.second))
-_outshape(o) = (:other, o)
-_stepshape(s::FilterStep) = (:filter, s.out, Tuple(map(_shape, s.preds)))
-_stepshape(s::MutateStep) = (:mutate, Tuple(map(_outshape, s.outs)), s.by, s.keep, s.before, s.after)
-_stepshape(s::SelectStep) = (:select, Tuple(it isa Pair ? _outshape(it) : it for it in s.items))
-_stepshape(s::RenameStep) = (:rename, Tuple(s.pairs))
-_stepshape(s::RenameWithStep) = (:rename_with, s.fn, s.sel)
-_stepshape(s::RelocateStep) = (:relocate, Tuple(s.sels), s.before, s.after)
-_stepshape(s) = (:other, s)
-_stageshape(stage) = Tuple(map(_stepshape, stage))
+# A shape is a `String`, so a new shape compiles no new `hash`/`isequal` methods (a tuple of the
+# nodes' functions would be a new tuple type per shape). A function or value is keyed by its
+# type's `objectid` and its `hash` (a singleton function: one per type; `WhenFold`: its fields;
+# a selector: its contents); a literal by its type only.
+_vkey(io::IO, @nospecialize(x)) = print(io, objectid(typeof(x)), '#', hash(x), ';')
+_skey(io::IO, x::Col) = print(io, "c:", x.name, ';')
+_skey(io::IO, x::Lit) = print(io, "l:", objectid(typeof(x.value)), x.scalar ? 's' : 'v', ';')
+function _skey(io::IO, x::Call)
+    print(io, "f:")
+    _vkey(io, x.f)
+    print(io, '(')
+    foreach(a -> _skey(io, a), x.args)
+    return print(io, ')')
+end
+function _skey(io::IO, x::CaseWhen)
+    print(io, "w(")
+    foreach(a -> _skey(io, a), x.conds)
+    print(io, '|')
+    foreach(a -> _skey(io, a), x.vals)
+    print(io, '|')
+    _skey(io, x.default)
+    return print(io, ')')
+end
+_skey(io::IO, @nospecialize(x)) = (print(io, "v:"); _vkey(io, x))
+function _okey(io::IO, @nospecialize(o))
+    if o isa Pair
+        print(io, o.first, '=')
+        o.second === nothing ? print(io, "nothing;") : _skey(io, o.second)
+    else
+        _skey(io, o)
+    end
+    return nothing
+end
+function _stepkey(io::IO, s::FilterStep)
+    print(io, s.out ? "filter_out[" : "filter[")
+    foreach(p -> _skey(io, p), s.preds)
+    return print(io, ']')
+end
+function _stepkey(io::IO, s::MutateStep)
+    print(io, "mutate[")
+    foreach(o -> _okey(io, o), s.outs)
+    foreach(v -> _vkey(io, v), (s.by, s.keep, s.before, s.after))
+    return print(io, ']')
+end
+function _stepkey(io::IO, s::SelectStep)
+    print(io, "select[")
+    foreach(it -> _okey(io, it), s.items)
+    return print(io, ']')
+end
+_stepkey(io::IO, s::Step) = (print(io, nameof(typeof(s)), '['); _vkey(io, _stepvalue(s)); print(io, ']'))
+_stepvalue(s::RenameStep) = s.pairs
+_stepvalue(s::RenameWithStep) = (s.fn, s.sel)
+_stepvalue(s::RelocateStep) = (s.sels, s.before, s.after)
+_stepvalue(s::Step) = s
+_stageshape(stage) = sprint(io -> foreach(s -> _stepkey(io, s), stage))
 
 _decision_key(stage, probe::Frame) =
-    (:decision, _stageshape(stage), Tuple(probe.names), Tuple(map(eltype, probe.columns)))
-_morsel_key(shape, f::Frame) = (shape, Tuple(f.names), Tuple(map(typeof, f.columns)))
+    (:decision, _stageshape(stage), copy(probe.names), Any[eltype(c) for c in probe.columns])
+_morsel_key(shape::String, f::Frame) = (shape, copy(f.names), Any[typeof(c) for c in f.columns])
 
 function _cache_set!(key, verdict::Bool)
     return lock(_KERNEL_LOCK) do
@@ -172,7 +212,8 @@ function _cache_set!(key, verdict::Bool)
     end
 end
 
-_nodes(x::Union{Col, Lit}) = 1
+# Expression nodes = operations (Call and case_when nodes); columns and literals are leaves.
+_nodes(x::Union{Col, Lit}) = 0
 _nodes(x::Call) = 1 + sum(_nodes, x.args; init = 0)
 _nodes(x::CaseWhen) = 1 + sum(_nodes, x.conds; init = 0) + sum(_nodes, x.vals; init = 0) + _nodes(x.default)
 _nodes(::Any) = 1
@@ -208,7 +249,8 @@ struct KCase{E, C <: Tuple, V <: Tuple, D}
     vals::V
     default::D
 end
-KCase{E}(c::C, v::V, d::D) where {E, C, V, D} = KCase{E, C, V, D}(c, v, d)
+KCase{E}(@nospecialize(c::Tuple), @nospecialize(v::Tuple), @nospecialize(d)) where {E} =
+    KCase{E, typeof(c), typeof(v), typeof(d)}(c, v, d)
 
 @inline (::KCol{J})(c, i) where {J} = @inbounds c[1][J][i]
 @inline (::KReg{K})(c, i) where {K} = @inbounds c[2][K][i]
@@ -261,11 +303,11 @@ end
 struct KMut{K, X}
     x::X
 end
-KMut{K}(x::X) where {K, X} = KMut{K, X}(x)
+KMut{K}(@nospecialize(x)) where {K} = KMut{K, typeof(x)}(x)
 struct KFilt{OUT, P <: Tuple}
     preds::P
 end
-KFilt{OUT}(p::P) where {OUT, P} = KFilt{OUT, P}(p)
+KFilt{OUT}(@nospecialize(p::Tuple)) where {OUT} = KFilt{OUT, typeof(p)}(p)
 
 @inline function _runop(op::KMut{K}, c, i) where {K}
     y = op.x(c, i)
@@ -324,31 +366,41 @@ _evalscalars(t::Tuple) = map(s -> s(nothing, 0), t)
 
 """
 A stage compiled for one set of input column types: the row steps `ops`, the scalar-only
-subexpressions, the input columns read (`ins`, positions in the morsel), the register element
-types `R`, and the output columns (`names`, each from an input column or a register).
+subexpressions, the register element types `R` (a `Tuple` type), the input columns read
+(`ins`, positions in the morsel), and the output columns (`names`, each from an input column or
+a register). Not parametric: per shape, only `_kernelrun` (and the row loop) is compiled.
 """
-struct StageProgram{O <: Tuple, S <: Tuple, R <: Tuple}
-    ops::O
-    scalars::S
+struct StageProgram
+    ops::Tuple
+    scalars::Tuple
+    R::Type
     ins::Vector{Int}
     names::Vector{Symbol}
     slots::Vector{Tuple{Symbol, Int}}
     hasfilter::Bool
 end
 
-function (p::StageProgram{O, S, R})(f::Frame) where {O, S, R}
-    n = f.nrow
-    sc = _evalscalars(p.scalars)                    # once per morsel, also on no rows (n2)
+function (p::StageProgram)(f::Frame)
     ins = Tuple(f.columns[j] for j in p.ins)
-    regs = _allocregs(R, n)                         # per call: the kernel is reentrant
-    keep = _rowloop(p.ops, (ins, regs, sc), n, p.hasfilter)
+    regs, keep = _kernelrun(p.ops, p.scalars, p.R, ins, f.nrow, p.hasfilter)
     return _assemble(p, f, regs, keep)
+end
+
+# The compiled part of one call (a function barrier: one method instance per shape and input
+# column types). Scalar-only subexpressions are evaluated once per morsel, also on no rows (n2);
+# the registers are allocated per call (the kernel is reentrant).
+function _kernelrun(ops::Tuple, scalars::Tuple, ::Type{R}, ins::Tuple, n::Int, hasfilter::Bool) where {R <: Tuple}
+    sc = _evalscalars(scalars)
+    regs = _allocregs(R, n)
+    keep = _rowloop(ops, (ins, regs, sc), n, hasfilter)
+    return regs, keep
 end
 
 # The output frame: input columns as they are (or `take`n when the stage filters, so a
 # dictionary column keeps its dictionary, N3); registers as `column(values)`, which is what
-# `typed_column` gives for values already of the declared type.
-function _assemble(p::StageProgram, f::Frame, regs::Tuple, keep::Vector{Int})
+# `typed_column` gives for values already of the declared type. Not specialised on the register
+# types: only the row loop is compiled per shape.
+function _assemble(p::StageProgram, f::Frame, @nospecialize(regs::Tuple), keep::Vector{Int})
     built = Dict{Tuple{Symbol, Int}, AbstractColumn}()
     cols = AbstractColumn[]
     for s in p.slots
@@ -434,18 +486,21 @@ function _kbuild(b::_Builder, x::Call, env, ctx)
         push!(b.scalars, _kscalar(x))
         return KSc{length(b.scalars)}()
     end
-    return KCall(x.f, Tuple(_kbuild(b, a, env, ctx) for a in x.args))
+    return _kcall(x.f, Tuple(Any[_kbuild(b, a, env, ctx) for a in x.args]))
 end
 function _kbuild(b::_Builder, x::CaseWhen, env, ctx)
     E = static_type(x, ctx)
-    conds = Tuple(_kbuild(b, a, env, ctx) for a in x.conds)
-    vals = Tuple(_kbuild(b, a, env, ctx) for a in x.vals)
+    conds = Tuple(Any[_kbuild(b, a, env, ctx) for a in x.conds])
+    vals = Tuple(Any[_kbuild(b, a, env, ctx) for a in x.vals])
     return KCase{E}(conds, vals, _kbuild(b, x.default, env, ctx))
 end
 _kscalar(x::Lit) = KLit(x.value)
-_kscalar(x::Call) = KCall(x.f, Tuple(_kscalar(a) for a in x.args))
+_kscalar(x::Call) = _kcall(x.f, Tuple(Any[_kscalar(a) for a in x.args]))
+# The building blocks are built from `Vector{Any}`s and unspecialised constructors, so a new
+# shape compiles only the blocks' own (tiny) constructors and the row loop, not the builder.
+_kcall(@nospecialize(f), @nospecialize(args::Tuple)) = KCall{typeof(f), typeof(args)}(f, args)
 
-function _addreg!(b::_Builder, T, x)
+function _addreg!(b::_Builder, T, @nospecialize(x))
     push!(b.regtypes, T)
     k = length(b.regtypes)
     push!(b.ops, KMut{k}(x))
@@ -468,7 +523,7 @@ function _build(stage, probe::Frame)
     R = Tuple{b.regtypes...}
     ops = Tuple(b.ops)
     scs = Tuple(b.scalars)
-    return StageProgram{typeof(ops), typeof(scs), R}(ops, scs, b.ins, names, slots, b.hasfilter)
+    return StageProgram(ops, scs, R, b.ins, names, slots, b.hasfilter)
 end
 
 _env(names, slots) = Dict{Symbol, _Slot}(zip(names, slots))
@@ -476,9 +531,10 @@ _env(names, slots) = Dict{Symbol, _Slot}(zip(names, slots))
 function _bstep!(b::_Builder, s::FilterStep, names, slots)
     ctx = _ctx(b, names, slots)
     env = _env(names, slots)
-    preds = map(s.preds) do p
+    preds = Any[]
+    for p in s.preds
         _isboolish(static_type(p, ctx)) || throw(_NotCompilable("the condition $(p) is not statically Bool"))
-        _knode(b, p, env, ctx)
+        push!(preds, _knode(b, p, env, ctx))
     end
     push!(b.ops, KFilt{s.out}(Tuple(preds)))
     b.hasfilter = true
@@ -598,7 +654,7 @@ compile run the interpreter.
 """
 struct CompiledStage{P}
     ph::P                    # the `Physical` plan (defined after this file)
-    shape::Any
+    shape::String
     progs::Dict{Any, Any}
     lock::ReentrantLock
 end

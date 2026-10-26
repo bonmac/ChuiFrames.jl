@@ -16,12 +16,13 @@
     for st in stages
         ph = CF.physical(st(CF.lazy(t)).plan)
         prog = CF._build(ph.stage, CF.take(f, Int[]))
-        R = typeof(prog).parameters[3]
+        R = prog.R
         n = f.nrow
         @test_opt CF._allocregs(R, n)
         regs = CF._allocregs(R, n)
         ins = Tuple(f.columns[j] for j in prog.ins)
         cx = (ins, regs, CF._evalscalars(prog.scalars))
         @test_opt CF._rowloop(prog.ops, cx, n, prog.hasfilter)
+        @test_opt CF._kernelrun(prog.ops, prog.scalars, R, ins, n, prog.hasfilter)
     end
 end
