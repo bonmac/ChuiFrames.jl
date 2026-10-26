@@ -219,20 +219,35 @@ _bstep!(b::_Builder, s::Step, names, slots) = throw(_NotCompilable("$(nameof(typ
 # it never compiles, so `_decide` rejects it before it computes a shape key or hash, or touches
 # the cache (p4-join review m5: a `ProbeStep` carries its build table, so its key would be new
 # on every `collect`). The type checks (static types, the probe check) still need the schema.
-_wlnode(::Col) = true
-_wlnode(x::Lit) = x.scalar
-_wlnode(x::Call) = all(_wlnode, x.args)
-_wlvalue(x) = x isa Col || (x isa Lit && x.scalar)
-_wlnode(x::CaseWhen) = all(_wlnode, x.conds) && all(_wlvalue, x.vals) && _wlvalue(x.default)
-_wlnode(::Any) = false
-_wlout(o) = o isa Pair && (o.second === nothing || _wlnode(o.second))
-_wlstep(s::FilterStep) = all(_wlnode, s.preds)
-_wlstep(s::MutateStep) = s.by === nothing && s.keep === :all && all(_wlout, s.outs)
-_wlstep(s::SelectStep) = all(it -> !(it isa Pair) || _wlnode(it.second), s.items)
-_wlstep(::Union{RenameStep, RenameWithStep, RelocateStep}) = true
-_wlstep(::Any) = false
-"The first step of `stage` off §3.2's whitelist, or `nothing`."
-_offwhitelist(stage) = (i = findfirst(!_wlstep, stage); i === nothing ? nothing : stage[i])
+# Each returns `nothing` when on the whitelist, else why not (the builder's own wording).
+_wlnode(::Col) = nothing
+_wlnode(x::Lit) = x.scalar ? nothing : "a vector literal"
+_wlnode(x::Call) = _wlfirst(_wlnode, x.args)
+_wlvalue(v) = (v isa Col || (v isa Lit && v.scalar)) ? nothing :
+    "case_when values must be columns or scalar literals, got $(v)"
+_wlnode(x::CaseWhen) = something(_wlfirst(_wlnode, x.conds), _wlfirst(_wlvalue, x.vals), _wlvalue(x.default), Some(nothing))
+_wlnode(x) = "$(nameof(typeof(x))) nodes do not compile: $(x)"
+function _wlout(o)
+    o isa Pair || return "mutate with across"
+    o.second === nothing && return nothing
+    o.second isa Node || return "mutate output $(o.first) is not an expression"
+    return _wlnode(o.second)
+end
+_wlstep(s::FilterStep) = _wlfirst(_wlnode, s.preds)
+_wlstep(s::MutateStep) = (s.by === nothing && s.keep === :all) ? _wlfirst(_wlout, s.outs) : "mutate with by or keep"
+_wlstep(s::SelectStep) = _wlfirst(it -> it isa Pair ? _wlnode(it.second) : nothing, s.items)
+_wlstep(::Union{RenameStep, RenameWithStep, RelocateStep}) = nothing
+_wlstep(s) = "$(nameof(typeof(s))) is not on the kernel whitelist (spec §3.2)"
+# the first non-`nothing` reason of `f` over `xs`
+function _wlfirst(f, xs)
+    for x in xs
+        r = f(x)
+        r === nothing || return r
+    end
+    return nothing
+end
+"Why `stage` is off §3.2's whitelist (the first offending step or node), or `nothing`."
+_offwhitelist(stage) = _wlfirst(_wlstep, stage)
 
 # An empty frame with the state's names and types, every column a distinct object.
 _stateprobe(b::_Builder, names, slots) =
