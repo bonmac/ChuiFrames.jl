@@ -404,6 +404,36 @@ end
     @test isequal(r, inner_join(y; by = :k)(x))
 end
 
+@testitem "join: DataAPI methods reject `by` (and crossjoin rejects keys)" tags = [:unit] setup = [Force, JoinHelpers] begin
+    using DataAPI
+    x = Frame(k = [1, 2, 3], j = [1, 2, 3])
+    y = Frame(k = [3, 1, 4], j = [3, 1, 4])
+    thrown(f) =
+    try
+        f()
+        nothing
+    catch e
+        e
+    end
+    keyed = (DataAPI.innerjoin, DataAPI.leftjoin, DataAPI.rightjoin, DataAPI.outerjoin, DataAPI.semijoin, DataAPI.antijoin)
+    for m in keyed
+        # both keywords: before the fix the later one (`by`) silently won
+        e = thrown(() -> m(x, y; on = :k, by = :j))
+        @test e isa ArgumentError
+        @test e isa ArgumentError && occursin("take `on`", e.msg) && occursin("take `by`", e.msg)
+        @test thrown(() -> m(x, y; by = :j)) isa ArgumentError
+        @test thrown(() -> m(x, y; by = :j, on = :k)) isa ArgumentError
+    end
+    for kw in ((; by = :k), (; on = :k), (; on = :k, by = :k))
+        e = thrown(() -> DataAPI.crossjoin(x, y; kw...))
+        @test e isa ArgumentError
+        @test e isa ArgumentError && occursin("no keys", e.msg)
+    end
+    # every other keyword is still forwarded unchanged
+    @test isequal(DataAPI.crossjoin(x, y; suffix = (".a", ".b")), cross_join(y; suffix = (".a", ".b"))(x))
+    @test isequal(DataAPI.innerjoin(x, y; on = :k, suffix = (".a", ".b")), inner_join(y; by = :k, suffix = (".a", ".b"))(x))
+end
+
 @testitem "join: a lazy y under an eager x is collected first" tags = [:unit] setup = [Force, JoinHelpers] begin
     x = Frame(k = [1, 2], v = [1, 2])
     y = Frame(k = [2, 3], w = [20, 30])
