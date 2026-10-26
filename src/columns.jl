@@ -214,8 +214,9 @@ end
 widen_offsets(offsets::Vector{Int64}, ::Integer) = offsets
 
 # Build a variable-width column from byte sequences (nothing = null), widening offsets on
-# overflow instead of wrapping.
-function _build_var(::Type{C}, items, nullable::Bool) where {C}
+# overflow instead of wrapping. `nullable` may be the validity itself (`take`): that BitVector is
+# taken over (a `nothing` item writes into it), so it must be fresh, never a column's own.
+function _build_var(::Type{C}, items, nullable::Union{Bool, BitVector}) where {C}
     n = length(items)
     offsets = Vector{Int32}(undef, n + 1)
     offsets[1] = 0
@@ -226,7 +227,7 @@ function _build_var(::Type{C}, items, nullable::Bool) where {C}
     offs = total > typemax(Int32) ? Vector{Int64}(undef, n + 1) : offsets
     offs[1] = 0
     data = Vector{UInt8}(undef, total)
-    val = nullable ? trues(n) : nothing
+    val = nullable isa BitVector ? nullable : nullable ? trues(n) : nothing
     pos = 0
     for (i, x) in enumerate(items)
         if x === nothing
@@ -527,10 +528,12 @@ end
 function take(c::BoolColumn, idx::AbstractVector{<:Integer})
     return BoolColumn(BitVector(i != 0 && c.values[i] for i in idx), _takevalidity(c.validity, idx))
 end
+# A null or index-0 slot is an empty view, so every item is one concrete type (`nothing` there
+# boxed one `Union{Nothing, view}` item per row, P4-05); the validity is `val` as built.
 function take(c::C, idx::AbstractVector{<:Integer}) where {C <: VarColumn}
     val = _takevalidity(c.validity, idx)
-    items = ((i == 0 || (val !== nothing && !val[k])) ? nothing : _bytes(c, Int(i)) for (k, i) in enumerate(idx))
-    return _build_var(C.name.wrapper, items, val !== nothing)
+    items = ((i == 0 || (val !== nothing && !val[k])) ? view(c.data, 1:0) : _bytes(c, Int(i)) for (k, i) in enumerate(idx))
+    return _build_var(C.name.wrapper, items, something(val, false))
 end
 function take(c::DictColumn, idx::AbstractVector{<:Integer})
     codes = eltype(c.codes)[i == 0 ? 0 : c.codes[i] for i in idx]
@@ -579,10 +582,11 @@ function vcat_columns(cols::AbstractVector)
     # Fast paths (the lazy engine gathers morsels): primitive columns of one type concatenate
     # their buffers, unboxed; dictionary columns over one shared dictionary concatenate codes
     # and stay dictionary columns, so every level survives (`group_by(drop = false)`).
+    # `reduce(vcat, <vector>)` preallocates; over a generator it folds left, quadratic (P4-02).
     c1 = cols[1]
-    val() = all(c -> validity(c) === nothing, cols) ? nothing : reduce(vcat, (something(validity(c), trues(length(c))) for c in cols))
-    c1 isa PrimitiveColumn && all(c -> c isa typeof(c1), cols) && return PrimitiveColumn(reduce(vcat, (c.values for c in cols)), val())
-    c1 isa DictColumn && all(c -> c isa typeof(c1) && c.dict === c1.dict, cols) && return DictColumn(reduce(vcat, (c.codes for c in cols)), c1.dict, val())
+    val() = all(c -> validity(c) === nothing, cols) ? nothing : reduce(vcat, BitVector[something(validity(c), trues(length(c))) for c in cols])
+    c1 isa PrimitiveColumn && all(c -> c isa typeof(c1), cols) && return PrimitiveColumn(reduce(vcat, [c.values for c in cols]), val())
+    c1 isa DictColumn && all(c -> c isa typeof(c1) && c.dict === c1.dict, cols) && return DictColumn(reduce(vcat, [c.codes for c in cols]), c1.dict, val())
     # A Union of the inputs' element types, not `promote_type`: `column` then promotes small
     # numeric unions only when lossless (ADR-0001 rule 12), so Int + Float64 never rounds.
     E = Union{map(eltype, cols)...}

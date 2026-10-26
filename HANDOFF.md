@@ -5,82 +5,166 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- **Branch:** `feat/phase3-lazy`, in worktree `.worktrees/phase3-lazy`, from `main` `5896de6`.
-  **Not merged**; the lead merges after review.
-- **Phase:** phase 3 (lazy engine), first milestone. Spec
-  `docs/superpowers/specs/2026-10-20-phase3-lazy-design.md`, plan
-  `docs/superpowers/plans/2026-10-20-phase3-lazy.md`.
-  - **Part A** (user decisions at the phase-2c ★):
-    - `var`/`std` of fewer than two values are `missing`;
-    - `group_by(drop = nothing)` inherits the input's flag (breaking);
-    - ADR-0002 rule 10 gains the `case_when` line;
-    - `frame_equal` is documented as weaker than `isequal`;
-    - AirspeedVelocity is documented and not filed.
-  - **Part B:**
-    - `lazy`/`collect`/`optimize`/`explain`/`code_lowered`, and verbs on a `Source`;
-    - the plan IR with the ChuiCore R6 stand-ins;
-    - the rule passes under the R-total rule (spec §1);
-    - pushdown into `Tables.Scan`, and pruning with the NaN/`missing` rules (sub-lane p3-pred);
-    - the streamed stage per morsel, parallel when stateless;
-    - a sequential limit with early stop;
-    - eager replay of failing runs;
-    - the rendered kernel;
-    - lazy == eager properties at `-t 1` and `-t 4` (sub-lane p3-prop).
-- **Upstream:** unchanged. ChuiCore and ChuiTypes are not released, so the stand-ins stay
-  (ADR-0014). The R6 stand-ins (`fmap`, `cata`, `para`, `ana`) mirror ChuiCore main.
+- **Branch:** `feat/phase4`, in worktree `.worktrees/phase4`, from `main` `bc8c97a`. **Not
+  merged**; the ecosystem lead merges after the final review.
+- **Phase:** phase 4: joins, the fast group-by with aggregate sinks, codegen kernels.
+  - Spec: `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md`.
+  - Plan: `docs/superpowers/plans/2026-10-26-phase4.md`.
+  - ADRs 0023 (joins), 0024 (group-by and sinks), 0025 (codegen): **Accepted** by the user on
+    2026-10-26, at the phase-4 merge ★. ADR-0025 keeps an open condition: quiet timings before
+    the first release.
+- **Merged into `feat/phase4`.** Each lane merged `--no-ff`, after `scripts/lane audit` and a
+  reviewer FINAL:
+
+  | Lane | What | Merge commit |
+  |---|---|---|
+  | p4-groupby | typed keys, `KeyTable`, `radix_partition` | `3ef418f` |
+  | p4-codegen | compiled stage kernels, `INTERP_THRESHOLD` = 5×10⁵ | `3a61c69` |
+  | p4-groupby2 | fast `group_by`, hash-aggregate and grouped-window sinks, the K4 key helpers | `eb1cb5c` |
+  | p4-join | joins: `by =`, nest/cross/`join_by`, DataAPI, three hash-join shapes, lazy join trees | `0db65f4` |
+  | p4-gbfix | limit-path dictionary kinds, sinks behind compiled kernels, a whitelist-first kernel decision | `50dbf18` |
+  | p4-joinfix | DataAPI join methods reject `by`; `crossjoin` rejects keys | `a06a090` |
+  | p4-bench | SUITE and budget rows, `RADIX_SWITCH` = 2²⁰, compare and calibrate | `5956626` |
+  | p4-perf | linear concatenations; no per-row allocation in `take(::StringColumn)`; budgets re-tightened | `b30cea3` |
+  | p4-levels | final-review B1: a join's collected sides read skipped partitions' kinds under `drop = false` (CF-008) | `9ef025e` |
+
+  The worktrees are removed; the branches are kept. Reviewer reports are in
+  `ChuiFrames.jl/.lanes/reports/`, and lane evidence is archived under `.lanes/reports/lanes/`.
+- **Upstream:** unchanged. The ChuiCore and ChuiTypes stand-ins stay (ADR-0014).
 
 ## Open lanes
 
-| Lane | Agent | File scope | Status | Report |
-|---|---|---|---|---|
-| phase3-lazy | the phase-3 lane (lead's teammate) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase3-lazy.md`, `.gitignore`, `JuliaTestItems.toml` | in review | to the lead |
-
-Sub-lanes `p3-pred` and `p3-prop` are merged (`--no-ff`, lane audit OK) and their worktrees are
-removed; the branches are kept.
+None. Every phase-4 lane is merged and its worktree removed.
 
 ## Evidence (`.lanes/evidence/`)
 
-- **Full suites at this HANDOFF commit:**
-  - 1.13.2: `tests-<sha>.txt`;
-  - 1.10.12 with `CI_STABLE=false`: `tests-lts-<sha>.txt`;
-  - `JULIA_NUM_THREADS=4`: `tests-t4-<sha>.txt`.
-  - The sha and the counts are in the lane report.
-- **Earlier, at `48c7e52`:**
-  - 1.13: 8507 pass;
-  - LTS: 8469 pass;
-  - `-t 4`: 8508 pass.
-- **Budgets at `0734789`:**
-  - `bench-check-113-0734789.txt` and `bench-check-110-0734789.txt`: 52/52 within budget.
-  - Five new `lazy/*` rows come from `bench-11{3,0}-48c7e52.txt`.
-- **TTFX at `0734789` (`ttfx-check-113-0734789.txt`):**
-  - load 421.1 ms against a 500 ms budget;
-  - load plus first call 451.7 ms;
-  - load average 8.3–9.0, so this was NOT a quiet machine. The lead re-runs it.
-- **Review:** reviewer passes 1 (REQUEST CHANGES), 2 (APPROVE WITH CONDITIONS) and 3 (**APPROVE,
-  FINAL**, at `0734789`).
+- **Integrated head `3bc2be9`** (every file `dirty: false`, exit 0):
 
-## Decisions at the phase-3 ★ (2026-10-20)
+  | File | Result |
+  |---|---|
+  | `tests-3bc2be9.txt` | 14510 |
+  | `tests-t4-3bc2be9.txt` | 14511 |
+  | `tests-lts-3bc2be9.txt` | 14462 |
+  | `tests-diff-3bc2be9.txt` | 1970 |
+  | `quality-3bc2be9.txt` | 17 |
+  | `jet-3bc2be9.txt` | OK |
+  | `guards-3bc2be9.txt` | OK |
+  | `docs-3bc2be9.txt` | OK |
 
-- **Eager replay** is CF-008's exception-type mechanism, including returning the eager result
-  when only the lazy run fails. Lead's decision; recorded as a dated note on ADR-0003 rule 7.
-- **R-total** is accepted for v0 (user). Moving filters past provably total `mutate`s is a
-  later optimization.
-- **Grouped summaries and window sinks** are deferred to phase 4 (user).
-- **A `-t 4` CI job** is approved (user). The lead makes it as a separate T3 change; this lane
-  does not edit CI.
-- **Lazy budget rows** follow ADR-0022 rule 2's formula, not rule 3's eager cap (user). Recorded
-  as a dated note on ADR-0022 rule 3.
+  The commits after `3bc2be9` are documentation only.
+- **Allocation budgets (historical):** p4-codegen's n=10 breach at `54a1b20` was fixed in code
+  (`f946f0d`); no budget was raised. The current result is the `d410a46` table above.
+- **Final head `d410a46`** (every file `dirty: false`, exit 0):
 
-## Phase 4 (and later)
+  | File | Result |
+  |---|---|
+  | `tests-d410a46.txt` | 14788 |
+  | `tests-t4-d410a46.txt` | 14789 |
+  | `tests-lts-d410a46.txt` | 14740 |
+  | `tests-diff-d410a46.txt` | 1970 |
+  | `tests-slow-t4-d410a46.txt` | 35 |
+  | `quality-d410a46.txt` | 17 |
+  | `jet-d410a46.txt` | 97 |
+  | `guards-d410a46.txt` | 1322 |
+  | `format-d410a46.txt`, `docs-d410a46.txt` | OK |
+  | `bench-check-11{3,0}-d410a46.txt` | OK, 138 within budget |
 
-- Hash-aggregate and grouped-window sinks, with parallel partial aggregation (`foldparts`).
-  Until then, grouped summaries and windows run on the gathered frame through the eager
-  operators.
-- The adaptive group-by, radix partitioning, joins, codegen kernels and the 10⁵ threshold.
-- Pushing filters past provably total `mutate`s (a later optimization under R-total).
-- `source_ordering` is not used to skip sorts yet (ADR-0004 rule 6).
-- `test -- all` and ttfx on a quiet machine, both re-run by the lead.
+  `julia scripts/dod.jl --base main`: DONE, with no waiver. The commits after `d410a46` are
+  documentation only.
+- **Timings** (TTFX, `run.jl` time rows): every run, including those at `d410a46`, was at load
+  5–12, so the results are INCONCLUSIVE (user ruling). The user **deferred** the quiet timing
+  run (2026-10-26). It is a gate before ChuiFrames' first release, not before the phase-4 merge.
+
+## Decisions at the phase-4 ★ (2026-10-26, the user)
+
+- **K1:** the join keyword is `by =`. Recorded as an amendment to ADR-0002 rule 16, plus an
+  addendum for `join_by`.
+- **K2:** ADR-0003 is kept as written: the cost stage picks the build side; above the broadcast
+  limit both sides are radix-partitioned; a stable sort restores dplyr's row order.
+- **K3:** full join parity: `nest_join`, `cross_join`, equality `join_by`, the DataAPI methods.
+  Inequality and rolling joins are deferred (no design exists).
+- **K4:** integer/float key pairs are allowed and compared as Float64; the precision loss above
+  2⁵³ is documented.
+- **`nest_join`:** a name clash replaces x's column, with a `@warn`.
+- **ADR-0003 notes:**
+  - rule 12: `INTERP_THRESHOLD = 500_000`; more than 50 operations instead of depth; unknown
+    row counts run the interpreter unless the shape is cached;
+  - rules 3 and 5 (phase 4): only simple aggregates over plain keys stream; MapM/ReduceM keep
+    `Vector{Any}` task state;
+  - rule 11: `:never` follows dplyr (NaN matches nothing), unlike DuckDB.
+- **Timing checks** move to one quiet-machine run before the main merge. Allocation and memory
+  checks bind in each lane.
+
+## Open conditions (block the merge into main)
+
+1. ~~Quiet-machine timings~~: **deferred by the user** (2026-10-26) to a gate before ChuiFrames'
+   first release: `benchmark/ttfx.jl --check` and `benchmark/run.jl --check` on 1.13 and LTS at
+   1-minute load < 2. Recorded in `changelog.d/phase4.md` ("Known limitations") and on ADR-0025.
+2. ~~p4-joinfix lands~~: done, merged in `a06a090` (reviewer APPROVE FINAL).
+3. ~~p4-bench lands~~: done, merged in `5956626` (reviewer APPROVE WITH CONDITIONS FINAL).
+   - It added 86 SUITE rows and 516 budget rows, tightened 21 rows, and set `RADIX_SWITCH` to 2²⁰.
+   - The DoD `tests` check was waived in the merge commit: the only src change is that constant.
+4. ~~p4-perf lands~~: done, merged in `b30cea3` (reviewer APPROVE WITH CONDITIONS FINAL; the
+   doc conditions were met in `12ea449`). Outputs are unchanged. 43 allocation/memory rows were
+   tightened; no time row fell below half its baseline.
+5. ~~`julia scripts/ci.jl bench` against `main`~~: deferred with item 1 to the same
+   pre-release gate (p4-bench review MINOR-4).
+6. ~~ADR-0022 rule 1's "public API only"~~: the dated note allowing `_FORCE_JOIN`/`_FORCE_KERNEL`
+   in the SUITE (p4-bench review MINOR-3) was accepted by the user on 2026-10-26.
+7. ~~Final reviewer and `dod.jl`~~: APPROVE WITH CONDITIONS (FINAL) at `d410a46`, after B1 was
+   fixed by p4-levels (`.lanes/reports/reviewer-p4-final.md`); `dod.jl --base main` DONE. The
+   docs-only commits after `d410a46` get the reviewer's delta check.
+8. ~~The user accepts ADRs 0023–0025~~: accepted on 2026-10-26, at the phase-4 merge ★.
+
+No open condition blocks the merge into main. Gate before ChuiFrames' first release:
+quiet-machine timings (`benchmark/ttfx.jl --check`, `benchmark/run.jl --check` on 1.13 and LTS,
+load < 2) plus `julia scripts/ci.jl bench` against main (items 1 and 5; user deferral
+2026-10-26: load ~8 from outside work).
+
+## Process deviations
+
+- p4-bench edited new `benchmark/compare` files with a `python3` heredoc before their first
+  commit, against the Edit/Write-only rule. The reviewer read the committed content: sane.
+- The phase-4 seam's first `src/lazy/execute.jl` edit (`b51ca4e`) was made by a script. The
+  reviewer diffed it line by line against `bc8c97a`: clean.
+
+## Follow-ups (phase 5 or later)
+
+- **Group-by:** stream the eager fallbacks (holistic aggregates, computed keys, `across`, a row
+  limit, grouped scans) and give MapM/ReduceM typed task state (lifts the ADR-0003 rule 3/5
+  notes).
+- **Joins:**
+  - per-key-column static types: any upstream `mutate` now collects that side before the join;
+  - an x key held as an `ObjectColumn{SubString}` keeps that kind on inner/left/nest joins;
+  - the eager probe never runs in parallel;
+  - the partition bits `p`, and the eager spawn trigger `nx + ny >= 65_536` (p4-bench
+    recommends);
+  - no compiled prefix kernel before a join probe.
+- **Codegen:** the research note's caveats (proxy compile times, measured at `-t 1` only).
+- **Performance (p4-bench, p4-perf):**
+  - `vcat_columns` has no fast path for string columns: a lazy gather of strings still allocates
+    about two objects and one copy per row;
+  - the broadcast limits could move to 2¹⁸ rows / 16 MiB (unverified on a quiet machine);
+  - partition bits `p` from the build side (`p = 4` up to 2²⁰ build rows);
+  - parallel eager probes above 65,536 rows (1.5–1.9× measured);
+  - several eager time rows (`summarise`, `count_by`, `filter`, `pipeline`, `window`) fell
+    below half their baselines in earlier lanes; tighten them on a quiet machine;
+  - `cross_join` raises Julia's generic `MethodError` for unknown keywords.
+- **p4-levels review minors:**
+  - `join_levels_tests.jl` "still stops early" should assert a read count;
+  - the explain "decided at collect" branch matches a literal `sinks.jl` message (use a reason
+    symbol);
+  - the explain wording "then eagerly" sits next to "sink decided at collect";
+  - a long line in `docs/src/lazy.md`;
+  - the `levels` flag is plan-wide, so a `drop = false` on another branch also turns it on.
+- **Sinks:** for `drop = false` queries, pruned partitions are still read in full; reading only
+  their dictionaries would be cheaper. `explain`'s "pruned" count then overstates the saving.
+- **Carried from phase 3:** filters past provably total `mutate`s; sort skipping from
+  `source_ordering`.
 
 ## Next action
 
-The lead's merge (reviewer pass 3: APPROVE, FINAL).
+1. ~~The user's ★~~: done on 2026-10-26 (ADRs 0023–0025 and the ADR-0022 rule 1 note accepted).
+2. The ecosystem lead re-runs the tests and merges `feat/phase4` into `main`.
+3. Before the first release: the quiet timing run (open condition 1) and the `###` fragment fix
+   for `changelog.jl fold` (owned by the ecosystem lead).

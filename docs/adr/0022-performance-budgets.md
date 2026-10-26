@@ -46,6 +46,15 @@
    10, 10^4 and 10^6 rows ("many groups" skips 10 rows), and `read_csv`/`write_csv`/
    `read_arrow`/`write_arrow` of a 10^5-row frame. A new hot path (a verb, a kernel, a reader)
    **must** add a `SUITE` entry and budget rows for every Julia version table in the same PR.
+   - *Note (2026-10-26, accepted by the user 2026-10-26 at the ChuiFrames phase-4 ★):* the `SUITE` may
+     use the internal forcing switches `_FORCE_JOIN` and `_FORCE_KERNEL`, and only to force a
+     join's build side and strategy or the stage kernel (compiled or interpreter), so each
+     physical path phase 4 adds has its own row (phase-4 spec §5). It may also build
+     dictionary-encoded inputs with the internal `ChuiFrames.DictColumn`/`ChuiFrames.column`
+     (inputs only; the measured calls stay public). Statistics-carrying test sources use the
+     `public` Source interface (ADR-0004). Everything measured stays public API. The rows are guarded against a renamed switch by rule 2's key matching: a block whose
+     switch no longer exists drops its `SUITE` keys, and `run.jl --check` then fails on the
+     missing rows.
 2. **Time, allocation and memory budgets** live in `benchmark/budgets.toml`, one table per kind
    and Julia version (`[time."1.13"]`, `[allocs."1.10"]`, …; other versions use the 1.10
    tables), one row per `SUITE` key. `julia benchmark/run.jl --check` fails when a median trial

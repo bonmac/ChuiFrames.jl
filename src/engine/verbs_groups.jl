@@ -174,7 +174,7 @@ function apply(s::SummariseStep, f0::Frame)
         end
     end
     keynames = gi === nothing ? Symbol[] : copy(f.groups)
-    keyrows = s.reframe ? reduce(vcat, [fill(g, reps[g]) for g in eachindex(reps)]; init = Int[]) : collect(eachindex(rowsets))
+    keyrows = s.reframe ? _reprows(reps) : collect(eachindex(rowsets))
     keycols = gi === nothing ? AbstractColumn[] : AbstractColumn[take(k, keyrows) for k in gi.keys]
     ctx = SelectCtx(f)
     outcols = AbstractColumn[]
@@ -200,4 +200,15 @@ function apply(s::SummariseStep, f0::Frame)
     end
     out = Frame(allnames, allcols, Symbol[], nothing, length(keyrows))
     return isempty(groups) ? out : regroup(out, groups; drop = f.drop)
+end
+
+# Group g repeated reps[g] times, in group order, preallocated (a `reduce(vcat, ...; init)` fold
+# copied the growing prefix once per group, quadratic: P4-02).
+function _reprows(reps::Vector{Int})
+    out = Vector{Int}(undef, sum(reps; init = 0))
+    k = 0
+    for g in eachindex(reps), _ in 1:reps[g]
+        out[k += 1] = g
+    end
+    return out
 end

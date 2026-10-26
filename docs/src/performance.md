@@ -1,5 +1,46 @@
 # Performance
 
+## Phase 4: group-by and joins
+
+Phase 4 added hash joins, a typed-key group-by with a streaming aggregate for lazy queries, and
+compiled stage kernels. On 10⁷-row tables in the style of
+[db-benchmark](https://github.com/h2oai/db-benchmark) (one thread, a shared and loaded machine:
+treat every time as approximate), eager group-by is **2–6× faster than before phase 4 (`main`)** and
+lazy group-by 6–33× faster. The details, raw numbers and evidence are in
+`docs/research/performance-phase4.md`; the scripts are in `benchmark/compare/`.
+
+| query (10⁷ rows) | ChuiFrames, 1 thread | before phase 4 | DataFrames.jl | Polars, 1 thread | DuckDB, 1 thread |
+|---|---:|---:|---:|---:|---:|
+| group-by q1: `sum(v1)` by a 100-level string | 149 ms | 920 ms | 178 ms | 56 ms | 97 ms |
+| group-by q2: by two 100-level strings | 406 ms | 1.53 s | 341 ms | 230 ms | 190 ms |
+| group-by q3: by a 10⁵-level string | 640 ms | 1.40 s | 1.14 s | 599 ms | 213 ms |
+| group-by q4: three means by a 100-level Int | 91 ms (lazy) | 827 ms | 24 ms | 44 ms | 40 ms |
+| group-by q5: three sums by a 10⁵-level Int | 224 ms (lazy) | 1.07 s | 48 ms | 258 ms | 142 ms |
+| join q1: x ⋈ a 10-row table | 486 ms | — | 540 ms | 124 ms | 765 ms |
+| join q2: x ⋈ a 10⁴-row table | 717 ms | — | 120 ms | 127 ms | 879 ms |
+| join q3: x ⟕ a 10⁴-row table | 684 ms | — | 191 ms | 140 ms | 888 ms |
+| small x ⋈ large y | 714 ms | — | 63 ms | 105 ms | 725 ms |
+
+ChuiFrames' column is the faster of its eager and lazy paths (eager unless marked). DuckDB writes
+each result into a table, which the others do not. Polars and DuckDB at their default 12 threads
+are 3–17× faster than ChuiFrames on one thread.
+
+- **Wins:** group-by q1 and q3 beat DataFrames.jl; q3 and q5 are on par with single-threaded
+  Polars; eager joins beat single-threaded DuckDB and join q1 matches DataFrames.jl. Grouped
+  `summarise` at 10⁶ rows went from 166 ms to 9 ms (Int key) and from 990 ms to 235 ms (10⁵ string
+  groups).
+- **Losses:** joins q2, q3 and small-x joins are 4–11× slower than DataFrames.jl; group-by q4 and
+  q5 are 4–5× slower than DataFrames.jl. When measured, **lazy joins were 5–7× slower than eager
+  joins** at 10⁷ rows (3.5–4.7 s), and the lazy group-by was slower than eager for few string
+  groups. Both causes (performance-phase4.md P4-02: quadratic concatenations; P4-05: a per-row
+  allocation when slicing string columns) are fixed since commit b30cea3, but these timings have
+  not been re-measured on a quiet machine yet, so the numbers above are the old ones.
+
+Load time and the first call are unchanged in kind: `using ChuiFrames` 421 ms and the first call
+38 ms on Julia 1.13.2 (598 ms and 73 ms on 1.10.12), measured at load average 8–11.
+
+## Phase 2: the eager verbs
+
 ChuiFrames 0.0.1 (phase 2, eager and single-threaded) is **fast to start and fast on small
 frames, and slow on large ones**. On a 10-row frame most verbs cost 3-36 μs, and grouped verbs are
 2-5× faster than DataFrames.jl. From 10^4 rows on, every row-wise verb except `distinct` (and
@@ -13,7 +54,7 @@ slower than single-threaded Polars (`distinct`: 2.5×). The engine work of later
     during the comparison runs). Absolute times are inflated and noisy; ratios measured minutes
     apart are more reliable. UNVERIFIED on a quiet machine and on Linux.
 
-## Start-up
+### Start-up (phase 2)
 
 Fresh processes, median [min, max] of 10 warm runs. "First call" builds a 4-row frame, runs
 `filter |> mutate |> group_by |> summarise |> arrange`, prints the result, and writes and reads
@@ -27,7 +68,7 @@ it back as Arrow IPC and CSV.
 
 Precompiling ChuiFrames itself takes about 16 s on 1.13.2 and 14 s on 1.10.12.
 
-## Speed against DataFrames.jl, Polars and DuckDB
+### Speed against DataFrames.jl, Polars and DuckDB (phase 2)
 
 The same operations on the same data (columns `id`, `x` normal, `y` uniform, `k`/`s` with 10
 groups, `kk`/`ss` with n ÷ 10 groups; seed 20261020). The ratio is ChuiFrames' median divided by
@@ -110,5 +151,7 @@ julia +lts benchmark/run.jl --check # the same on the LTS (its own manifest)
 julia scripts/ci.jl bench           # HEAD against the merge base (regression gate)
 ```
 
-The suite is `benchmark/benchmarks.jl` (a BenchmarkTools `SUITE`, public API only). The full
-suite takes about 4-5 minutes.
+The suite is `benchmark/benchmarks.jl` (a BenchmarkTools `SUITE`; public API, plus the internal
+forcing switches for the join strategy and the kernel). The full suite takes about 12 minutes.
+The db-benchmark-like comparisons are in `benchmark/compare/` and the constant calibrations in
+`benchmark/calibrate/`; neither is part of the suite.

@@ -26,8 +26,9 @@
   scan: Frame 6×4
   streamed stage, per morsel: filter((c.x .> 3.5), (c.y .>= 2)) (scan predicates the engine applies) ⨟ rename(:yy => :y) ⨟ select(:g, :x, :yy) ⨟ mutate(z = (c.yy .* 2))
   execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential
-  then materialize (concatenate in morsel order)
-  then eagerly: group_by(:g) ⨟ summarise(n = n_rows(), m = mean(c.z))
+  then hash-aggregate sink: group_by(:g) ⨟ summarise(n = n_rows(), m = mean(c.z))
+    each task folds a contiguous morsel range (typed keys and accumulators; past the radix limit its table flushes into radix partitions)
+    merged per partition in morsel order, groups sorted by the keys; no gathered frame
 == pruning ==
   partitions: 2 of 3 kept, 1 pruned by statistics
 == rendered kernel ==

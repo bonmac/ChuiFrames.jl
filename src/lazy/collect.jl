@@ -11,12 +11,15 @@ If the lazy run throws, the unoptimized plan is replayed eagerly and its excepti
 raised, so both paths raise the same exception type (spec §1). If the replay succeeds, the lazy
 failure was an engine defect and the replay's (eager) result is returned. A pure pipeline
 (CF-008) gives the same result either way, so the replay costs only a second run on failure.
-Planning (`optimize`) runs inside the same guard.
+Planning (`optimize`, and the lowering of joins, which runs their build sides) runs inside the
+same guard; only this top-level call guards, so a failure inside a join's subplan replays the
+whole plan once.
 """
 function Base.collect(q::LazyFrame; morsel::Integer = DEFAULT_MORSEL, threads::Bool = true)
     morsel >= 1 || throw(ArgumentError("collect: morsel must be at least 1, got $morsel"))
+    m = Int(morsel)
     return try
-        execute(physical(optimize(q).plan); morsel = Int(morsel), threads)
+        execute(physical(_lower_joins(optimize(q).plan; morsel = m, threads)); morsel = m, threads)
     catch err
         lazyerr = err isa MorselError ? err.err : _taskerror(err)
         lazyerr isa InterruptException && rethrow()
@@ -36,14 +39,23 @@ Base.collect(s::Source; kw...) = collect(lazy(s); kw...)
 
 The unoptimized plan run eagerly: the source read whole (as `read_source` does, or the frame
 itself), regrouped as given, then every step through the eager operators. This is the eager
-meaning of a lazy query (CF-008), used to replay a failing run.
+meaning of a lazy query (CF-008), used to replay a failing run. A join replays as the eager
+join of its two replayed sides, with the names resolved when the node was built (no second
+`@info` or `@warn`) and the compare types recomputed from those frames' column types.
 """
 function reference(plan)
-    scan, steps = linearize(plan)
-    f = _readall(scan)
+    steps, bottom = _chain(plan)
+    f = _reference_bottom(bottom)
     for s in steps
         f = apply(s, f)
     end
     return f
+end
+_reference_bottom(scan::ScanNode) = _readall(scan)
+function _reference_bottom(j::JoinNode)
+    x = reference(j.left)
+    y = _ungrouped(reference(j.right))
+    names = j.names === nothing ? _resolve_names(j.spec, x.names, y.names; log = false) : _withcompare(j.names, nothing)
+    return _join_frames(j.spec, names, x, y)
 end
 _readall(scan::ScanNode) = scan.source isa FrameSource ? scan.source.frame : read_source(scan.source)

@@ -1,0 +1,34 @@
+== logical plan ==
+  join(left; by = [:k])
+  ├─ x:
+  │    scan Frame 4×3
+  └─ y:
+       scan Frame 2×2
+== optimized plan ==
+  join(left; by = [:k])
+  ├─ x:
+  │    scan Frame 4×3
+  └─ y:
+       scan Frame 2×2
+== rules fired ==
+  none
+== physical plan ==
+  join 1: join(left; by = [:k])
+    strategy: broadcast, build x (estimated 4 rows, 128 bytes)
+    the probe streams y; join_tail runs the order-restoring sort
+    forced by _FORCE_JOIN
+    x, collected first:
+      scan: Frame 4×3
+      streamed stage: none
+      execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential
+      then materialize (concatenate in morsel order)
+  main pipeline:
+  scan: Frame 2×2
+  streamed stage, per morsel: probe(left; build x, stream y, by = [:k], emits hidden columns)
+  execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential
+  then materialize (concatenate in morsel order)
+  then eagerly: join_tail(left; build x, order-restoring sort)
+== pruning ==
+  no scan predicates: every partition is read
+== rendered kernel ==
+  not rendered (the stage holds a join probe)

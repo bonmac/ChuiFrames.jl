@@ -20,6 +20,7 @@ and ADRs cite them as "<note> <ID>". Dated 2026-10-20 unless a note says otherwi
 | [source-sink.md](source-sink.md) | Tables.jl partitions, readers/writers, connector prior art | SS-01… |
 | [differentials-polars-duckdb.md](differentials-polars-duckdb.md) | Phase 2c: eager verbs vs Polars 2.0.0 and DuckDB 1.5.6; every divergence | — |
 | [performance.md](performance.md) | Phase 2c: budgets, load/TTFX, ratios vs DataFrames.jl, Polars, DuckDB; AirspeedVelocity | PF-01… |
+| [performance-phase4.md](performance-phase4.md) | Phase 4: join/group-by/kernel budget rows, `RADIX_SWITCH` and broadcast-limit calibration, sort share, db-benchmark-like q1–q5/q1–q3 vs main, DataFrames.jl, Polars, DuckDB | P4-01… |
 | [upstream-parquet2-timestamps.md](upstream-parquet2-timestamps.md) | Parquet2 loses 1 ms on INT64 timestamps (documented, not filed) | — |
 | [upstream-airspeedvelocity-json3.md](upstream-airspeedvelocity-json3.md) | AirspeedVelocity cannot install next to CSV.jl 1.x (documented, not filed) | — |
 | [lane-checks.md](lane-checks.md) | The lane owner's own confirmations | LC-01… |

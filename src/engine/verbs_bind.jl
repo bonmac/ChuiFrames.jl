@@ -29,7 +29,9 @@ function _bind(frames::Vector{Frame}, ids, idname)
         push!(cols, _vcat_nonempty(parts))
     end
     if idname !== nothing
-        idv = reduce(vcat, [fill(ids[k], frames[k].nrow) for k in eachindex(frames)]; init = typeof(ids[1])[])
+        # The vector form preallocates (element type: promote_type of the ids', as the fold
+        # gave); `init` would fold left, quadratic in the tables (P4-02).
+        idv = reduce(vcat, [fill(ids[k], frames[k].nrow) for k in eachindex(frames)])
         pushfirst!(names, idname)
         pushfirst!(cols, column(idv))
     end

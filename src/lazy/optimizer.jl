@@ -126,6 +126,7 @@ function _pushdown_rule(n, log::OptLog)
     (n isa StepNode && _totalfilter(n, false)) || return n
     f = n.step::FilterStep
     below = n.child
+    below isa JoinNode && return _push_into_join(n, f, below, log)     # spec §1.3 (joins.jl)
     if below isa ScanNode
         (isempty(below.groups) && below.limit === nothing) || return n
         push!(log.fired, "predicate pushdown: $(f) into the scan")
@@ -236,13 +237,24 @@ _hasselector(x::Union{Desc, SkipMiss}) = _hasselector(x.inner)
 _hasselector(x::CaseWhen) = any(_hasselector, x.conds) || any(_hasselector, x.vals) || _hasselector(x.default)
 _hasselector(::Node) = false
 
-function _projection(plan, log::OptLog)
-    scan, steps = linearize(plan)
-    (isempty(scan.groups) && scan.select === nothing) || return plan
-    need = nothing
+_projection(plan, log::OptLog) = _project(plan, nothing, log)
+
+# Projection of a (sub)plan whose output must supply the columns `need` (`nothing`: all). A
+# join passes each side the columns that side must supply (phase-4 spec §1.4, `_join_need`).
+function _project(plan, need, log::OptLog)
+    steps, bottom = _chain(plan)
     for s in reverse(steps)
         need = _need_in(s, need)
     end
+    if bottom isa JoinNode
+        nx, ny = _join_need(bottom, need)
+        l = _project(bottom.left, nx, log)
+        r = _project(bottom.right, ny, log)
+        (l === bottom.left && r === bottom.right) && return plan
+        return foldl((acc, s) -> StepNode(s, acc), steps; init = JoinNode(l, r, bottom.spec, bottom.names))
+    end
+    scan = bottom::ScanNode
+    (isempty(scan.groups) && scan.select === nothing) || return plan
     need === nothing && return plan
     for p in scan.preds
         union!(need, _reads(p))

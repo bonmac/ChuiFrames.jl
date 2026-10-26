@@ -1,0 +1,34 @@
+== logical plan ==
+  join(left; by = [:k])
+  ├─ x:
+  │    scan Frame 4×3
+  └─ y:
+       scan Frame 2×2
+== optimized plan ==
+  join(left; by = [:k])
+  ├─ x:
+  │    scan Frame 4×3
+  └─ y:
+       scan Frame 2×2
+== rules fired ==
+  none
+== physical plan ==
+  join 1: join(left; by = [:k])
+    strategy: partitioned into 2^4, build y (estimated 2 rows, 32 bytes)
+    no side streams (x is gathered, y collected); the order-restoring sort runs
+    forced by _FORCE_JOIN
+    y, collected when the step runs:
+      scan: Frame 2×2
+      streamed stage: none
+      execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential
+      then materialize (concatenate in morsel order)
+  main pipeline:
+  scan: Frame 4×3
+  streamed stage: none
+  execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential
+  then materialize (concatenate in morsel order)
+  then eagerly: partitioned_join(left; 2^4 partitions, build y, by = [:k], order-restoring sort)
+== pruning ==
+  no scan predicates: every partition is read
+== rendered kernel ==
+  none (no streamed stage)

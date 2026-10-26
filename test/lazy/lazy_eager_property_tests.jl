@@ -132,6 +132,30 @@
     # Print the shrunk counterexample (with its events) when a check fails.
     show_failure(sr) = Supposition.results(sr).ispass ||
         @info "counterexample" report = sprint(show, MIME("text/plain"), sr)
+
+    # Phase 4 (p4-groupby2; spec docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md
+    # §4): definitions ADDED for the grouped sinks, no existing one changed (critic n8). Grouped
+    # steps the hash-aggregate sink runs (simple aggregates, `summarise(; by)`, `drop = false`),
+    # summaries it does not (holistic, expressions), and grouped windows (the grouped-window sink).
+    const GSINKS = Any[
+        group_by(:g) ⨟ summarise(n = n_rows(), sy = sum(c.y), mx = mean(c.x)),
+        group_by(:g, :y) ⨟ summarise(f = first(c.x), l = last(c.x), mn = minimum(c.y), e = extrema(c.y)),
+        group_by(:g; drop = false) ⨟ summarise(n = n_rows(), s = sum(c.y), p = prod(c.y)),
+        group_by(:g; drop = false) ⨟ summarise(mx = maximum(c.y)),
+        group_by(:x) ⨟ summarise(n = n_rows(), r = reduce(*, c.s), sa = sum(abs, c.y)),
+        group_by(:y) ⨟ summarise(sx = sum(skipmissing(c.x)), ms = maximum(skipmissing(c.x)), groups = :keep),
+        summarise(n = n_rows(), v = var(c.y), sd = std(skipmissing(c.x)); by = :g),
+        summarise(sx = sum(skipmissing(c.x)), l = length(c.s); by = [:y, :g]),
+        group_by(:g) ⨟ summarise(m = median(c.y)),
+        group_by(:g) ⨟ summarise(a = any(c.y .> 0), d = n_distinct(c.s)),
+        group_by(:g) ⨟ mutate(cs = cumsum(c.y), w = c.y .- mean(c.y)),
+        group_by(:g, :y) ⨟ mutate(r = row_number(), l = lag(c.x)),
+        group_by(:g; drop = false) ⨟ mutate(m = maximum(c.y), z = c.y .* 2),
+        mutate(rk = min_rank(c.y); by = :g),
+    ]
+    gsinkgen = Data.SampledFrom(GSINKS)
+    # element types of every column (the grouped sinks must give eager's, spec §2.1)
+    eltypes_agree(a, b) = Type[eltype(c) for c in a.columns] == Type[eltype(c) for c in b.columns]
 end
 
 @testitem "lazy property: lazy == eager on random pipelines (CF-008)" tags = [:property] setup = [LazyProp] begin
