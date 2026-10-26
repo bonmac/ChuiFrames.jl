@@ -939,16 +939,17 @@ end
 
 # The keys of one morsel: canonical typed values per key column (global codes for a
 # dictionary-mode key), a concrete Tuple per row for several columns.
-function _sinkkeys(cols::Vector{AbstractVector}, n::Int, dictmode::Vector{Bool}, gds::Vector{Union{Nothing, _GlobalDict}})
-    length(cols) == 1 && return _sinkkey1(cols[1], n, dictmode[1], gds[1])
+function _sinkkeys(cols::Vector{AbstractVector}, n::Int, gds::Vector{Union{Nothing, _GlobalDict}})
+    length(cols) == 1 && return _sinkkey1(cols[1], n, gds[1])
     ks = Vector{AbstractVector}(undef, length(cols))
     for j in eachindex(cols)
-        ks[j] = _sinkkey1(cols[j], n, dictmode[j], gds[j])
+        ks[j] = _sinkkey1(cols[j], n, gds[j])
     end
     return _tuplekeys(Tuple(ks), n)
 end
-function _sinkkey1(col::AbstractVector, n::Int, dm::Bool, gd::Union{Nothing, _GlobalDict})
-    dm && return _globalcodes(gd::_GlobalDict, col)
+# a dictionary-mode key (it has a global dictionary): global codes; else canonical values
+_sinkkey1(col::AbstractVector, ::Int, gd::_GlobalDict) = _globalcodes(gd, col)
+function _sinkkey1(col::AbstractVector, n::Int, ::Nothing)
     k = typed_keys(AbstractVector[col], n; codes = false)
     return k === nothing ? Any[_canon(x) for x in col] : k
 end
@@ -1006,7 +1007,7 @@ function _consume!(st::_AggTask, spec::HashAggSpec, f::Frame, gds::Vector{Union{
     n = f.nrow
     n == 0 && return st
     kcols = AbstractVector[getcol(f, k) for k in spec.keys]
-    tk = _sinkkeys(kcols, n, spec.dictmode, gds)
+    tk = _sinkkeys(kcols, n, gds)
     K = _tablekey(eltype(tk))
     run = st.cur
     if run === nothing
