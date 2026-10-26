@@ -1,8 +1,9 @@
 # The rendered kernel (spec §7; ADR-0003 rule 13): the streamed stage as a Julia function
 # expression over one partition's columns (a NamedTuple of vectors). `code_lowered(q)` lowers it
-# with `Meta.lower`. It is rendered for reading; the engine runs the interpreter (phase 4 adds
-# compiled kernels). A property test evaluates it in the test process and checks it against the
-# interpreter.
+# with `Meta.lower`. It is rendered for reading; the engine runs the interpreter or a compiled
+# closure kernel (kernels.jl), whose own lowered code is the same generic loop for every plan.
+# Property tests evaluate it in the test process and check it against the interpreter and the
+# compiled kernel.
 
 # Nodes the renderer spells out; anything else is evaluated through the interpreter.
 _rnode(x::Col) = :(cols.$(x.name))

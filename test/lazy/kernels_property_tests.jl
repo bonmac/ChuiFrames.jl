@@ -147,3 +147,34 @@ end
     @test CF._KERNEL_DISAGREE[] - d0 == 0
     @test elapsed < 600
 end
+
+@testitem "kernel property: the rendered kernel gives the compiled kernel's values (ADR-0003 rule 13)" tags = [:property] setup = [Force, KernProp] begin
+    # The rendered expression (what `code_lowered` shows) evaluated in the test process against
+    # the closure kernel: the same outcome kind and `isequal` values per column name. (The
+    # rendered kernel builds plain vectors, so column kinds and element types are not compared;
+    # it does not apply `mutate(...; before/after)`, so column order is not compared either.)
+    function rendered_agrees(f, steps)
+        checktime()
+        ph = CF.physical(pipe(steps)(lazy(f)).plan)
+        ex = CF.render_kernel(ph)
+        ex === nothing && return true            # a step does not resolve on the schema
+        k = withforce(() -> CF.stage_kernel(ph, 0), CF._FORCE_KERNEL => :compiled)
+        a = outcome(() -> k(f))
+        r = outcome(() -> Base.invokelatest(Core.eval(@__MODULE__, ex), Tables.columntable(f)))
+        a[1] === r[1] || return report(steps, a, r)
+        a[1] === :err && return true
+        want = Tables.columntable(a[2])
+        got = r[2]
+        ok = sort(collect(keys(got))) == sort(collect(keys(want))) &&
+            all(n -> isequal(collect(got[n]), collect(want[n])), keys(want))
+        ok || (event!("stage", pipestr(steps)); event!("compiled", want); event!("rendered", got))
+        return ok
+    end
+    deadline!(300)
+    t0 = time()
+    sr = @check record = false db = false max_examples = 300 rendered_agrees(tablegen, stepsgen)
+    elapsed = time() - t0
+    show_failure(sr)
+    @test Supposition.results(sr).ispass
+    @test elapsed < 600
+end
