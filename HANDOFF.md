@@ -31,7 +31,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Agent | File scope | Status |
 |---|---|---|---|
-| p4-bench | benchmarker | `benchmark/**`, `docs/research/performance-phase4.md`, `docs/research/README.md`, `docs/src/performance.md`, the `RADIX_SWITCH`/`BROADCAST_MAX_*` lines | running |
+| p4-bench | benchmarker | `benchmark/**`, new docs/research/performance-phase4.md, `docs/research/README.md`, `docs/src/performance.md`, the `RADIX_SWITCH`/`BROADCAST_MAX_*` lines | running |
 | p4-joinfix | implementer | `src/engine/verbs_join.jl`, `test/engine/join_verbs_tests.jl` | running: DataAPI `on` + `by` raise `ArgumentError` |
 
 ## Evidence (`.lanes/evidence/`)
