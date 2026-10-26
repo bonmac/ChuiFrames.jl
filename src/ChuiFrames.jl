@@ -75,7 +75,7 @@ end
             collect(filter(c.z .> 1)(mutate(z = c.x .* 2.0 .+ c.n)(lazy(f))))
         finally
             _FORCE_KERNEL[] = :auto
-            lock(() -> empty!(_KERNEL_CACHE), _KERNEL_LOCK)
+            _kernel_cache_clear!()
         end
         dir = mktempdir()
         try

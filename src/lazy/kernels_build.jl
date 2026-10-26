@@ -2,7 +2,7 @@
 # probe frame (the morsels' names and column types) become a `StageProgram`. The blocks, the row
 # loop, `StageProgram` and the decision are in kernels.jl. Like `render_kernel` (render.jl), the
 # builder walks the stage step by step over the columns' names and types; here each node becomes
-# a callable block instead of an expression.
+# a callable block instead of an expression. The shape keys and the cache setters follow.
 
 mutable struct _Builder
     probe::Frame
@@ -226,3 +226,160 @@ function _byidentity(p::Frame, q::Frame, slots)
     end
     return copy(q.names), outslots
 end
+
+# ---------------------------------------------------------------------------------------------
+# Shapes, cache keys and the stage size (the cache itself is in kernels.jl)
+
+# A shape is a `String`, so a new shape compiles no new `hash`/`isequal` methods (a tuple of the
+# nodes' functions would be a new tuple type per shape). A function or value is keyed by its
+# type's `objectid` and its `hash` (a singleton function: one per type; `WhenFold`: its fields;
+# a selector: its contents); a literal by its type only.
+_vkey(io::IO, @nospecialize(x)) = print(io, objectid(typeof(x)), '#', hash(x), ';')
+# Names are printed with `repr` (`Symbol("a;c:b")`, quoted), so no name can mimic the key syntax.
+_skey(io::IO, x::Col) = print(io, "c:", repr(x.name), ';')
+_skey(io::IO, x::Lit) = print(io, "l:", objectid(typeof(x.value)), x.scalar ? 's' : 'v', ';')
+function _skey(io::IO, x::Call)
+    print(io, "f:")
+    _vkey(io, x.f)
+    print(io, '(')
+    foreach(a -> _skey(io, a), x.args)
+    return print(io, ')')
+end
+function _skey(io::IO, x::CaseWhen)
+    print(io, "w(")
+    foreach(a -> _skey(io, a), x.conds)
+    print(io, '|')
+    foreach(a -> _skey(io, a), x.vals)
+    print(io, '|')
+    _skey(io, x.default)
+    return print(io, ')')
+end
+_skey(io::IO, @nospecialize(x)) = (print(io, "v:"); _vkey(io, x))
+function _okey(io::IO, @nospecialize(o))
+    if o isa Pair
+        print(io, repr(o.first), '=')
+        o.second === nothing ? print(io, "nothing;") : _skey(io, o.second)
+    else
+        _skey(io, o)
+    end
+    return nothing
+end
+function _stepkey(io::IO, s::FilterStep)
+    print(io, s.out ? "filter_out[" : "filter[")
+    foreach(p -> _skey(io, p), s.preds)
+    return print(io, ']')
+end
+function _stepkey(io::IO, s::MutateStep)
+    print(io, "mutate[")
+    foreach(o -> _okey(io, o), s.outs)
+    foreach(v -> _vkey(io, v), (s.by, s.keep, s.before, s.after))
+    return print(io, ']')
+end
+function _stepkey(io::IO, s::SelectStep)
+    print(io, "select[")
+    foreach(it -> _okey(io, it), s.items)
+    return print(io, ']')
+end
+_stepkey(io::IO, s::Step) = (print(io, nameof(typeof(s)), '['); _vkey(io, _stepvalue(s)); print(io, ']'))
+_stepvalue(s::RenameStep) = s.pairs
+_stepvalue(s::RenameWithStep) = (s.fn, s.sel)
+_stepvalue(s::RelocateStep) = (s.sels, s.before, s.after)
+_stepvalue(s::Step) = s
+_stageshape(stage) = sprint(io -> foreach(s -> _stepkey(io, s), stage))
+
+_decision_key(stage, probe::Frame) =
+    (:decision, _stageshape(stage), copy(probe.names), Any[eltype(c) for c in probe.columns])
+_morsel_key(shape::String, f::Frame) = (shape, copy(f.names), Any[typeof(c) for c in f.columns])
+
+function _small_set!(ph, verdict::Bool)
+    h = _shapehash(ph)
+    lock(_KERNEL_LOCK) do
+        length(_KERNEL_SMALL) >= _KERNEL_CACHE_MAX && empty!(_KERNEL_SMALL)
+        _KERNEL_SMALL[h] = verdict
+        verdict && (_KERNEL_ANY_COMPILED[] = true)
+    end
+    return verdict
+end
+
+# The shape (as `_stageshape`, literal values left out), the projection and, for a frame source,
+# its column names and kinds, hashed without allocating.
+function _shapehash(ph)
+    h = hash(:chui_kernel_shape)
+    for s in ph.stage
+        h = _hstep(s, h)
+    end
+    h = hash(ph.scan.select, h)
+    src = ph.scan.source
+    if src isa FrameSource
+        for (n, col) in zip(src.frame.names, src.frame.columns)
+            h = hash(typeof(col), hash(n, h))
+        end
+    end
+    return h
+end
+_hnode(x::Col, h::UInt) = hash(x.name, hash(:c, h))
+_hnode(x::Lit, h::UInt) = hash(typeof(x.value), hash(x.scalar, hash(:l, h)))
+function _hnode(x::Call, h::UInt)
+    h = hash(x.f, hash(:f, h))
+    for a in x.args
+        h = _hnode(a, h)
+    end
+    return hash(:end, h)
+end
+function _hnode(x::CaseWhen, h::UInt)
+    h = hash(:w, h)
+    for a in x.conds
+        h = _hnode(a, h)
+    end
+    for a in x.vals
+        h = _hnode(a, h)
+    end
+    return hash(:end, _hnode(x.default, h))
+end
+_hnode(@nospecialize(x), h::UInt) = hash(x, hash(:v, h))
+function _hout(@nospecialize(o), h::UInt)
+    o isa Pair || return hash(o, h)
+    h = hash(o.first, h)
+    return o.second === nothing ? hash(:nothing, h) : _hnode(o.second, h)
+end
+function _hstep(s::FilterStep, h::UInt)
+    h = hash(s.out, hash(:filter, h))
+    for p in s.preds
+        h = _hnode(p, h)
+    end
+    return h
+end
+function _hstep(s::MutateStep, h::UInt)
+    h = hash(:mutate, h)
+    for o in s.outs
+        h = _hout(o, h)
+    end
+    return hash(s.after, hash(s.before, hash(s.keep, hash(s.by, h))))
+end
+function _hstep(s::SelectStep, h::UInt)
+    h = hash(:select, h)
+    for it in s.items
+        h = _hout(it, h)
+    end
+    return h
+end
+_hstep(s::Step, h::UInt) = hash(_stepvalue(s), hash(nameof(typeof(s)), h))
+
+function _cache_set!(key, verdict::Bool)
+    lock(_KERNEL_LOCK) do
+        length(_KERNEL_CACHE) >= _KERNEL_CACHE_MAX && empty!(_KERNEL_CACHE)
+        _KERNEL_CACHE[key] = verdict
+    end
+    return verdict
+end
+
+# Expression nodes = operations (Call and case_when nodes); columns and literals are leaves.
+_nodes(x::Union{Col, Lit}) = 0
+_nodes(x::Call) = 1 + sum(_nodes, x.args; init = 0)
+_nodes(x::CaseWhen) = 1 + sum(_nodes, x.conds; init = 0) + sum(_nodes, x.vals; init = 0) + _nodes(x.default)
+_nodes(::Any) = 1
+_stepnodes(s::FilterStep) = sum(_nodes, s.preds; init = 0)
+_stepnodes(s::MutateStep) = sum(o -> o isa Pair && o.second isa Node ? _nodes(o.second) : 0, s.outs; init = 0)
+_stepnodes(s::SelectStep) = sum(it -> it isa Pair ? _nodes(it.second) : 0, s.items; init = 0)
+_stepnodes(::Step) = 0
+_stage_nodes(stage) = sum(_stepnodes, stage; init = 0)

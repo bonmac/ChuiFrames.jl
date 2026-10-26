@@ -48,6 +48,24 @@ holds every node's kind, function and literal type, never literal values.
 const _KERNEL_CACHE = Dict{Any, Any}()
 const _KERNEL_LOCK = ReentrantLock()
 const _KERNEL_CACHE_MAX = 4096
+"""
+The decision verdicts again, keyed by `_shapehash(ph)` (no allocation), for small inputs: they
+only ask "compiled before?". A hash collision can only compile a stage early (each morsel's
+program is still checked under the exact `String` key), never change a result.
+"""
+const _KERNEL_SMALL = Dict{UInt, Bool}()
+"Whether `_KERNEL_SMALL` holds any `true` verdict (small inputs skip the lookup when not)."
+const _KERNEL_ANY_COMPILED = Threads.Atomic{Bool}(false)
+
+"Empty the session's kernel cache (the precompile workload does, as its keys hold `objectid`s)."
+function _kernel_cache_clear!()
+    lock(_KERNEL_LOCK) do
+        empty!(_KERNEL_CACHE)
+        empty!(_KERNEL_SMALL)
+        _KERNEL_ANY_COMPILED[] = false
+    end
+    return nothing
+end
 
 """
 Estimated rows from which a stage whose shape is not compiled yet is compiled at `collect`
@@ -71,26 +89,53 @@ count (`nothing`: unknown). Forced by `_FORCE_KERNEL`; otherwise a compilable st
 compiled when its shape is in the session cache, or when `est_rows >= INTERP_THRESHOLD`.
 """
 function kernel_decision(ph, est_rows::Union{Nothing, Integer})
+    kind, why = _decide(ph, est_rows)
+    return (kind, _whytext(why, est_rows))
+end
+
+# The decision with its reason as a Symbol (or the compile check's message), so `stage_kernel`
+# formats no text. Small inputs (below `INTERP_THRESHOLD`, or of unknown size) only look the
+# shape up: with nothing compiled in the session they do no work at all, and otherwise no probe
+# check or build (the lazy `n=10` overhead rows, ADR-0022 rule 3).
+function _decide(ph, est_rows::Union{Nothing, Integer})
     force = _FORCE_KERNEL[]
     # fail closed: a mistyped switch must not silently mean :auto
     force in (:auto, :compiled, :interpreter) ||
         throw(ArgumentError("_FORCE_KERNEL must be :auto, :compiled or :interpreter, got $(repr(force))"))
-    isempty(ph.stage) && return (:interpreter, "no streamed stage")
-    force === :interpreter && return (:interpreter, "forced")
+    isempty(ph.stage) && return (:interpreter, :nostage)
+    force === :interpreter && return (:interpreter, :forced)
+    if force === :auto && (est_rows === nothing || est_rows < INTERP_THRESHOLD)
+        _KERNEL_ANY_COMPILED[] || return (:interpreter, :small)
+        h = _shapehash(ph)
+        lock(_KERNEL_LOCK)
+        verdict = try
+            get(_KERNEL_SMALL, h, nothing)
+        finally
+            unlock(_KERNEL_LOCK)
+        end
+        verdict === true && return (:compiled, :cached)
+        return (:interpreter, verdict === false ? :rejected : :small)
+    end
     probe = _stage_probe(ph)
-    probe === nothing && return (:interpreter, "the source schema is not known")
+    probe === nothing && return (:interpreter, :noschema)
     why = _compile_check(ph.stage, probe)
     why === nothing || return (:interpreter, why)
     verdict = lock(() -> get(_KERNEL_CACHE, _decision_key(ph.stage, probe), nothing), _KERNEL_LOCK)
-    if force === :compiled
-        return (:compiled, verdict === true ? "cached" : "compiled at collect")
-    end
-    verdict === false && return (:interpreter, "the compiled kernel was rejected for this shape")
-    verdict === true && return (:compiled, "cached")
-    est_rows === nothing && return (:interpreter, "row count unknown and shape not compiled yet")
-    est_rows < INTERP_THRESHOLD &&
-        return (:interpreter, "estimated $(est_rows) rows < INTERP_THRESHOLD = $(INTERP_THRESHOLD) and shape not compiled yet")
-    return (:compiled, "compiled at collect")
+    force === :compiled && return (:compiled, verdict === true ? :cached : :atcollect)
+    verdict === false && return (:interpreter, :rejected)
+    return (:compiled, verdict === true ? :cached : :atcollect)
+end
+
+_whytext(why::String, est_rows) = why
+function _whytext(why::Symbol, est_rows)
+    why === :nostage && return "no streamed stage"
+    why === :forced && return "forced"
+    why === :noschema && return "the source schema is not known"
+    why === :cached && return "cached"
+    why === :atcollect && return "compiled at collect"
+    why === :rejected && return "the compiled kernel was rejected for this shape"
+    est_rows === nothing && return "row count unknown and shape not compiled yet"
+    return "estimated $(est_rows) rows < INTERP_THRESHOLD = $(INTERP_THRESHOLD) and shape not compiled yet"
 end
 
 """
@@ -105,7 +150,7 @@ types must equal the interpreter's on the same morsel, including an empty one (e
 morsels run through `interpret_stage`, in `_process_empty`).
 """
 function stage_kernel(ph, est_rows::Union{Nothing, Int})
-    kind, _ = kernel_decision(ph, est_rows)
+    kind, _ = _decide(ph, est_rows)
     return kind === :compiled ? CompiledStage(ph) : interpret_stage(ph)
 end
 
@@ -146,87 +191,8 @@ function _compile_check(stage, probe::Frame)
     return nothing
 end
 
-# ---------------------------------------------------------------------------------------------
-# Shapes and cache keys
-
-# A shape is a `String`, so a new shape compiles no new `hash`/`isequal` methods (a tuple of the
-# nodes' functions would be a new tuple type per shape). A function or value is keyed by its
-# type's `objectid` and its `hash` (a singleton function: one per type; `WhenFold`: its fields;
-# a selector: its contents); a literal by its type only.
-_vkey(io::IO, @nospecialize(x)) = print(io, objectid(typeof(x)), '#', hash(x), ';')
-# Names are printed with `repr` (`Symbol("a;c:b")`, quoted), so no name can mimic the key syntax.
-_skey(io::IO, x::Col) = print(io, "c:", repr(x.name), ';')
-_skey(io::IO, x::Lit) = print(io, "l:", objectid(typeof(x.value)), x.scalar ? 's' : 'v', ';')
-function _skey(io::IO, x::Call)
-    print(io, "f:")
-    _vkey(io, x.f)
-    print(io, '(')
-    foreach(a -> _skey(io, a), x.args)
-    return print(io, ')')
-end
-function _skey(io::IO, x::CaseWhen)
-    print(io, "w(")
-    foreach(a -> _skey(io, a), x.conds)
-    print(io, '|')
-    foreach(a -> _skey(io, a), x.vals)
-    print(io, '|')
-    _skey(io, x.default)
-    return print(io, ')')
-end
-_skey(io::IO, @nospecialize(x)) = (print(io, "v:"); _vkey(io, x))
-function _okey(io::IO, @nospecialize(o))
-    if o isa Pair
-        print(io, repr(o.first), '=')
-        o.second === nothing ? print(io, "nothing;") : _skey(io, o.second)
-    else
-        _skey(io, o)
-    end
-    return nothing
-end
-function _stepkey(io::IO, s::FilterStep)
-    print(io, s.out ? "filter_out[" : "filter[")
-    foreach(p -> _skey(io, p), s.preds)
-    return print(io, ']')
-end
-function _stepkey(io::IO, s::MutateStep)
-    print(io, "mutate[")
-    foreach(o -> _okey(io, o), s.outs)
-    foreach(v -> _vkey(io, v), (s.by, s.keep, s.before, s.after))
-    return print(io, ']')
-end
-function _stepkey(io::IO, s::SelectStep)
-    print(io, "select[")
-    foreach(it -> _okey(io, it), s.items)
-    return print(io, ']')
-end
-_stepkey(io::IO, s::Step) = (print(io, nameof(typeof(s)), '['); _vkey(io, _stepvalue(s)); print(io, ']'))
-_stepvalue(s::RenameStep) = s.pairs
-_stepvalue(s::RenameWithStep) = (s.fn, s.sel)
-_stepvalue(s::RelocateStep) = (s.sels, s.before, s.after)
-_stepvalue(s::Step) = s
-_stageshape(stage) = sprint(io -> foreach(s -> _stepkey(io, s), stage))
-
-_decision_key(stage, probe::Frame) =
-    (:decision, _stageshape(stage), copy(probe.names), Any[eltype(c) for c in probe.columns])
-_morsel_key(shape::String, f::Frame) = (shape, copy(f.names), Any[typeof(c) for c in f.columns])
-
-function _cache_set!(key, verdict::Bool)
-    return lock(_KERNEL_LOCK) do
-        length(_KERNEL_CACHE) >= _KERNEL_CACHE_MAX && empty!(_KERNEL_CACHE)
-        _KERNEL_CACHE[key] = verdict
-    end
-end
-
-# Expression nodes = operations (Call and case_when nodes); columns and literals are leaves.
-_nodes(x::Union{Col, Lit}) = 0
-_nodes(x::Call) = 1 + sum(_nodes, x.args; init = 0)
-_nodes(x::CaseWhen) = 1 + sum(_nodes, x.conds; init = 0) + sum(_nodes, x.vals; init = 0) + _nodes(x.default)
-_nodes(::Any) = 1
-_stepnodes(s::FilterStep) = sum(_nodes, s.preds; init = 0)
-_stepnodes(s::MutateStep) = sum(o -> o isa Pair && o.second isa Node ? _nodes(o.second) : 0, s.outs; init = 0)
-_stepnodes(s::SelectStep) = sum(it -> it isa Pair ? _nodes(it.second) : 0, s.items; init = 0)
-_stepnodes(::Step) = 0
-_stage_nodes(stage) = sum(_stepnodes, stage; init = 0)
+# Shapes, cache keys (`_stageshape`, `_shapehash`, `_cache_set!`, `_small_set!`) and the stage
+# size (`_stage_nodes`) are in kernels_build.jl.
 
 # ---------------------------------------------------------------------------------------------
 # Row-level building blocks. Each is called as `node(c, i)`: `c = (inputs, registers, scalars)`,
@@ -465,6 +431,7 @@ function _decline!(k::CompiledStage, f::Frame)
     lock(() -> (k.progs[key] = nothing), k.lock)
     _cache_set!(key, false)
     _cache_set!(_decision_key(k.ph.stage, f), false)
+    _small_set!(k.ph, false)
     return nothing
 end
 
@@ -509,6 +476,7 @@ function _compile(k::CompiledStage, f::Frame, key)
     end
     _cache_set!(key, ok)
     _cache_set!(_decision_key(k.ph.stage, probe), ok)
+    _small_set!(k.ph, ok)
     return ok ? prog : nothing
 end
 

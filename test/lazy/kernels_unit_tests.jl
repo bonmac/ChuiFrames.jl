@@ -220,6 +220,31 @@ end
     @test CF._stageshape(Any[mutate(var"z=c:a;" = c.b)]) != CF._stageshape(Any[mutate(z = c.a, b = c.b)])
 end
 
+@testitem "kernels: small inputs with an empty cache decide without building (n=10 budget)" tags = [:unit] setup = [Force, KernelHelp] begin
+    # With nothing compiled in the session, a stage below INTERP_THRESHOLD (or of unknown size)
+    # runs the interpreter without the probe, shape key or build, so the per-query overhead of
+    # small lazy queries does not grow (ADR-0022 rule 3, the lazy n=10 row).
+    CF._kernel_cache_clear!()
+    @test !CF._KERNEL_ANY_COMPILED[]
+    t = (x = [1.0, 2.0], y = [1, 2])
+    ph = rawph((filter(c.y .> 1) ⨟ mutate(z = c.x .* 2.0))(lazy(t)))
+    T = CF.INTERP_THRESHOLD
+    @test CF.kernel_decision(ph, 10) == (:interpreter, "estimated 10 rows < INTERP_THRESHOLD = $(T) and shape not compiled yet")
+    @test CF.kernel_decision(ph, nothing) == (:interpreter, "row count unknown and shape not compiled yet")
+    CF._decide(ph, 10)
+    @test (@allocated CF._decide(ph, 10)) < 200
+    # with another shape compiled in the session: a hashed lookup, still no probe or build
+    other = rawph(mutate(w = c.x .- 3.0)(lazy(t)))
+    withforce(() -> CF.stage_kernel(other, 0)(Frame(t)), CF._FORCE_KERNEL => :compiled)
+    @test CF._KERNEL_ANY_COMPILED[]
+    @test CF.kernel_decision(other, 10) == (:compiled, "cached")
+    @test CF.kernel_decision(ph, 10)[1] === :interpreter
+    CF._decide(ph, 10)
+    @test (@allocated CF._decide(ph, 10)) < 200
+    # large inputs still check compilability
+    @test CF.kernel_decision(ph, T) == (:compiled, "compiled at collect")
+end
+
 @testitem "kernels: _FORCE_KERNEL fails closed (m5)" tags = [:unit] setup = [Force, KernelHelp] begin
     ph = rawph(mutate(z = c.x .+ 1.0)(lazy((x = [1.0],))))
     withforce(CF._FORCE_KERNEL => :bogus) do
