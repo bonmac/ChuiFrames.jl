@@ -102,13 +102,14 @@ end
         ph = CF.physical(pipe(steps)(lazy(f)).plan)
         isempty(ph.rest) || return true          # every vocabulary step streams
         k = withforce(() -> CF.stage_kernel(ph, 0), CF._FORCE_KERNEL => :compiled)
-        k isa CF.CompiledStage && (counts[:compiled] += 1)
         for input in (f, CF.take(f, Int[]))      # the morsel, and the empty morsel's types
             e = outcome(() -> CF.interpret_stage(ph)(input))
             r = outcome(() -> k(input))
             counts[e[1]] += 1
             agree(e, r) || return report(steps, e, r)
         end
+        # count only stages whose compiled program ran (built, passed its probe check, not declined)
+        k isa CF.CompiledStage && any(!isnothing, values(k.progs)) && (counts[:compiled] += 1)
         return true
     end
     deadline!(300)
@@ -119,7 +120,7 @@ end
     show_failure(sr)
     @test Supposition.results(sr).ispass
     @test CF._KERNEL_DISAGREE[] - d0 == 0                 # critic n7
-    @info "compiled == interpreter" ok = counts[:ok] err = counts[:err] compiled_stages = counts[:compiled] seconds = round(elapsed; digits = 1) nthreads = Threads.nthreads()
+    @info "compiled == interpreter" ok = counts[:ok] err = counts[:err] compiled_programs_ran = counts[:compiled] seconds = round(elapsed; digits = 1) nthreads = Threads.nthreads()
     @test counts[:ok] > 0 && counts[:err] > 0 && counts[:compiled] > 0
     @test elapsed < 600
 end

@@ -71,8 +71,11 @@ count (`nothing`: unknown). Forced by `_FORCE_KERNEL`; otherwise a compilable st
 compiled when its shape is in the session cache, or when `est_rows >= INTERP_THRESHOLD`.
 """
 function kernel_decision(ph, est_rows::Union{Nothing, Integer})
-    isempty(ph.stage) && return (:interpreter, "no streamed stage")
     force = _FORCE_KERNEL[]
+    # fail closed: a mistyped switch must not silently mean :auto
+    force in (:auto, :compiled, :interpreter) ||
+        throw(ArgumentError("_FORCE_KERNEL must be :auto, :compiled or :interpreter, got $(repr(force))"))
+    isempty(ph.stage) && return (:interpreter, "no streamed stage")
     force === :interpreter && return (:interpreter, "forced")
     probe = _stage_probe(ph)
     probe === nothing && return (:interpreter, "the source schema is not known")
@@ -151,7 +154,8 @@ end
 # type's `objectid` and its `hash` (a singleton function: one per type; `WhenFold`: its fields;
 # a selector: its contents); a literal by its type only.
 _vkey(io::IO, @nospecialize(x)) = print(io, objectid(typeof(x)), '#', hash(x), ';')
-_skey(io::IO, x::Col) = print(io, "c:", x.name, ';')
+# Names are printed with `repr` (`Symbol("a;c:b")`, quoted), so no name can mimic the key syntax.
+_skey(io::IO, x::Col) = print(io, "c:", repr(x.name), ';')
 _skey(io::IO, x::Lit) = print(io, "l:", objectid(typeof(x.value)), x.scalar ? 's' : 'v', ';')
 function _skey(io::IO, x::Call)
     print(io, "f:")
@@ -172,7 +176,7 @@ end
 _skey(io::IO, @nospecialize(x)) = (print(io, "v:"); _vkey(io, x))
 function _okey(io::IO, @nospecialize(o))
     if o isa Pair
-        print(io, o.first, '=')
+        print(io, repr(o.first), '=')
         o.second === nothing ? print(io, "nothing;") : _skey(io, o.second)
     else
         _skey(io, o)

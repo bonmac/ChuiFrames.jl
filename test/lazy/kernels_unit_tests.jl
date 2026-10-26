@@ -170,6 +170,12 @@ end
         @test errtype(() -> k(Frame(t2))) === DomainError
         @test errtype(() -> k(CF.take(Frame(t2), Int[]))) === DomainError
         @test errtype(() -> interp(ph, CF.take(Frame(t2), Int[]))) === DomainError
+        # the compiled program itself (the probe check sends this stage to the interpreter, so
+        # run the built program directly): it raises on a morsel with rows and on an empty one
+        prog = CF._build(ph.stage, CF.take(Frame(t2), Int[]))
+        @test prog isa CF.StageProgram
+        @test errtype(() -> prog(CF.take(Frame(t2), Int[]))) === DomainError
+        @test errtype(() -> prog(Frame(t2))) === DomainError
         @test disagree() - d0 == 0
     end
     # InterruptException is rethrown at once, without the interpreter re-run (n1)
@@ -200,6 +206,29 @@ end
             @test same(out, interp(ph, Frame(tt)))
             @test disagree() - d0 == 0
         end
+        # the decline happened: the shape is rejected for these column types
+        @test CF.kernel_decision(ph, 0) == (:interpreter, "the compiled kernel was rejected for this shape")
+        @test CF.kernel_decision(ph, CF.INTERP_THRESHOLD) == (:interpreter, "the compiled kernel was rejected for this shape")
+    end
+end
+
+@testitem "kernels: shape keys do not collide on odd column names (m1)" tags = [:unit] setup = [KernelHelp] begin
+    s1 = CF._stageshape(Any[mutate(z = c.a .+ c.b)])
+    s2 = CF._stageshape(Any[mutate(z = .+(c.var"a;c:b"))])
+    @test s1 != s2
+    # output names too
+    @test CF._stageshape(Any[mutate(var"z=c:a;" = c.b)]) != CF._stageshape(Any[mutate(z = c.a, b = c.b)])
+end
+
+@testitem "kernels: _FORCE_KERNEL fails closed (m5)" tags = [:unit] setup = [Force, KernelHelp] begin
+    ph = rawph(mutate(z = c.x .+ 1.0)(lazy((x = [1.0],))))
+    withforce(CF._FORCE_KERNEL => :bogus) do
+        @test_throws ArgumentError CF.kernel_decision(ph, 0)
+        @test_throws ArgumentError CF.stage_kernel(ph, 0)
+    end
+    # also with no streamed stage
+    withforce(CF._FORCE_KERNEL => :compile) do
+        @test_throws ArgumentError CF.kernel_decision(rawph(arrange(c.x)(lazy((x = [1.0],)))), 0)
     end
 end
 
