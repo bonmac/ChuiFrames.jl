@@ -142,7 +142,8 @@ src/engine/{hashagg,hashagg_acc,hashagg_sink,radix,groups}.jl, src/lazy/{sinks,e
   eager path at any measured size, or a quiet-machine re-run of benchmark/calibrate/radix_switch.jl
   moves the best limit → change the constant line or the routing. P4-10 reports the first met
   (few groups at 10⁴ rows; String and two-column keys at 10⁶ rows; times inconclusive); the
-  String-key per-row allocation it named was fixed in b30cea3, and the rows were not re-timed.
+  String-key per-row allocation it named was fixed in b30cea3, and the rows were not re-timed. The revisit decision is
+  taken at the pre-release quiet-machine timing run (user deferral, 2026-10-26).
 - A source reports `ndistinct` for every partition → let `_starts_radix` start tasks in radix mode.
 - A `drop = false` query with pruned partitions is more than 2× slower than the same query with
   `drop = true` (rows `lazy/group_by dict, 12 of 16 partitions pruned, drop = false` and `true`;
