@@ -54,8 +54,26 @@ None. Every phase-4 lane is merged and its worktree removed.
 - **Allocation budgets:** `run.jl --check` allocations and memory are within budget on 1.13 and
   1.10 at p4-codegen's `f946f0d` (`bench-check-11{3,0}-f946f0d.txt`, archived). The n=10 breach
   at `54a1b20` was fixed in code; no budget was changed.
-- **Timings** (TTFX, `run.jl` time rows): every run so far was at load 5–12, so the results are
-  INCONCLUSIVE (user ruling).
+- **Final head `d410a46`** (every file `dirty: false`, exit 0):
+
+  | File | Result |
+  |---|---|
+  | `tests-d410a46.txt` | 14788 |
+  | `tests-t4-d410a46.txt` | 14789 |
+  | `tests-lts-d410a46.txt` | 14740 |
+  | `tests-diff-d410a46.txt` | 1970 |
+  | `tests-slow-t4-d410a46.txt` | 35 |
+  | `quality-d410a46.txt` | 17 |
+  | `jet-d410a46.txt` | 97 |
+  | `guards-d410a46.txt` | 1322 |
+  | `format-d410a46.txt`, `docs-d410a46.txt` | OK |
+  | `bench-check-11{3,0}-d410a46.txt` | OK, 138 within budget |
+
+  `julia scripts/dod.jl --base main`: DONE, with no waiver. The commits after `d410a46` are
+  documentation only.
+- **Timings** (TTFX, `run.jl` time rows): every run, including those at `d410a46`, was at load
+  5–12, so the results are INCONCLUSIVE (user ruling). The user **deferred** the quiet timing
+  run (2026-10-26). It is a gate before ChuiFrames' first release, not before the phase-4 merge.
 
 ## Decisions at the phase-4 ★ (2026-10-26, the user)
 
@@ -79,8 +97,9 @@ None. Every phase-4 lane is merged and its worktree removed.
 
 ## Open conditions (block the merge into main)
 
-1. **Quiet-machine timings.** `benchmark/ttfx.jl --check` and `benchmark/run.jl --check` on 1.13
-   and LTS, at 1-minute load < 2, at the final head. The ecosystem lead provides the window.
+1. ~~Quiet-machine timings~~: **deferred by the user** (2026-10-26) to a gate before ChuiFrames'
+   first release: `benchmark/ttfx.jl --check` and `benchmark/run.jl --check` on 1.13 and LTS at
+   1-minute load < 2. Recorded in `changelog.d/phase4.md` ("Known limitations") and on ADR-0025.
 2. ~~p4-joinfix lands~~: done, merged in `a06a090` (reviewer APPROVE FINAL).
 3. ~~p4-bench lands~~: done, merged in `5956626` (reviewer APPROVE WITH CONDITIONS FINAL).
    - It added 86 SUITE rows and 516 budget rows, tightened 21 rows, and set `RADIX_SWITCH` to 2²⁰.
@@ -88,11 +107,14 @@ None. Every phase-4 lane is merged and its worktree removed.
 4. ~~p4-perf lands~~: done, merged in `b30cea3` (reviewer APPROVE WITH CONDITIONS FINAL; the
    doc conditions were met in `12ea449`). Outputs are unchanged. 43 allocation/memory rows were
    tightened; no time row fell below half its baseline.
-5. **`julia scripts/ci.jl bench` against `main`**, in the quiet window (p4-bench review MINOR-4).
+5. ~~`julia scripts/ci.jl bench` against `main`~~: deferred with item 1 to the same
+   pre-release gate (p4-bench review MINOR-4).
 6. **ADR-0022 rule 1's "public API only":** the SUITE now uses the internal switches
    `_FORCE_JOIN`/`_FORCE_KERNEL` (p4-bench review MINOR-3). The DRAFT dated note is on rule 1
    (`f87784e`); the user decides it at the phase-4 ★.
-7. **Reviewer APPROVE (FINAL)** on the full `main...feat/phase4` diff, and `dod.jl`.
+7. ~~Final reviewer and `dod.jl`~~: APPROVE WITH CONDITIONS (FINAL) at `d410a46`, after B1 was
+   fixed by p4-levels (`.lanes/reports/reviewer-p4-final.md`); `dod.jl --base main` DONE. The
+   docs-only commits after `d410a46` get the reviewer's delta check.
 8. **The user accepts ADRs 0023–0025** at the phase-4 merge ★.
 
 ## Process deviations
@@ -138,7 +160,8 @@ None. Every phase-4 lane is merged and its worktree removed.
 
 ## Next action
 
-1. Run `dod.jl` and the full gates at the final head (after p4-levels, `9ef025e` + this
-   HANDOFF commit).
-2. Ask the ecosystem lead for the quiet window.
-3. Run the final reviewer on `main...feat/phase4`.
+1. The user, through the ecosystem lead (★): accept ADRs 0023–0025 and decide the ADR-0022
+   rule 1 DRAFT note.
+2. The ecosystem lead re-runs the tests and merges `feat/phase4` into `main`.
+3. Before the first release: the quiet timing run (open condition 1) and the `###` fragment fix
+   for `changelog.jl fold` (owned by the ecosystem lead).
