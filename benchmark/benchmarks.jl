@@ -238,6 +238,53 @@ if isdefined(ChuiFrames, :_FORCE_KERNEL)
                 seconds = 3.0,
             )
         end
+        # ADR-0025's interpreter gauge: the phase-3 pipeline row (`lazy/filter, mutate, select`,
+        # which `:auto` now compiles at 10^6 rows) forced through the interpreter.
+        SUITE["lazy"]["filter, mutate, select, interpreter"][sz] = @benchmarkable(
+            forced(
+                () -> collect(lazy($f) |> filter(c.y .> 0.5) |> mutate(z = c.x .* 2) |> select(:id, :z)),
+                $FK, :interpreter,
+            ),
+            seconds = 3.0,
+        )
+    end
+end
+
+# ADR-0024's `drop = false` trigger: a source of 16 partitions (62 500 rows each) with a shared
+# 100-level dictionary key `g` (partition p uses levels 6p-5 .. 6p+4 of it) and exact `y`
+# statistics; `filter(c.y .< 250_000)` keeps 4 partitions and prunes 12 by statistics. With
+# `drop = false` the levels of the pruned partitions must still appear, so they are read in full.
+if isdefined(ChuiFrames, :partition_stats) && isdefined(ChuiFrames, :DictColumn)
+    struct BenchStatSource <: ChuiFrames.Source
+        parts::Vector{Frame}
+    end
+    ChuiFrames.source_schema(s::BenchStatSource) =
+        ChuiFrames.Tables.Schema((:g, :y, :x), (eltype(s.parts[1].columns[1]), Int, Float64))
+    ChuiFrames.source_label(::BenchStatSource) = "benchmark source with y statistics"
+    ChuiFrames.plan_partitions(s::BenchStatSource, scan; morsel::Int = 1) = (collect(eachindex(s.parts)), scan)
+    ChuiFrames.read_partition(s::BenchStatSource, p::Int) = s.parts[p]
+    function ChuiFrames.partition_stats(s::BenchStatSource, p::Int, col::Symbol)
+        col === :y || return nothing
+        y = s.parts[p].columns[2]
+        return (; lo = minimum(y), hi = maximum(y), nnull = 0, nnan = 0, ndistinct = nothing)
+    end
+    let rng = Xoshiro(20261028), m = 62_500, sz = "n=10^6"
+        dict = ChuiFrames.column([string("g", lpad(i, 3, '0')) for i in 1:100])
+        parts = [
+            Frame(
+                (
+                    g = ChuiFrames.DictColumn(UInt32.(rand(rng, (6p - 5):min(6p + 4, 100), m)), dict),
+                    y = collect(((p - 1) * m + 1):(p * m)), x = randn(rng, m),
+                )
+            ) for p in 1:16
+        ]
+        src = BenchStatSource(parts)
+        for drop in (false, true)
+            SUITE["lazy"]["group_by dict, 12 of 16 partitions pruned, drop = $drop"][sz] = @benchmarkable(
+                collect(lazy($src) |> filter(c.y .< 250_000) |> group_by(:g; drop = $drop) |> summarise(n = n_rows(), sx = sum(c.x))),
+                seconds = 3.0,
+            )
+        end
     end
 end
 
