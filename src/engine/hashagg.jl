@@ -1,11 +1,13 @@
-# The hash-aggregate operator: typed keys, two-phase partial aggregation (phase-4 spec §2;
-# ADR-0003 rules 5, 6, 8, 9). Group-by lane.
+# The hash-aggregate operator's key machinery: typed keys (phase-4 spec §2; ADR-0003 rules 5, 6,
+# 8, 9). Group-by lane.
 #
 # This file holds the key machinery shared by the group-by and the joins (ADR-0003 rule 10: no
-# duplicate key machinery): typed canonical keys, `keyhash`, the open-addressing `KeyTable`, and
-# the join key-pair rule (critic N1). The names and signatures of `typed_keys`, `keyhash`,
-# `KeyTable`, `getorinsert!`, `lookup`, `length` and `keyvalues` are frozen (phase-4 spec §2.2):
-# later lanes may add methods but not change them.
+# duplicate key machinery): typed canonical keys, `keyhash`, the open-addressing `KeyTable`, the
+# join key-pair rule (critic N1, ★ K4), and the radix switch (`RADIX_SWITCH`,
+# `_FORCE_RADIX_SWITCH`). The names and signatures of `typed_keys`, `keyhash`, `KeyTable`,
+# `getorinsert!`, `lookup`, `length` and `keyvalues` are frozen (phase-4 spec §2.2): later lanes
+# may add methods but not change them. The sink's accumulators are in hashagg_acc.jl and the
+# operator in hashagg_sink.jl (split for the 600-line ratchet, review B1).
 
 # ---------------------------------------------------------------------------------------------
 # Typed canonical keys
@@ -298,6 +300,10 @@ _keyfits(::Type{S}, ::Type{T}) where {S <: Union{Bool, _KeyInt}, T <: Union{Bool
 _keyfits(::Type{S}, ::Type{T}) where {S <: Union{Bool, _KeyInt}, T <: _KeyFloat} = _keybits(S) <= precision(T)
 _keyfits(::Type, ::Type) = false
 
+# An integer (or Bool) paired with an IEEE float, either way round (★ K4).
+_intfloat(Sx::Type, Sy::Type) =
+    (Sx <: Union{Bool, _KeyInt} && Sy <: _KeyFloat) || (Sx <: _KeyFloat && Sy <: Union{Bool, _KeyInt})
+
 """
     _lossless_key_promotion(Sx::Type, Sy::Type) -> Bool
 
@@ -308,13 +314,14 @@ every value of both:
 - integer → integer when `typemin`/`typemax` fit in `T` (`Int64`/`UInt64` and `Int8`/`UInt8`
   are rejected);
 - integer → float when the integer's bit width (`Bool`: 1) is ≤ the float's `precision`
-  (significand bits + 1): `Int32`/`Float64` is allowed, `Int64`/`Float64` and `Int32`/`Float32`
-  are rejected;
+  (significand bits + 1): `Int32`/`Float64` and `Int8`/`Float32` are lossless, `Int64`/`Float64`
+  and `Int32`/`Float32` are not;
 - float → wider float.
 
 Identical numeric types are lossless. A side of type `Union{}` (the non-missing type of an
 all-missing key column) is lossless with any type: its keys can only be `missing`. Anything else
-is `false`. It is symmetric.
+is `false`. It is symmetric. Strictly lossless: the ★ K4 integer/float pairs that are not
+lossless are allowed as join keys by [`_keypair_compare_type`](@ref), not here.
 """
 function _lossless_key_promotion(Sx::Type, Sy::Type)
     (Sx === Union{} || Sy === Union{}) && return true   # an all-missing side: nothing to promote
@@ -325,26 +332,69 @@ function _lossless_key_promotion(Sx::Type, Sy::Type)
 end
 
 """
+    _keypair_compare_type(Sx::Type, Sy::Type) -> Union{Nothing, Type}
+
+The type both sides' join keys are converted to before [`typed_keys`](@ref)/[`keyhash`](@ref),
+for the non-missing key types `Sx`, `Sy` (phase-4 plan task 3a, spec §1.1, the user's ★ K4
+answer of 2026-10-26), or `nothing` when the pair cannot be a join key. It never throws: the
+caller raises the `ArgumentError` naming the columns. In order:
+
+1. a `Union{}` side (an all-missing key column): the other type;
+2. identical types: that type;
+3. two string types: `String`;
+4. a lossless numeric pair ([`_lossless_key_promotion`](@ref)): `promote_type(Sx, Sy)`, e.g.
+   `(Int8, Float32)` → `Float32`, `(Bool, Float16)` → `Float16`, `(Int32, Int64)` → `Int64`;
+5. any other integer (or `Bool`) with an IEEE float (★ K4): `Float64`;
+6. anything else (`Int64`/`UInt64`, `Date`/`DateTime`, string/number, `Rational`, `BigFloat`):
+   `nothing`.
+
+**Above 2^53, two different integer keys can convert to the same `Float64` and then match the
+same float key** (`Float64(2^53 + 1) == 2.0^53`), as dplyr's integer/double joins do.
+"""
+function _keypair_compare_type(Sx::Type, Sy::Type)
+    # Union{} first: it is a subtype of everything, so the tests below would answer vacuously
+    Sx === Union{} && return Sy
+    Sy === Union{} && return Sx
+    Sx === Sy && return Sx
+    Sx <: AbstractString && Sy <: AbstractString && return String
+    _lossless_key_promotion(Sx, Sy) && return promote_type(Sx, Sy)
+    _intfloat(Sx, Sy) && return Float64
+    return nothing
+end
+
+"""
     _keypair_allowed(Sx::Type, Sy::Type) -> Bool
 
-The join key-pair rule of phase-4 spec §1.1 (critic N1) on the non-missing key types
-`Sx = nonmissingtype(Tx)`, `Sy = nonmissingtype(Ty)`: allowed only when `Sx === Sy`, when both
-are `<: AbstractString` (unified to `String`), or when
-[`_lossless_key_promotion`](@ref)`(Sx, Sy)`. For every allowed pair, `isequal(a, b)` implies
-`keyhash(a) == keyhash(b)`. Rejected pairs include `Date`/`DateTime` (they can be `isequal` but
-hash differently), `Int64`/`Float64`, `Int64`/`UInt64`, `String`/`Int`, `Rational`, `BigFloat`.
-The caller raises the `ArgumentError` naming the columns.
+The join key-pair rule of phase-4 spec §1.1 (critic N1, ★ K4) on the non-missing key types
+`Sx = nonmissingtype(Tx)`, `Sy = nonmissingtype(Ty)`: exactly the pairs that have a compare type,
+`_keypair_compare_type(Sx, Sy) !== nothing`. That is: identical types, two string types (unified
+to `String`), lossless numeric pairs, any integer (or `Bool`) with a float (compared as
+`Float64`), and a `Union{}` side (an all-missing key column, which can only match `missing`).
+For every allowed pair, `isequal(a, b)` implies `keyhash(a) == keyhash(b)` after conversion to
+the compare type. Rejected pairs include `Date`/`DateTime` (they can be `isequal` but hash
+differently), `Int64`/`UInt64`, `String`/`Int`, `Rational`, `BigFloat`. The caller raises the
+`ArgumentError` naming the columns.
 
-- A side whose non-missing type is `Union{}` (an all-missing key column) pairs with **any**
-  type: it can only match `missing`. This is checked first, before any subtype test (`Union{}`
-  is a subtype of everything).
-- The string branch relies on each string type's `hash` agreeing with `String`'s for equal
-  contents (Base's `AbstractString` contract). That is tested for `String`, `SubString{String}`
-  and a `StringColumn`'s `StringView` elements. A string type that hashes differently would
-  break `isequal` ⇒ equal `keyhash` and must be converted to `String` first.
+The string branch relies on each string type's `hash` agreeing with `String`'s for equal
+contents (Base's `AbstractString` contract). That is tested for `String`, `SubString{String}`
+and a `StringColumn`'s `StringView` elements. A string type that hashes differently would break
+`isequal` ⇒ equal `keyhash` and must be converted to `String` first.
 """
-function _keypair_allowed(Sx::Type, Sy::Type)
-    # Union{} first: it is a subtype of everything, so the tests below would answer vacuously
-    (Sx === Union{} || Sy === Union{}) && return true
-    return Sx === Sy || (Sx <: AbstractString && Sy <: AbstractString) || _lossless_key_promotion(Sx, Sy)
-end
+_keypair_allowed(Sx::Type, Sy::Type) = _keypair_compare_type(Sx, Sy) !== nothing
+
+# ---------------------------------------------------------------------------------------------
+# The adaptive radix switch of the hash-aggregate sink (ADR-0003 rule 9; operator in
+# hashagg_sink.jl). These lines are p4-bench's to calibrate.
+
+"""
+Groups a task's table holds before it flushes into a run and starts a new table (ADR-0003
+rule 9, "adaptive radix switch"). Initially 2^16; p4-bench calibrates it.
+"""
+const RADIX_SWITCH = 65_536
+
+"""
+Test switch (phase-4 spec §0.3): `0` uses [`RADIX_SWITCH`](@ref); a value `> 0` overrides it.
+Read once per `collect` (never inside a morsel loop). Set only through `withforce` in tests.
+"""
+const _FORCE_RADIX_SWITCH = Ref(0)
+_radix_limit() = (k = _FORCE_RADIX_SWITCH[]; k > 0 ? k : RADIX_SWITCH)

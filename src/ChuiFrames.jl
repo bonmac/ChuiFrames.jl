@@ -56,7 +56,10 @@ end
 
 # TTFX workload (ADR-0011; ADR-0010 rule 4: one small Arrow write). It covers the common first
 # calls: building a frame, one pipeline of the core verbs, printing, and an Arrow and CSV round
-# trip in a temporary directory.
+# trip in a temporary directory, plus one lazy collect through a compiled stage kernel (phase 4,
+# src/lazy/kernels.jl), so the kernel machinery is in the image and the first compiled kernel of
+# a session pays only for its own shape (docs/research/codegen-phase4.md). benchmark/ttfx.jl
+# mirrors this workload (ADR-0022 rule 4).
 @setup_workload begin
     nt = (g = ["a", "b", "a", missing], x = [1.5, 2.0, NaN, 4.0], n = [1, 2, 3, 4])
     @compile_workload begin
@@ -65,6 +68,15 @@ end
         r = f |> filter(c.n .> 1) |> mutate(y = c.x .* 2) |> group_by(:g) |>
             summarise(m = mean(c.y), k = n_rows()) |> arrange(desc(c.m))
         show(IOContext(devnull, :displaysize => (24, 80), :limit => true), MIME("text/plain"), r)
+        # forced: these 4 rows are below INTERP_THRESHOLD. The session cache is emptied after,
+        # as its keys hold `objectid`s, which differ between sessions.
+        _FORCE_KERNEL[] = :compiled
+        try
+            collect(filter(c.z .> 1)(mutate(z = c.x .* 2.0 .+ c.n)(lazy(f))))
+        finally
+            _FORCE_KERNEL[] = :auto
+            _kernel_cache_clear!()
+        end
         dir = mktempdir()
         try
             write_arrow(f, joinpath(dir, "w.arrow"))

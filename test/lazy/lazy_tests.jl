@@ -197,7 +197,10 @@ end
     for h in ("== logical plan ==", "== optimized plan ==", "== rules fired ==", "== physical plan ==", "== pruning ==", "== rendered kernel ==")
         @test occursin(h, s)
     end
-    @test occursin("then eagerly: group_by(:g)", s)
+    # a simple summary is the hash-aggregate sink (phase-4 spec §2.1); a holistic one is not
+    @test occursin("then hash-aggregate sink: group_by(:g) ⨟ summarise(n = n_rows())", s)
+    s2 = sprint(explain, (group_by(:g) ⨟ summarise(m = median(c.y)))(lazy(t)))
+    @test occursin("then eagerly: group_by(:g)", s2) && occursin("not a simple aggregate: `median`", s2)
     l = sprint(code_lowered, q)
     @test occursin("CodeInfo(", l) && occursin("_alltrue", l)
     @test occursin("no streamed stage", sprint(code_lowered, (group_by(:g) ⨟ summarise(n = n_rows()))(lazy(t))))

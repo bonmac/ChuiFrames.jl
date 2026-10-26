@@ -96,45 +96,125 @@ The group index of frame `f` over `keys`: groups numbered in ascending key order
 rows of each group in row order, key values as first seen. `drop = false` also keeps the empty
 groups of absent dictionary entries of `DictColumn` keys (dplyr's `.drop = FALSE`; see
 [`_build_gindex_keep`](@ref)).
+
+The rows are grouped through the typed keys (phase-4 spec §2.1): [`typed_keys`](@ref) (a
+`DictColumn` by its codes), [`keyhashes`](@ref) and one [`KeyTable`](@ref), so the work per row
+is a hash and a probe, with no `Dict` and no boxing. Key columns of abstract element type fall
+back to the `Dict`-coded construction ([`_build_gindex_dict`](@ref)); both give the same index.
 """
 function build_gindex(f::Frame, keys::Vector{Symbol}; drop::Bool = true)
     drop || !any(k -> getcol(f, k) isa DictColumn, keys) || return _build_gindex_keep(f, keys)
     cols = AbstractVector[getcol(f, k) for k in keys]
     n = f.nrow
-    codes, firstrows = rowcodes(cols, n)
+    tk = typed_keys(cols, n)
+    tk === nothing && return _build_gindex_dict(f, keys)
+    codes, firstrows = _groupids(tk)
+    return _gindex_sorted(f, keys, cols, codes, firstrows)
+end
+
+# Dense group ids of typed keys in first-seen order, and the first row of each group.
+function _groupids(tk::AbstractVector{K}) where {K}
+    n = length(tk)
+    t = KeyTable{K}(min(n, 1024))
+    ids = Vector{Int}(undef, n)
+    firstrows = Int[]
+    keyids!(ids, t, tk, keyhashes(tk), firstrows)
+    return ids, firstrows
+end
+
+"""
+    _build_gindex_dict(f, keys) -> GroupIndex
+
+The phase-3 group index (`drop = true`): rows coded through a typed `Dict` per key column and
+pairwise `Dict{Tuple{Int,Int}}` codes. The fallback of [`build_gindex`](@ref) for key columns of
+abstract element type (where [`typed_keys`](@ref) returns `nothing`); same result.
+"""
+function _build_gindex_dict(f::Frame, keys::Vector{Symbol})
+    cols = AbstractVector[getcol(f, k) for k in keys]
+    codes, firstrows = rowcodes(cols, f.nrow)
+    return _gindex_sorted(f, keys, cols, codes, firstrows)
+end
+
+# The index from per-row group codes (first-seen order) and each group's first row: groups
+# sorted by the per-column ranks of their key values (CF-008), rows by a counting sort.
+function _gindex_sorted(f::Frame, keys::Vector{Symbol}, cols::Vector{AbstractVector}, codes::Vector{Int}, firstrows::Vector{Int})
+    n = f.nrow
     ng = length(firstrows)
-    # per-column ranks of each group's key value
-    ranks = Vector{Vector{Int}}(undef, length(cols))
-    for (j, col) in enumerate(cols)
-        cj, fj = _keycodes(col)
-        rj = _valueranks(col, fj)
-        ranks[j] = [rj[cj[r]] for r in firstrows]
+    order = if length(cols) == 1
+        # one key column: every group has its own value, so its ranks order the groups
+        sortperm(_denseranks(cols[1], firstrows); alg = MergeSort)
+    else
+        ranks = Vector{Int}[_denseranks(col, firstrows) for col in cols]
+        sortperm(1:ng; lt = (a, b) -> _lexless(ranks, a, b), alg = MergeSort)
     end
-    order = sortperm(1:ng; lt = (a, b) -> _lexless(ranks, a, b), alg = MergeSort)
     newid = similar(order)
     newid[order] = 1:ng
+    ids, perm, starts = _countsort(codes, newid, ng)
+    keyrows = firstrows[order]
+    keycols = AbstractColumn[take(getcol(f, k), keyrows) for k in keys]
+    return GroupIndex(ids, perm, starts, keycols)
+end
+
+# Row ids under the new group numbering, the rows in group order (row order within a group),
+# and the group starts.
+function _countsort(codes::Vector{Int}, newid::Vector{Int}, ng::Int)
+    n = length(codes)
     ids = Vector{Int}(undef, n)
     counts = zeros(Int, ng)
-    for r in 1:n
+    @inbounds for r in 1:n
         g = newid[codes[r]]
         ids[r] = g
         counts[g] += 1
     end
     starts = Vector{Int}(undef, ng + 1)
     starts[1] = 1
-    for g in 1:ng
+    @inbounds for g in 1:ng
         starts[g + 1] = starts[g] + counts[g]
     end
     pos = starts[1:ng]
     perm = Vector{Int}(undef, n)
-    for r in 1:n
+    @inbounds for r in 1:n
         g = ids[r]
         perm[pos[g]] = r
         pos[g] += 1
     end
-    keyrows = firstrows[order]
-    keycols = AbstractColumn[take(getcol(f, k), keyrows) for k in keys]
-    return GroupIndex(ids, perm, starts, keycols)
+    return ids, perm, starts
+end
+
+"""
+    _denseranks(col, rows) -> Vector{Int}
+
+The rank of each `col[rows[k]]` among the distinct canonical values of `col[rows]`: ascending
+`isless` order (NaN before `missing`), equal values (`isequal` after `_canon`) one rank. Values
+without `isless` (or whose `isless` refuses the pair, see `_unordered`) rank in first-seen order,
+as [`_valueranks`](@ref) does.
+"""
+function _denseranks(col::AbstractVector, rows::Vector{Int})
+    vals = _canonvals(col, rows)
+    p = try
+        sortperm(vals; lt = isless, alg = MergeSort)
+    catch err
+        _unordered(err) || rethrow()
+        nothing
+    end
+    p === nothing && return first(_keycodes(vals))
+    return _ranks_from_perm(vals, p)
+end
+function _canonvals(col::AbstractVector{E}, rows::Vector{Int}) where {E}
+    out = Vector{E}(undef, length(rows))
+    @inbounds for (k, r) in enumerate(rows)
+        out[k] = _canon(col[r])
+    end
+    return out
+end
+function _ranks_from_perm(vals::AbstractVector, p::Vector{Int})
+    r = Vector{Int}(undef, length(vals))
+    k = 0
+    @inbounds for j in eachindex(p)
+        (j == 1 || !isequal(vals[p[j]], vals[p[j - 1]])) && (k += 1)
+        r[p[j]] = k
+    end
+    return r
 end
 function _lexless(ranks, a, b)
     for r in ranks

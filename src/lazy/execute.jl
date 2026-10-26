@@ -81,15 +81,16 @@ end
 # ---------------------------------------------------------------------------------------------
 # Execution
 
-"Counters an execution reports to `explain` (partitions planned, pruned, read)."
+"Counters an execution reports to `explain` (partitions planned, pruned, read; the sink that consumed the morsels: `:none` (gathered) or `:hashagg`)."
 mutable struct ExecStats
     planned::Int
     pruned::Int
     read::Int
     parallel::Bool
     tasks::Int
+    sink::Symbol
 end
-ExecStats() = ExecStats(0, 0, 0, false, 0)
+ExecStats() = ExecStats(0, 0, 0, false, 0, :none)
 
 
 # A `FrameSource` is handed no filter: its residual would apply it through Tables.jl's generic
@@ -220,11 +221,28 @@ function _parallel_map(g, n::Int, ntasks::Int)
     return out
 end
 
-function _gather(frames::Vector{Frame}, empty::Function)
+function _gather(frames::Vector{Frame}, empty::Function, kinds::Vector{Frame} = frames)
     nonempty = Frame[f for f in frames if f.nrow > 0]
-    isempty(nonempty) && return isempty(frames) ? empty() : first(frames)
-    length(nonempty) == 1 && return only(nonempty)
-    return _concat(nonempty)      # keeps the row count of zero-column frames (review B1)
+    out = if isempty(nonempty)
+        isempty(frames) ? empty() : first(frames)
+    elseif length(nonempty) == 1
+        only(nonempty)
+    else
+        _concat(nonempty)         # keeps the row count of zero-column frames (review B1)
+    end
+    return _gathered_kinds(out, kinds)
+end
+
+# The gathered frame's dictionary columns with the kinds the eager read gives them
+# (`_gathered_kind`, src/engine/hashagg.jl), from the non-pruned morsels' outputs `kinds`.
+function _gathered_kinds(out::Frame, kinds::Vector{Frame})
+    (isempty(out.groups) && any(c -> c isa DictColumn, out.columns)) || return out
+    cols = copy(out.columns)
+    for (j, nm) in enumerate(out.names)
+        cols[j] isa DictColumn || continue
+        cols[j] = _gathered_kind(cols[j], AbstractColumn[getcol(f, nm) for f in kinds if nm in f.names])
+    end
+    return Frame(copy(out.names), cols, Symbol[], nothing, out.nrow)
 end
 
 """
@@ -235,6 +253,11 @@ statistics, read (behind the source lock unless `isthreadsafe`), passed through 
 the re-applied scan predicates and the streamed stage, and gathered in morsel order. The stage
 runs in parallel (contiguous morsel ranges) when it is stateless (`isstateless`) and there is no
 limit; a limit runs sequentially through `foldxl`, stopping early only when allowed (R-total).
+
+When the steps after the stage start with a summary the hash-aggregate sink computes
+(`_hashagg_plan`, phase-4 spec §2.1), the morsels are folded per task into partial aggregates
+instead of being gathered (`_run_hashagg`, src/lazy/sinks.jl); every morsel still runs through
+`_runstage` with the stage's kernel. The steps after the summary then run eagerly.
 """
 function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = true, stats::ExecStats = ExecStats())
     scan = ph.scan
@@ -249,9 +272,13 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     # column types (`conform_types`, as `read_source` does), so the stage sees the eager types.
     emptyout = Ref{Union{Nothing, Frame}}(nothing)    # computed once, by the first pruned morsel
     emptylock = ReentrantLock()
+    levels = _needs_levels(ph)
     function part(i)
         if _pruned(scan, handles[i])
             Threads.atomic_add!(pruned, 1)
+            # A later step shows dictionary levels: the pruned partition's column kinds still
+            # count (its empty slice through the stage), as eager `read_source` concatenates it.
+            levels && return _runstage(ph, take(_readpart(ph, residual, handles[i]), Int[]), kernel)
             return lock(emptylock) do
                 emptyout[] === nothing && (emptyout[] = _process_empty(ph))
                 emptyout[]::Frame
@@ -259,12 +286,32 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
         end
         return _runstage(ph, _readpart(ph, residual, handles[i]), kernel)
     end
+    ispruned(f::Frame) = f === emptyout[]       # a pruned morsel's shared empty output
+    sink = _hashagg_plan(ph)
+    if sink isa Tuple
+        spec, nsteps = sink
+        agg = _run_hashagg(ph, spec, part, handles, threads, stats, ispruned)
+        stats.pruned = pruned[]
+        return run_rest(ph, agg; morsel, threads, from = nsteps + 1)
+    end
     frames = _run(ph, part, length(handles), threads, stats)
     stats.pruned = pruned[]
-    out = _gather(frames, () -> _process_empty(ph))
+    out = _gather(frames, () -> _process_empty(ph), Frame[f for f in frames if !ispruned(f)])
     ph.limit === nothing || (out = apply(HeadStep(ph.limit), out))
     return run_rest(ph, out; morsel, threads)
 end
+
+"""
+    _needs_levels(ph) -> Bool
+
+Does a step after the streamed stage show dictionary levels (a `group_by(...; drop = false)`, or
+a `drop = false` scan)? Then a gathered dictionary column must have exactly the kind the eager
+read gives it (`_gathered_kind`): eager `read_source` concatenates every partition, so a
+partition pruned by statistics still decides whether the column stays a dictionary column
+(review MAJOR 1, CF-008). Such a pruned partition is read and its empty slice runs through the
+stage: no rows are processed, its column kinds are seen.
+"""
+_needs_levels(ph) = !ph.scan.drop || any(s -> s isa GroupByStep && s.drop === false, ph.rest)
 
 """
 The source's row count (an upper bound when not exact) when it reports one, else `nothing`
