@@ -1,7 +1,7 @@
 # ADR-0023: Joins follow dplyr 1.2.0 through one hash-join operator in three physical shapes, chosen by the cost stage; keys are `by =`, and integer/float key pairs compare as `Float64`
 
-- **Status:** Proposed (2026-10-26). Open condition: lane p4-joinfix (rule 3's `on`/`by`
-  `ArgumentError`) lands before the phase-4 merge.
+- **Status:** Proposed (2026-10-26). Rule 3's `on`/`by` `ArgumentError` landed with lane
+  p4-joinfix (a06a090).
 - **Date:** 2026-10-26
 - **Deciders:** the user (★ K1–K4 and the `nest_join` name-clash ruling, 2026-10-26, at the
   ChuiFrames phase-4 ★); acceptance of this record: the user, at the phase-4 merge ★
@@ -31,9 +31,9 @@ src/lazy/joins.jl.
    pointing to `:a => :b`. Inequality and rolling joins are deferred: no design exists.
 3. The DataAPI methods `innerjoin`, `leftjoin`, `rightjoin`, `outerjoin`, `semijoin` and
    `antijoin` on `(x::Frame, y)` **must** take DataAPI's keyword `on` and forward it to `by`,
-   other keywords unchanged (ADR-0007). Passing both `on` and `by` **must** raise
-   `ArgumentError` (lane p4-joinfix; at 3bc2be9 `by` silently wins). `crossjoin(x, y)` forwards
-   to `cross_join`. The seven names sit in the ExplicitImports `INTERFACE` of
+   other keywords unchanged (ADR-0007). A `by` keyword **must** raise `ArgumentError` (with or
+   without `on`; lane p4-joinfix, merged in a06a090). `crossjoin(x, y)` forwards to
+   `cross_join` and **must** raise `ArgumentError` on `on` or `by` (a cross join has no keys). The seven names sit in the ExplicitImports `INTERFACE` of
    `test/package_tests.jl` (non-public in DataAPI).
 4. `nest_join`'s column is an `ObjectColumn` of `Frame`s (tidyr `nest`'s representation). A
    `name` equal to an x column **must** replace it at its position, as dplyr does, and log one

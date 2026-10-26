@@ -32,7 +32,6 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 | Lane | Agent | File scope | Status |
 |---|---|---|---|
 | p4-bench | benchmarker | `benchmark/**`, new docs/research/performance-phase4.md, `docs/research/README.md`, `docs/src/performance.md`, the `RADIX_SWITCH`/`BROADCAST_MAX_*` lines | running |
-| p4-joinfix | implementer | `src/engine/verbs_join.jl`, `test/engine/join_verbs_tests.jl` | running: DataAPI `on` + `by` raise `ArgumentError` |
 
 ## Evidence (`.lanes/evidence/`)
 
@@ -80,7 +79,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 1. **Quiet-machine timings.** `benchmark/ttfx.jl --check` and `benchmark/run.jl --check` on 1.13
    and LTS, at 1-minute load < 2, at the final head. The ecosystem lead provides the window.
-2. **p4-joinfix lands** (ADR-0023 rule 3).
+2. ~~p4-joinfix lands~~: done, merged in `a06a090` (reviewer APPROVE FINAL).
 3. **p4-bench lands** with its ADR-0022 rows. It also tightens any existing allocation or
    memory row whose measured value fell by more than half.
 4. **Reviewer APPROVE (FINAL)** on the full `main...feat/phase4` diff, and `dod.jl`.
@@ -106,7 +105,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## Next action
 
-1. Merge p4-joinfix and p4-bench after their reviewer FINALs.
+1. Merge p4-bench after its reviewer FINAL.
 2. Run `dod.jl` and the full gates at the final head.
 3. Ask the ecosystem lead for the quiet window.
 4. Run the final reviewer on `main...feat/phase4`.
