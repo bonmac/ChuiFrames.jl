@@ -1,7 +1,7 @@
 # Phase 4 design: joins, the fast group-by with aggregate sinks, and codegen kernels
 
-- **Date:** 2026-10-26 (revised the same day after critic REJECT and reviewer REQUEST CHANGES;
-  see §8 Review log). **Branch:** `feat/phase4` (integration). Sub-lanes, in order (§0.2):
+- **Date:** 2026-10-26 (revised the same day after critic REJECT and reviewer REQUEST CHANGES,
+  then after critic pass 2 ACCEPT WITH CHANGES; see §8 Review log). **Branch:** `feat/phase4` (integration). Sub-lanes, in order (§0.2):
   `feat/p4-groupby` and `feat/p4-codegen` (phase A), then `feat/p4-groupby2` and `feat/p4-join`
   (phase B), then `feat/p4-bench` (phase C). **Plan:**
   [2026-10-26-phase4.md](../plans/2026-10-26-phase4.md).
@@ -17,7 +17,7 @@
 
 ## 0. Seam, lane order, forcing switches, pending decisions
 
-### 0.1 Seam (Task 0, done: b51ca4e, b161ce6, c41343b; Task 0b adds three hooks)
+### 0.1 Seam (Task 0, done: b51ca4e, b161ce6, c41343b; Task 0b, done: ddf42b8)
 
 The seam keeps the lanes' file scopes disjoint, with no behaviour change. What it holds:
 
@@ -34,18 +34,19 @@ The seam keeps the lanes' file scopes disjoint, with no behaviour change. What i
 - One-line placeholder files, included: `src/engine/radix.jl`, `src/engine/hashagg.jl`,
   `src/engine/join.jl`, `src/engine/verbs_join.jl`, `src/lazy/joins.jl`.
 
-**Task 0b (lead, before phase A; reviewed with the seam):**
+**Task 0b (lead, done in ddf42b8; reviewed with the seam):**
 
 1. `explain(io, q; morsel, kernel::Bool = false)` passes `kernel` to `_explain_kernel(io, ph;
    kernel)` (seam: ignores it). The kernel line prints only when `kernel = true` (§3.4), so no
    existing snapshot changes in any lane.
 2. `test/jet/runjet.jl` also includes every `test/jet/opt_*.jl` file (sorted), so each lane's
-   `@test_opt` checks live in its own new file and run in its lane. UNVERIFIED: whether
-   `sync_factory.jl` treats `runjet.jl` as seed-once; the lead checks before editing.
-3. New file test/lazy/force_snippet.jl: `@testsnippet Force` with
+   `@test_opt` checks live in its own new file and run in its lane. `runjet.jl` is seed-once for
+   the factory sync (factory/MANIFEST.toml line 36, critic pass 2), so the edit survives syncs.
+3. `test/lazy/force_snippet.jl`: `@testsnippet Force` with
    `withforce(f, pairs::Pair{<:Ref}...)`, which sets each `Ref`, runs `f()` and restores the old
    values in `finally` (generic over `Ref`s, so it names no lane's switch).
-4. A changelog fragment for the seam and the PR reference (reviewer M8).
+4. A changelog fragment for the seam (`changelog.d/phase4.md`) and the PR reference (reviewer
+   M8).
 
 Each lane's exports live in its own file (`export` inside the module, any file).
 
@@ -72,8 +73,8 @@ the kernel, the radix limit or the join strategy is chosen), never inside a mors
 - `_FORCE_KERNEL[] = :compiled` compiles every stage that is compilable (§3.2). A stage that is
   not compilable still runs the interpreter.
 - Tests set the switches only through `withforce` (§0.1, Task 0b). The `Ref`s are process-global.
-  UNVERIFIED: that `@run_package_tests` runs test items one at a time in one process (each lane
-  confirms from the TestItemRunner source or docs before relying on it).
+  That is safe because TestItemRunner 1.3.2 runs test items one at a time in one process
+  (settled in critic pass 2).
 
 ### 0.4 Pending a user ★ (ecosystem lead, 2026-10-26)
 
@@ -145,24 +146,57 @@ anti_join(y; on_by = nothing, na_matches = :na)
   package's environment).
 - **`on_by`:** `nothing` is a natural join on the common column names. `:a`, `"a"`, `[:a, :b]`
   and `:a => :b` (x's `a` equals y's `b`, left `=>` right as rule 16 says) work, as does a vector
-  of those. No common column under `nothing` → `ArgumentError` (dplyr errors too). The key set is
-  resolved **once**, when the step is applied to x (an eager apply, or `JoinNode` construction
-  for a lazy x; §1.4). A natural join logs `@info "Joining with on_by = [...]"` (silenceable
-  with `with_logger`) once at that point. `optimize`, `collect` and replay reuse the resolved
-  keys and never log. The step itself cannot log at construction: x is not known yet.
+  of those. No common column under `nothing` → `ArgumentError` (dplyr errors too).
+- **The natural-join message (one rule, critic n9):** a natural join logs
+  `@info "Joining with on_by = [...]"` (silenceable with `with_logger`) **once, when its
+  `JoinNames` are resolved** (§1.4).
+  - Usually that happens when the step is applied to x: an eager apply, or `JoinNode`
+    construction for a lazy x.
+  - When a side has no static schema, resolution happens at `collect` time, so that `collect`
+    logs (documented in the `JoinStep` docstring and `docs/src/lazy.md`).
+  - Once resolved, `JoinNames` are stored in the node, so `optimize`, later passes and replay
+    never log again.
+  - The step itself cannot log at construction: x is not known yet.
 - **Key equality:** ADR-0003 rule 8 (NaN is one key, ±0.0 is one key, `missing` is its own key).
   - `na_matches = :na` (the default, as dplyr): `missing` matches `missing` and NaN matches NaN.
   - `na_matches = :never`: a key row holding `missing` **or NaN** in any key column matches
     nothing (verified in §1.6). Such x rows are unmatched rows: left/full/anti keep them,
     inner/semi drop them.
-- **Key types:** a key pair is compared with `isequal` and `hash`, with no conversion (Base `hash`
-  agrees with `isequal` across numeric types, so `1` matches `1.0`). The output key column's
-  element type is `promote_type(Tx, Ty)`, as dplyr gives the common type (§1.6: integer vs double
-  gives double). Caveat, documented: integers beyond 2⁵³ compared with `Float64` keys match only
-  on exact equality, but the promoted `Float64` output can show two distinct keys as equal. Pairs
-  with no numeric promotion (`String` vs `Int`) → `ArgumentError` when the step is applied, as
-  dplyr's incompatible-types error. Dictionary keys from two frames are compared **by value**
-  (rule 11; §2.2 `typed_keys(...; codes = false)`).
+- **Key types (critic N1).** Let `Sx = nonmissingtype(Tx)` and `Sy = nonmissingtype(Ty)` for a
+  key pair. The pair is **allowed only** in three cases:
+  - `Sx === Sy`;
+  - both are `<: AbstractString`. They are unified the way `bind_rows` unifies them: its
+    `vcat_columns` (src/columns.jl) collects the values and calls `column`, which builds a
+    `StringColumn` for any `AbstractString` element type. So both sides' keys are canonicalised
+    to `String` before hashing, and the output key is a `String` column. Two string types never
+    promote to `AbstractString`;
+  - both are in `Union{Bool, Base.BitInteger, Base.IEEEFloat}` and `T = promote_type(Sx, Sy)`
+    keeps every value of both. `_lossless_key_promotion(Sx, Sy)` (`src/engine/join.jl`) decides
+    this:
+    - integer → integer when `typemin`/`typemax` fit in `T` (so `Int64`/`UInt64` is rejected:
+      a negative key would throw `InexactError`);
+    - integer → float when the integer's bit width ≤ the float's significand bits + 1
+      (`Int32`/`Float64` is allowed; `Int64`/`Float64` is rejected);
+    - float → wider float.
+
+    This is the same "promote only when lossless" rule that `column` applies (ADR-0001 rule 12).
+
+  Every other pair → `ArgumentError` naming both columns and types, raised when the step is
+  applied (eager) or at `JoinNode` construction (lazy). Rejected pairs include `Date` vs
+  `DateTime` (they are `isequal`-compatible in some cases but hash differently, so they would
+  silently not match), `Int64` vs `Float64`, `Int64` vs `UInt64`, `String` vs `Int`, and other
+  `Real`s that are not identical (`Rational`, `BigFloat`, fixed-point types). The fix is to
+  convert first. That `Int64`/`Float64` is rejected is a **parity divergence** (dplyr casts to
+  double, §1.6), recorded in parity-dplyr.md. The 2⁵³ problem therefore cannot occur.
+  - Allowed pairs compare with `isequal` on canonical values, with no conversion. The output key
+    column has element type `promote_type(Sx, Sy)` (or `String`), with `Missing` added when
+    either side is nullable.
+  - **Required test** (p4-groupby task 1 for `keyhash`, and p4-join for the pair rule): for every
+    allowed pair of types and generated values, including ±0.0, NaN payloads, `NaN32` vs `NaN`,
+    `true` vs `1` and `SubString` vs `String`, `isequal(a, b)` implies
+    `keyhash(a) == keyhash(b)`.
+  - Dictionary keys from two frames are compared **by value** (rule 11; §2.2
+    `typed_keys(...; codes = false)`).
 - **Output columns and order (dplyr):** x's columns in order, then y's non-key columns in order.
   - `keep = false`: the key columns appear once, with x's names. Their values are x's values,
     except for right/full rows that exist only in y, which take y's key values.
@@ -177,6 +211,11 @@ anti_join(y; on_by = nothing, na_matches = :na)
   rows, then y's unmatched rows in y order. semi/anti: x rows in x order, each once.
 - **`multiple`** (inner/left/right/full): `:all` (the default), `:any`, `:first`, `:last` or
   `:error`. dplyr's `"warning"` is skipped.
+  - `:any` is defined as `:first` (deterministic, so lazy == eager).
+  - Under `multiple ≠ :all`, a y row that matched an x row's key but was **not chosen** counts as
+    **unmatched** (critic n3). It is appended by a right/full join's tail, and it triggers
+    `unmatched = :error` on the y side. The probe marks only the chosen y rows in the hidden
+    column. Verified against dplyr 1.2.0 (§1.6); the p4-join differential keeps this case.
 - **`unmatched`** (inner/left/right only): `:drop` or `:error`. Each kind checks the side it
   would drop (§1.6): inner checks x and y, left checks y, right checks x. An unmatched row →
   `ArgumentError`. dplyr's default `relationship = NULL` many-to-many warning is not reproduced
@@ -187,7 +226,7 @@ anti_join(y; on_by = nothing, na_matches = :na)
   - left: y's non-key columns become `Union{Missing, T}`;
   - right: x's non-key columns;
   - full: both sides' non-key columns.
-  - Key columns get `promote_type(Tx, Ty)` with no added `Missing`.
+  - Key columns get the allowed pair's output type (N1 above).
   - The types widen even when every row matched, so lazy == eager whatever the data.
   - Dictionary columns keep their dictionary when every value comes from one frame. A key column
     fed by both frames (right/full, `keep = false`) is decoded to plain values.
@@ -198,7 +237,12 @@ PENDING lead decision (ADR-0003 rules 4 and 11 amended by ADR-0023). Written for
 
 - **Build side is always y**, probe side x. That gives dplyr's row order without a sort.
 - **Build:** y's key columns become typed keys (§2.2 `typed_keys(...; codes = false)`) in a
-  `KeyTable` (§2.2) that maps a key to its dense id. A `first::Vector{Int}` maps the id to the
+  `KeyTable` (§2.2) that maps a key to its dense id.
+  - Abstract key types (critic n6): when `typed_keys` returns `nothing` for either side (a key
+    column of abstract element type, e.g. `Any`), the join raises `ArgumentError` naming the
+    column and suggesting a conversion.
+  - A `Dict`-based fallback is documented as later work (not in phase 4), so the hot path never
+    holds a `Dict{Any}`. A `first::Vector{Int}` maps the id to the
   first y row, and a `next::Vector{Int}` chains y rows with the same key **in y row order**.
 - **Strategy (cost stage):**
   - **broadcast:** one shared build table, built by one task, when y's estimated rows (from
@@ -217,6 +261,8 @@ PENDING lead decision (ADR-0003 rules 4 and 11 amended by ADR-0023). Written for
   `unmatched = :error` on the x side (inner, right). Right joins drop unmatched x rows here.
   When a tail is needed (below), the probe also emits a hidden column `Symbol("##chui_yrow")`
   (the matched y row, `0` for an unmatched x row). There is no shared `BitVector` (critic M1).
+  A user column named `##chui_yrow` on either side → `ArgumentError` when the step is applied or
+  the `JoinNode` is built (critic n10), so the hidden column can never collide.
 - **`JoinTailStep`** (a pipeline breaker, in `rest`, eager, after the gather) is placed when the
   kind is right or full, or when `unmatched = :error` with a y-side check (inner, left). It:
   1. builds the matched-y bitmap from the gathered hidden column, on one task;
@@ -249,11 +295,14 @@ A join is **total** for pushdown only when `unmatched = :drop` and `multiple ∈
   - inner: either side (y only when `multiple = :all`);
   - semi/anti: x (their output has x's columns only);
   - left: x only; right: y only (when `multiple = :all`); full: never.
-- **Key columns under `keep = false`:** a predicate on the output key is pushed to **x only**, and
-  only for inner/left/semi/anti (the output key is x's value). It is **never** copied to y. A copy
+- **Key columns under `keep = false`:** a predicate on the output key is pushed to **x only**,
+  only for inner/left/semi/anti (the output key is x's value), and only when
+  `nonmissingtype(promote_type(Tx, Ty)) === nonmissingtype(Tx)` (critic N2). Otherwise the output
+  key has a wider type than x's key (e.g. x `Int32`, y `Float64`), and the predicate could give
+  a different answer on x's unpromoted values. It is **never** copied to y. A copy
   would need `P(x.k) == P(y.k)` whenever the keys match under rule 8, and that fails for `signbit`
-  on 0.0 vs −0.0, and for `isinteger`/`typeof`-sensitive predicates across `Int`/`Float64`
-  keys. right/full: key predicates are not pushed.
+  on 0.0 vs −0.0, and for `typeof`-sensitive predicates across allowed cross-type pairs (e.g.
+  `Int32`/`Float64`). right/full: key predicates are not pushed.
 - **Unit cases where the rule must not fire:**
   - `multiple = :first`, `:last` and `:any` with a y-column filter (not pushed to y);
   - `multiple = :error` with an x-column filter and with a y-column filter (not pushed at all);
@@ -262,6 +311,10 @@ A join is **total** for pushdown only when `unmatched = :drop` and `multiple ∈
   - full join with any filter;
   - a key predicate on right/full;
   - `signbit.(c.k)` with x.k = 0.0, y.k = −0.0 (never copied to y; lazy == eager);
+  - a key predicate when the output key type is wider than x's (x `Int32` vs y `Float64`; N2);
+  - the 2⁵³ case: x `Int64` key `2^53 + 1` vs y `Float64` key `2.0^53`. The pair is rejected
+    with `ArgumentError` at `JoinNode` construction (N1), before any pass runs, so no pushdown
+    can happen. The test asserts the error, and that eager raises the same;
   - a non-R-total predicate.
 
   The positive cases (fires) are tested for each kind too.
@@ -288,7 +341,8 @@ A join is **total** for pushdown only when `unmatched = :drop` and `multiple ∈
     disappears. Example: for x(k, v), y(k, v), `inner_join(y; on_by = :k) ⨟ select(:v)` throws
     in eager (`v` is `v_x`/`v_y`), and lazy must keep `y.v` and throw too.
   - A side whose schema cannot be computed statically (the probe throws) is not projected. Its
-    `JoinNames` is then resolved at collect time.
+    `JoinNames` is then resolved at collect time, and that is when the natural-join message is
+    logged (§1.1, n9). The N1 key-type check and the n10 hidden-name check also run then.
 - **Lowering for execution** (`src/lazy/joins.jl`): before `physical`, every `JoinNode` becomes
   `StepNode(ProbeStep(build, spec, names), left)`, with `JoinTailStep` above it when §1.2 says so.
   `build` is the right subplan.
@@ -311,9 +365,20 @@ A join is **total** for pushdown only when `unmatched = :drop` and `multiple ∈
 
 ### 1.5 Parity rows in this phase (PENDING ★ K3)
 
-Under option A: `cross_join(y)` (every x row with every y row, x order then y order) and
-`join_by(:a => :b, …)`, which builds the same key specification as `on_by` (the equality form
-only). `nest_join` and the inequality/rolling `join_by` stay `planned`. Under option B,
+Under option A:
+
+- **`cross_join(y; suffix = ("_x", "_y"))`** (critic n10). It returns a `JoinStep` of kind
+  `:cross` with no keys and no `na_matches`/`keep`/`multiple`/`unmatched`, as dplyr's
+  `cross_join(x, y, suffix)`.
+  - Output: x's columns, then all of y's columns. Clashing names get `suffix`.
+  - Rows: |x| × |y|, in x order, each x row's block in y order.
+  - Element types are unchanged (no row is unmatched). A grouped x keeps its groups.
+  - Lazily it is a `ProbeStep` whose "build" is the collected y (no hash table, streamed over x
+    morsels, no tail). Filter pushdown sends a one-side filter to that side (cross joins are
+    total).
+  - `DataAPI.crossjoin(x::Frame, y)` forwards to it.
+- **`join_by(:a => :b, …)`**: builds the same key specification as `on_by` (the equality form
+  only). `nest_join` and the inequality/rolling `join_by` stay `planned`. Under option B,
 `nest_join` is added (§0.4).
 
 ### 1.6 dplyr facts (verified 2026-10-26, Rscript, dplyr 1.2.0)
@@ -329,7 +394,14 @@ only). `nest_join` and the inequality/rolling `join_by` stay `planned`. Under op
 - `inner_join(x, y, multiple = "first") |> filter(w > 1)` gives 0 rows; filtering y first gives
   1. With `multiple = "last"` the same divergence appears.
 - NaN keys: 1 row under the default `na_matches`, 0 under `"never"`. An integer key joined with a
-  double key gives a `numeric` output key.
+  double key gives a `numeric` output key (ChuiFrames rejects `Int64`/`Float64` instead; §1.1
+  N1).
+- Unchosen y rows (critic n3): with x(k = 1) and y(k = [1, 1]):
+  - `right_join(..., multiple = "first")` gives 2 rows, the second with `a = NA`, `w = 20`;
+  - `full_join(..., multiple = "last")` gives `w = 20` matched, then `w = 10` with `NA`;
+  - `left_join`/`inner_join` with `unmatched = "error"` and `multiple = "first"`/`"any"` raise
+    "Each row of `y` must be matched by `x`" for row 2;
+  - `multiple = "any"` chose the first match here.
 
 ## 2. Fast adaptive group-by and the aggregate sinks (ADR-0024; DESIGN §7 item 2)
 
@@ -393,6 +465,8 @@ typed_keys(cols::AbstractVector{<:AbstractVector}, n::Int; codes::Bool = true)
     -> Union{Nothing, AbstractVector}   # canonical typed keys, or `nothing` (abstract eltype: fallback)
 keyhash(k)::UInt64                      # agrees with `isequal` after canonicalisation; Base `hash` mix
 struct KeyTable{K}                      # open addressing, linear probing, power-of-two capacity, load ≤ 0.5
+                                        # home slot of hash h: (h & (cap - 1)) + 1 — the LOW bits;
+                                        # radix partitions use the HIGH bits (h >> (64 - p)), so the two never correlate
 KeyTable{K}(sizehint::Int)
 getorinsert!(t::KeyTable{K}, k, h::UInt64)::Int   # dense id, 1-based, first-seen order
 lookup(t::KeyTable{K}, k, h::UInt64)::Int         # id, or 0 when absent; compares with `isequal`
@@ -414,19 +488,30 @@ keyvalues(t::KeyTable{K})::Vector{K}              # keys in id order
 - **Abstract element types** (`Any`): `typed_keys` returns `nothing`, and the caller uses the
   existing path (documented, rare). There is no `Dict{Any}` on the hot path. Each table keeps
   keys, hashes and ids in separate typed vectors.
-- The table also stores each group's **raw first-seen key** (the uncanonicalised value of the
-  first row, with its `(range, seq, row)` stamp), combined like `First`. The output shows the
-  first ±0.0 in row order (rule 8).
+- **Raw first-seen key (critic n4):** the frozen `getorinsert!` takes only the canonical key. The
+  caller keeps each group's **raw first-seen key** (the uncanonicalised value of the first row)
+  in a parallel vector indexed by the id, `rawkeys[id]`, pushed when `getorinsert!` returns a new
+  id (`id == length(t)` after the call), plus its `(range, seq, row)` stamp. At the merge it is
+  combined like `First`, so the output shows the first ±0.0 in row order (rule 8).
+- **Slot rule (critic n5):** the home slot is frozen as `h & (cap - 1)` (low bits). The
+  partitioned join and the radix switch rely on partitions taking the high bits, so a partition's
+  table does not degrade to one probe chain.
+- **Required test (critic N1):** for every allowed join key pair (§1.1) and for same-type keys,
+  `isequal(a, b)` implies `keyhash(a) == keyhash(b)` (canonical values; ±0.0, NaN payloads,
+  `NaN32`/`NaN`, `true`/`1`, `SubString`/`String`).
 
 ### 2.3 Parallel partial aggregation (two-phase, order-preserving)
 
 - **Partial:** each task owns a **contiguous range of morsels** (ADR-0003 rule 6) and a
   thread-local `KeyTable`. It folds each morsel's rows into per-group accumulators.
   - **Typed accumulators** (one concretely typed vector per aggregator): `Sum`, `Count`,
-    `CountTrue`, `Mean` (sum and count), `Min`, `Max`, `Extrema`, `AnyM`, `AllM`, `Prod`,
-    `Spread`/`Moments`, and `First`/`Last` (a value vector plus order stamps). For `Sum`/`Mean`
-    the accumulator type is `typeof(Base.add_sum(x, x))` for the column's element type `x`, so
-    `Int8`/`Int32`/`Bool` widen to `Int` and `Float32` stays `Float32`, as Base `sum` does.
+    `CountTrue`, `Mean`, `Min`, `Max`, `Extrema`, `AnyM`, `AllM`, `Prod`, `Spread`/`Moments`,
+    and `First`/`Last` (a value vector plus order stamps).
+    - **Only `Sum`** uses `typeof(Base.add_sum(x, x))` for the column's element type `x`, so
+      `Int8`/`Int32`/`Bool` widen to `Int` and `Float32` stays `Float32`, as Base `sum` does.
+    - **`Mean`** (critic N4) uses `(typeof(float(x)), Int)`: a float sum plus a count, as
+      `UP.Mean` does (src/engine/upstream.jl: "a float sum plus a count, so Int data never
+      overflows"). An `add_sum` integer sum would overflow on `Int` data.
   - **`Vector{Any}` fallback only for `MapM` and `ReduceM`:** their result type would need
     `Base.promote_op`, which ADR-0002 rule 11 rules out for types. `SkipMissingAgg` follows its
     inner aggregator.
@@ -459,6 +544,8 @@ keyvalues(t::KeyTable{K})::Vector{K}              # keys in id order
 - **Unit tests:** each typed accumulator against the protocol call on the same rows, exact for
   integers, `Bool` and `first`/`last` and within tolerance for floats, with `Int8`, `Int32`,
   `Bool` and `Float32` columns (including the widened `sum` type and `sum(Int8[]) === 0`).
+  A `Mean` test over `fill(typemax(Int), 4)` split across morsels must give `float(typemax(Int))`
+  within tolerance, as eager `mean` does, with no overflow (N4).
 
 ### 2.4 Radix partitioning (one primitive, ADR-0003 rule 10; frozen API)
 
@@ -501,29 +588,47 @@ by `stage_kernel` and `_explain_kernel`, so `explain` and `collect` agree:
   step) → the whole stage runs the interpreter.
 - **Nodes:** `Col`, scalar `Lit`, `Call`, `CaseWhen`. Not compilable: `Pipe`, a vector `Lit`,
   `IfAnyAll`, anything else.
-- **Types:** compilable only when every output column's `static_type` is concrete (or
-  `Union{Missing, T}` with `T` concrete), and equals the interpreter's output element type on the
-  empty probe frame. That is checked once per compile by running `interpret_stage` on the probe
-  frame. A mismatch → interpreter.
+- **Types:** compilable only when every computed column's `static_type` is concrete (or
+  `Union{Missing, T}` with `T` concrete). It must also pass a check once per compile: run the
+  compiled kernel and `interpret_stage` on the empty probe frame, and compare, per output column,
+  the **column object's type** `typeof(col)`, not only the element type (critic N3). A
+  `DictColumn` must stay a `DictColumn`, a `StringColumn` a `StringColumn`. A mismatch →
+  interpreter.
 
 ### 3.3 The compiled kernel (critic B2)
 
 - The stage is lowered to a composition of closures whose types encode the shape. Literals are
   fields (runtime values), so a new constant does not recompile. One fused row loop per stage
-  writes into typed output vectors **allocated per call** (reentrant: the kernel is shared by
-  every task; seam docstring).
+  computes the filter mask and the **computed** columns. Each computed column is written into a
+  typed vector **allocated per call** (reentrant: the kernel is shared by every task; seam
+  docstring), then wrapped by the same column constructor the interpreter uses (`typed_column`,
+  as `apply(::MutateStep)` does).
+- **Column kinds (critic N3):** passed-through, renamed and filtered columns keep their **column
+  object**. They are the input column itself, or `take(col, kept_rows)` on the original column
+  when a filter dropped rows, never a vector rebuilt from values. So a `DictColumn` keeps its
+  dictionary and its unused levels, and `group_by(drop = false)` after the stage still shows the
+  empty levels.
+- **Scalar-only subexpressions (critic n2):** a subexpression with no `Col` (e.g.
+  `lit(1) + lit(2)` left after folding, or `sqrt(lit(-1.0))`) is evaluated **once per morsel**,
+  as the interpreter evaluates it once per call. That happens even when no rows remain after a
+  filter, so a throwing scalar subexpression raises on every morsel as the interpreter's does.
 - **No short-circuit:** like the interpreter (src/engine/interpreter.jl `ev(::CaseWhen)`
   evaluates every condition, value and the default; src/engine/verbs.jl filter evaluates every
   conjunct), the kernel evaluates **every filter conjunct and every `case_when` branch and the
   default on every row of the morsel**.
 - **Exceptions:** a fused loop meets errors in a different order across steps. For example,
   `mutate(a = log.(c.x)) ⨟ mutate(b = div.(c.y, c.z))` with x = [1, −1], z = [0, 1] raises
-  `DivideError` fused but `DomainError` interpreted. So on **any** exception the kernel re-runs
-  that morsel through `interpret_stage(ph)` and rethrows the interpreter's exception. If the
-  interpreter succeeds, its result is used and an internal counter `_KERNEL_DISAGREE` is
-  incremented; the property tests assert it stays 0.
-- **Output types** equal the interpreter's, also on empty morsels: `_process_empty` uses
-  `interpret_stage`, and §3.2's type check guarantees that the compiled outputs match.
+  `DivideError` fused but `DomainError` interpreted. So on any exception the kernel re-runs
+  that morsel through `interpret_stage(ph)` and rethrows the interpreter's exception.
+  - The one exception is `InterruptException`, which is rethrown **at once**, with no re-run
+    (critic n1).
+  - If the interpreter succeeds, its result is used and an internal counter
+    `_KERNEL_DISAGREE::Threads.Atomic{Int}` is incremented. Tests read the counter before and
+    after the code under test and assert the **difference** is 0 (critic n7), because the counter
+    is cumulative over the session.
+- **Output types** equal the interpreter's, column kinds included, also on empty morsels:
+  `_process_empty` uses `interpret_stage`, and §3.2's `typeof(col)` check guarantees that the
+  compiled outputs match.
 - **Cache:** `_KERNEL_CACHE::Dict{Any, Any}` guarded by `_KERNEL_LOCK::ReentrantLock`, keyed by
   `(shape, input column types)`. The shape includes each `Call`'s `typeof(f)` and each literal's
   type, and excludes literal values.
@@ -541,21 +646,37 @@ always would make the existing goldens depend on test order. The rendered-kernel
 ### 3.5 Tests
 
 A property test runs generated stages through both the compiled kernel (forced) and the
-interpreter. It compares results exactly (elementwise results are bitwise equal), output element
-types (also on empty morsels), and exception types on throwing stages (`log.(c.x)` on negatives,
-`div.(c.a, 0)`, the cross-step example above), and checks `_KERNEL_DISAGREE == 0`.
+interpreter. It compares:
+
+- results, exactly (elementwise results are bitwise equal);
+- `typeof(col)` per output column (also on empty morsels);
+- exception types on throwing stages (`log.(c.x)` on negatives, `div.(c.a, 0)`, the cross-step
+  example above, and a throwing scalar subexpression on a morsel whose rows are all filtered
+  out).
+
+It asserts that the before/after difference of `_KERNEL_DISAGREE` is 0. The generator includes a
+`DictColumn` source with unused levels whose stage is followed by `group_by(drop = false)`
+(critic N3).
 
 ## 4. Testing
 
 - **lazy == eager (CF-008), extended.**
-  - p4-groupby2 extends the generator (`@testsnippet LazyProp`, in
-    `test/lazy/lazy_eager_property_tests.jl`) with `group_by ⨟ summarise` (simple and non-simple
-    aggregates), grouped windows and `summarise(; by)`.
+  - p4-groupby2 **only adds** to the generator (`@testsnippet LazyProp`, in
+    `test/lazy/lazy_eager_property_tests.jl`): `group_by ⨟ summarise` (simple and non-simple
+    aggregates), grouped windows, `summarise(; by)`, and a `DictColumn` source with unused
+    levels under `group_by(drop = false)` (N3). It changes no existing definition there (n8).
   - p4-join adds joins of every kind in the new file
-    test/lazy/lazy_eager_join_property_tests.jl. It uses `setup = [LazyProp]` read-only, and
-    defines its own `@testsnippet` for the second generated table: shared key columns with NaN,
-    ±0.0, `missing`, duplicates, `Int`/`Float64` key pairs and empty tables. Cross-file reuse
-    works: `@testmodule Oracle` (`test/engine/oracle.jl`) is used by
+    test/lazy/lazy_eager_join_property_tests.jl. It uses `setup = [LazyProp]` read-only for the
+    table generators and comparison helpers, and defines its own `@testsnippet`. That snippet
+    holds:
+    - the second generated table: shared key columns with NaN, ±0.0, `missing`, duplicates,
+      allowed cross-type pairs (`Int32`/`Float64`, `Int32`/`Int64`, `String`/`SubString`) and
+      empty tables;
+    - **its own raw runner** (critic n8). LazyProp's `run_raw` calls `execute(physical(plan))`
+      on a linear plan and cannot run join trees, so the join runner lowers the tree (§1.4) and
+      collects the build subplans before executing.
+
+    Cross-file reuse works: `@testmodule Oracle` (`test/engine/oracle.jl`) is used by
     `test/engine/property_tests.jl`.
   - Both run at morsel sizes 1–7, with `withforce(_FORCE_RADIX_SWITCH => 4)` and each
     `_FORCE_JOIN` strategy, at `-t 1` and `-t 4`. They compare with approximate frame equality
@@ -655,3 +776,24 @@ Critic (REJECT, at b161ce6) and reviewer (REQUEST CHANGES, seam), answered 2026-
 | reviewer M6 sink cannot sit behind `run_rest` | p4-groupby2 restructures the morsel loop in execute.jl; every morsel still goes through `_runstage(..., kernel)` | plan task 5 |
 | reviewer M7 "empty files" wording | fixed | §0.1, plan Task 0 |
 | reviewer M8 dod items | Task 0b item 4 | §0.1 |
+
+Critic pass 2 (ACCEPT WITH CHANGES, at 7521667 + ddf42b8), answered 2026-10-26. The pass-1 M4
+row's "`promote_type` + 2⁵³ caveat" is replaced by N1 (Int64/Float64 is now rejected).
+
+| Finding | Answer | Where |
+|---|---|---|
+| settled: runjet.jl seed-once; TestItemRunner sequential | both UNVERIFIED marks removed; Task 0b marked done (ddf42b8) | §0.1, §0.3 |
+| N1 key-type rule | identical / both strings (unified to `String` as `vcat_columns`→`column`) / lossless BitInteger-IEEEFloat-Bool promotion, else `ArgumentError`; Date/DateTime, Int64/UInt64, Int64/Float64 rejected; `isequal` ⇒ equal `keyhash` test | §1.1, §2.2 |
+| N2 key predicate under promotion | push to x only when `nonmissingtype(promote_type(Tx, Ty)) === nonmissingtype(Tx)`; 2⁵³ and Int32/Float64 must-not-fire cases | §1.3 |
+| N3 compiled kernel loses column kinds | pass-through/filtered columns keep the column object (`take`); computed columns wrapped as the interpreter does; probe check compares `typeof(col)`; DictColumn + `drop = false` in generators | §3.2, §3.3, §3.5, §4 |
+| N4 lazy `Mean` overflow | `Mean` accumulator `(typeof(float(x)), Int)` as `UP.Mean`; only `Sum` uses `add_sum`; `typemax(Int)` test (eager `mean` gives 9.223372036854776e18, checked) | §2.3 |
+| n1 `InterruptException` | rethrown at once, no re-run | §3.3 |
+| n2 scalar-only subexpressions | evaluated once per morsel, also with no rows left | §3.3, §3.5 |
+| n3 unchosen y rows | unmatched under `multiple ≠ :all`; `:any` = `:first`; verified with dplyr 1.2.0 | §1.1, §1.6 |
+| n4 raw first-seen key | parallel `rawkeys[id]` vector kept by the caller | §2.2 |
+| n5 slot rule | frozen home slot `h & (cap - 1)` (low bits; partitions use high bits) | §2.2 |
+| n6 abstract join keys | `ArgumentError` naming the column; `Dict` fallback documented as later work | §1.2 |
+| n7 `_KERNEL_DISAGREE` | atomic counter; tests assert the before/after difference is 0 | §3.3, §3.5 |
+| n8 `run_raw` cannot run trees | p4-join writes its own runner; p4-groupby2 only adds to LazyProp | §4 |
+| n9 `@info` vs collect-time resolution | one rule: logged once when `JoinNames` are resolved, collect-time resolution included and documented | §1.1, §1.4 |
+| n10 hidden-column collision; `cross_join` | a user column named `##chui_yrow` → `ArgumentError`; `cross_join` defined under K3-A | §1.2, §1.5 |
