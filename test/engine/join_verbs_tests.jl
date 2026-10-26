@@ -97,7 +97,7 @@ end
     for r in forall(() -> full_join(yk; by = :k)(xk))
         @test !(ChuiFrames.getcol(r, :k) isa ChuiFrames.DictColumn)
         @test isequal(colvec(r, :k), ["a", "b", "c"])
-        @test isequal(colvec(r, :w), [missing, 4, 3])
+        @test isequal(colvec(r, :w), [missing, 3, 4])           # yk is ["b", "c"] (codes 2, 1)
     end
 end
 

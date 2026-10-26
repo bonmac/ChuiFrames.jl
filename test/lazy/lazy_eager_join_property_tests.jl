@@ -49,7 +49,7 @@
     # Steps before the join (on x) and after it: total ones, plus a select that may name a
     # column the join renamed (an ArgumentError in both paths).
     const PRE = Any[filter(c.v .> -2), filter(isnan.(c.k)), filter(.!(ismissing.(c.k))), mutate(z = c.v .* 2), select(:k, :i, :v, :s), rename(vv = :v), arrange(desc(c.v))]
-    const POST = Any[filter(c.i .> 1), filter(c.v .>= 0), head(2), head(0), select(:k), select(:s), arrange(c.v), mutate(q = c.i .+ 1)]
+    const POST = Any[filter(c.i .> 1), filter(c.v .>= 0), filter(c.w .> 0), filter(c.k .> 0.5), head(2), head(0), select(:k), select(:s), arrange(c.v), mutate(q = c.i .+ 1)]
     pregen = Data.Vectors(Data.SampledFrom(PRE); max_size = 2)
     postgen = Data.Vectors(Data.SampledFrom(POST); max_size = 2)
 
@@ -113,7 +113,7 @@ end
     end
     deadline!(500)
     t0 = time()
-    sr = @check record = false db = false max_examples = 600 join_eq(
+    sr = @check record = false db = false max_examples = 2000 join_eq(
         xgen, ygen, pregen, Data.Integers(1, length(KINDS)), Data.Integers(1, length(BYS)), Data.Booleans(),
         Data.Integers(1, 5), Data.Integers(1, 2), Data.Booleans(), Data.Booleans(), postgen, morselgen, threadgen,
     )
@@ -123,6 +123,36 @@ end
     @info "join lazy == eager" examples_ok = nok[] examples_err = nerr[] seconds = round(elapsed; digits = 1) nthreads = Threads.nthreads()
     @test nok[] > 0 && nerr[] > 0
     @test elapsed < 900
+end
+
+@testitem "join property: filters above a join (pushdown, spec §1.3)" tags = [:property] setup = [LazyProp, Force, JoinProp] begin
+    # A filter on one side's column directly above a join, for every kind and `multiple`: the
+    # optimizer may move it only where §1.3 allows; lazy must equal eager either way.
+    const FILTERS = Any[filter(c.w .> 0), filter(c.v .> 0), filter(c.k .> 0.5), filter(isnan.(c.k)), filter(c.s .== "a")]
+    npushed = Ref(0)
+    function pushed_eq(xt, yt, ki, mi, fi, m, th)
+        checktime()
+        kind = (:inner, :left, :right, :full, :semi, :anti, :nest)[ki]
+        js = mkjoin(kind, :k, false, (:all, :first, :last, :any)[mi], :drop, :na, Frame(yt))
+        p = js ⨟ FILTERS[fi]
+        any(r -> occursin("below join(", r), last(ChuiFrames.optimize_plan(p(lazy(xt)).plan)).fired) && (npushed[] += 1)
+        e = outcome(() -> run_eager(p, xt))
+        for v in JFORCES
+            l = withforce(() -> outcome(() -> run_lazy(p, xt; morsel = m, threads = th)), forcepairs(v)...)
+            r = withforce(() -> outcome_raw(() -> run_raw_join(p(lazy(xt)); morsel = m, threads = th)), forcepairs(v)...)
+            (joutcomes_agree(e, l) && joutcomes_agree(e, r)) || (event!("force", v); return explain_failure(Any[js, FILTERS[fi]], e, r))
+        end
+        return true
+    end
+    deadline!(300)
+    t0 = time()
+    sr = @check record = false db = false max_examples = 1500 pushed_eq(
+        xgen, ygen, Data.Integers(1, 7), Data.Integers(1, 4), Data.Integers(1, length(FILTERS)), morselgen, threadgen,
+    )
+    show_failure(sr)
+    @test Supposition.results(sr).ispass
+    @test npushed[] > 0
+    @test time() - t0 < 600
 end
 
 @testitem "join property: eager joins agree with the nested-loop oracle" tags = [:property] setup = [LazyProp, Force, JoinProp, Oracle] begin
