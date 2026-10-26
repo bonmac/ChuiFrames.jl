@@ -167,12 +167,16 @@ anti_join(y; on_by = nothing, na_matches = :na)
   - `Sx === Sy`;
   - both are `<: AbstractString`. They are unified the way `bind_rows` unifies them: its
     `vcat_columns` (src/columns.jl) collects the values and calls `column`, which builds a
-    `StringColumn` for any `AbstractString` element type. So both sides' keys are canonicalised
-    to `String` before hashing, and the output key is a `String` column. Two string types never
-    promote to `AbstractString`;
+    `StringColumn` for any `AbstractString` element type. The output key is a `String` column
+    (the join builds it). The typed keys keep each column's own string type (e.g. `StringView`;
+    no per-row conversion): `isequal` and `keyhash` agree across `String`, `SubString` and
+    `StringView` (tested), and a `KeyTable{String}` accepts `StringView` keys, converting once per
+    new key. Two string types never promote to `AbstractString`;
   - both are in `Union{Bool, Base.BitInteger, Base.IEEEFloat}` and `T = promote_type(Sx, Sy)`
-    keeps every value of both. `_lossless_key_promotion(Sx, Sy)` (`src/engine/join.jl`) decides
-    this:
+    keeps every value of both. `_lossless_key_promotion(Sx, Sy)` and `_keypair_allowed(Sx, Sy)`
+    (`src/engine/hashagg.jl`, with the rest of the key machinery; p4-join calls them and never
+    redefines them) decide this. A side whose nonmissing type is `Union{}` (an all-`missing` key
+    column) pairs with any type: it can only match `missing`.
     - integer → integer when `typemin`/`typemax` fit in `T` (so `Int64`/`UInt64` is rejected:
       a negative key would throw `InexactError`);
     - integer → float when the integer's bit width ≤ the float's significand bits + 1
@@ -468,8 +472,8 @@ struct KeyTable{K}                      # open addressing, linear probing, power
                                         # home slot of hash h: (h & (cap - 1)) + 1 — the LOW bits;
                                         # radix partitions use the HIGH bits (h >> (64 - p)), so the two never correlate
 KeyTable{K}(sizehint::Int)
-getorinsert!(t::KeyTable{K}, k, h::UInt64)::Int   # dense id, 1-based, first-seen order
-lookup(t::KeyTable{K}, k, h::UInt64)::Int         # id, or 0 when absent; compares with `isequal`
+getorinsert!(t::KeyTable{K}, k, h::UInt64)::Int   # dense id, 1-based, first-seen order; canonicalises k
+lookup(t::KeyTable{K}, k, h::UInt64)::Int         # id, or 0 when absent; canonicalises k, compares with `isequal`
 Base.length(t::KeyTable)                          # number of keys
 keyvalues(t::KeyTable{K})::Vector{K}              # keys in id order
 ```
@@ -479,7 +483,8 @@ keyvalues(t::KeyTable{K})::Vector{K}              # keys in id order
   columns:** a concrete `Tuple` of canonical values.
 - **`DictColumn`, `codes = true`** (group-by within one frame): the codes of the canonicalised
   dictionary (two entries may still be ±0.0 or NaN payloads; they map to one code), as
-  `Int32`/`UInt32` keys, so string keys never hash strings per row. **`codes = false`** (joins
+  `UInt32` keys with 0 = `missing` (a dictionary never holds `missing`; one with more than
+  `typemax(UInt32)` entries raises `ArgumentError`), so string keys never hash strings per row. **`codes = false`** (joins
   across frames): canonical values.
 - **Cross-type lookup** (joins, `Int` x against `Float64` y): `lookup` accepts a `k` of any type
   and compares with `isequal`. `keyhash` is Base `hash` of the canonical value, which agrees
@@ -555,10 +560,12 @@ radix_partition(hashes::AbstractVector{UInt64}, p::Int; ntasks::Int = 1)
     -> (offsets::Vector{Int}, perm::Vector{Int})
 # partition of element i: hashes[i] >> (64 - p); offsets has 2^p + 1 entries;
 # perm[offsets[j]:offsets[j+1]-1] lists partition j's elements in ascending index order (stable)
+# 0 <= p <= RADIX_MAX_BITS (20) and ntasks >= 1, else ArgumentError
 ```
 
-It is a stable counting scatter: a histogram per task range, prefix sums in (task range, index)
-order, then the scatter. The aggregate sink, the partitioned join build and later spilling all
+It is a stable counting scatter: a histogram per task range, prefix sums over partitions
+(outer) and task ranges in order (inner), then the scatter. The histogram holds 2^p × ntasks
+`Int`s (twice that with the scatter positions), so callers choose a small `p`. The aggregate sink, the partitioned join build and later spilling all
 use it. A property test checks stability and that the result is a permutation.
 
 ## 3. Codegen kernels (ADR-0025; ADR-0003 rule 12; DESIGN §7 item 3)
@@ -797,3 +804,14 @@ row's "`promote_type` + 2⁵³ caveat" is replaced by N1 (Int64/Float64 is now r
 | n8 `run_raw` cannot run trees | p4-join writes its own runner; p4-groupby2 only adds to LazyProp | §4 |
 | n9 `@info` vs collect-time resolution | one rule: logged once when `JoinNames` are resolved, collect-time resolution included and documented | §1.1, §1.4 |
 | n10 hidden-column collision; `cross_join` | a user column named `##chui_yrow` → `ArgumentError`; `cross_join` defined under K3-A | §1.2, §1.5 |
+
+p4-groupby review (APPROVE WITH CONDITIONS, at 657cdaa), spec amendments by the sub-lead:
+
+| Finding | Answer | Where |
+|---|---|---|
+| M1 `Union{}` (all-missing key) in the pair rule | pairs with any type; fixed in the lane | §1.1 |
+| OQ1 `_lossless_key_promotion` location | `src/engine/hashagg.jl`; p4-join calls it | §1.1 |
+| OQ2 string keys keep their type | `StringView` keys kept; hash agrees with `String`; the join builds the `String` output | §1.1 |
+| OQ3 dictionary codes | `UInt32`, 0 = `missing` | §2.2 |
+| OQ4 re-canonicalisation | `getorinsert!`/`lookup` canonicalise `k` | §2.2 |
+| OQ5 / m4 / m6 radix bounds and wording | `p <= 20`, `ntasks >= 1`, memory bound, prefix order | §2.4 |
