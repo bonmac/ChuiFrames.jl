@@ -125,9 +125,12 @@ The kernel machinery itself (decision, builder, probe check, guarded run, output
 compiled the first time any kernel runs. Without a precompile workload that cost 813 ms on
 1.13 and 613 ms on 1.10 (lane commit `b279f87`, `.lanes/evidence/codegen-first-b279f87.txt`
 and `.lanes/evidence/codegen-first-lts-b279f87.txt`). A `@compile_workload` that runs one
-compiled kernel at precompile time (end of `src/lazy/render.jl`, because it needs the physical
-plan) brings the first kernel on a different shape to 168 ms on 1.13 and 77 ms on 1.10, and a
-second new shape to 22.7 ms and 16.9 ms (`codegen-first-fe71780.txt`, `codegen-first-lts-fe71780.txt`).
+compiled kernel at precompile time brings the first kernel on a different shape to 168 ms on
+1.13 and 77 ms on 1.10, and a second new shape to 22.7 ms and 16.9 ms
+(`codegen-first-fe71780.txt`, `codegen-first-lts-fe71780.txt`; that workload sat at the end of
+render.jl). After review it moved into the package's one workload in `src/ChuiFrames.jl` (a
+forced lazy `collect`, mirrored in `benchmark/ttfx.jl`); the TTFX budget check of that change
+is in the lane report.
 
 ## Decision: `INTERP_THRESHOLD = 500_000`
 

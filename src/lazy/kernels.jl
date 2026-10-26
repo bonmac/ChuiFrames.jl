@@ -431,7 +431,7 @@ function _assemble(p::StageProgram, f::Frame, @nospecialize(regs::Tuple), keep::
     return Frame(copy(p.names), cols, Symbol[], nothing, p.hasfilter ? length(keep) : f.nrow, true)
 end
 
-# The builder (`_build`: a stage and a probe frame → a `StageProgram`) is in render.jl.
+# The builder (`_build`: a stage and a probe frame → a `StageProgram`) is in kernels_build.jl.
 
 # ---------------------------------------------------------------------------------------------
 # The compiled kernel of one run
