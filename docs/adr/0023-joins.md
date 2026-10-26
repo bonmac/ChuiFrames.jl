@@ -1,6 +1,7 @@
 # ADR-0023: Joins follow dplyr 1.2.0 through one hash-join operator in three physical shapes, chosen by the cost stage; keys are `by =`, and integer/float key pairs compare as `Float64`
 
-- **Status:** Proposed (2026-10-26)
+- **Status:** Proposed (2026-10-26). Open condition: lane p4-joinfix (rule 3's `on`/`by`
+  `ArgumentError`) lands before the phase-4 merge.
 - **Date:** 2026-10-26
 - **Deciders:** the user (★ K1–K4 and the `nest_join` name-clash ruling, 2026-10-26, at the
   ChuiFrames phase-4 ★); acceptance of this record: the user, at the phase-4 merge ★

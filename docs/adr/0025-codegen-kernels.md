@@ -114,7 +114,8 @@ with critic B2/N3's exactness checks, costs 18–45 ms per new 1–10-step shape
 
 - `_KERNEL_DISAGREE` is ever non-zero in CI → interpreter by default until fixed.
 - The median per-shape compile time of 1–10-step stages halves or doubles, the interpreter's
-  per-step cost moves by more than 2× (row `lazy/filter, mutate, select/n=10^6`), or p4-bench's
+  per-step cost moves by more than 2× (an interpreter row: the same pipeline forced with `_FORCE_KERNEL => :interpreter`, owed by
+  p4-bench; `lazy/filter, mutate, select/n=10^6` times the compiled kernel), or p4-bench's
   compiled-stage row (owed, spec §5) disagrees with the research table by more than 2× →
   recompute `INTERP_THRESHOLD` and amend the ADR-0003 rule 12 note.
 - A multi-threaded measurement moves the median break-even outside 2.5–10×10⁵ rows.

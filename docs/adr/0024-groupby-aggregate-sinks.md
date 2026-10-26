@@ -42,7 +42,7 @@ src/engine/{hashagg,hashagg_acc,hashagg_sink,radix,groups}.jl, src/lazy/{sinks,e
    typed accumulators are lazy-only.
 
 **Lazy: the hash-aggregate sink**
-4. A summary **must** run in the sink (`_hashagg_plan`, src/lazy/sinks.jl) only when all hold:
+4. A summary **must** run in the sink (`_hashagg_plan`, src/lazy/sinks.jl) if and only if all hold:
    no row limit in the stage; an ungrouped scan; it directly follows the streamed stage as
    `group_by(keys) ⨟ summarise` (no `reframe`, no `by` on the `summarise`) or
    `summarise(...; by)`; plain key columns of the stage's output (no computed or selector keys)
@@ -131,7 +131,8 @@ src/engine/{hashagg,hashagg_acc,hashagg_sink,radix,groups}.jl, src/lazy/{sinks,e
 - A `drop = false` query with pruned partitions is more than 2× slower than the same query with
   `drop = true` (no row yet; p4-bench owes one) → read dictionaries only.
 - A frozen signature (rules 1, 2) must change → spec amendment, then this ADR.
-- **Phase-5 follow-ups (user, phase-4 ★):** stream the eager fallbacks of rule 4 (holistic
+- **Phase-5 follow-ups (listed with the user's phase-4 ★ answer that accepted the narrowing of
+  ADR-0003 rules 3 and 5 for phase 4; they lift those notes):** stream the eager fallbacks of rule 4 (holistic
   aggregates, computed keys, `across`, a row limit, grouped scans), and give `MapM`, `ReduceM`
   and the other untyped aggregators typed task state (rule 5); each lifts the matching ADR-0003
   note.
