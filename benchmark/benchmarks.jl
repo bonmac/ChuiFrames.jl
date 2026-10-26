@@ -1,6 +1,7 @@
 # ChuiFrames benchmark suite (ADR-0022; ecosystem ADR-0011). AirspeedVelocity, `julia
 # scripts/ci.jl bench` and `benchmark/run.jl` all load this file and run `SUITE`, a BenchmarkTools
-# group. Public API only, so the same file runs against the merge base. Inputs are built once here
+# group. Public API, plus (phase 4) the internal forcing switches and `DictColumn`, each block
+# guarded by `isdefined`, so the same file runs against the merge base. Inputs are built once here
 # (fixed seeds), outside the timed expressions, and interpolated with `$`.
 #
 #   julia benchmark/run.jl [--check]                                  # table + budgets (ADR-0022)

@@ -14,7 +14,7 @@
 
 ### Changed
 - The hash-aggregate sink's radix switch `RADIX_SWITCH` is 2²⁰ groups per task table (was 2¹⁶):
-  between 10⁵ and 5·10⁵ groups the 2¹⁶ limit allocated 2–4.6× the memory of 2²⁰ and ran up
-  to 2.5× slower (docs/research/performance-phase4.md P4-03).
+  between 10⁵ and 5·10⁵ groups the 2¹⁶ limit allocated 1.2–4.6× the memory of 2²⁰ and ran up
+  to 2.9× slower on a loaded machine (docs/research/performance-phase4.md P4-03).
 - Allocation budgets of rows whose allocations fell by more than half since their baseline are
   tightened (ADR-0022 rule 5): grouped `summarise`, `count_by` and the lazy pipeline.
