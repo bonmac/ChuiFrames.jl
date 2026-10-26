@@ -5,6 +5,10 @@
 #   scripts/lane list [--repo DIR]
 #   scripts/lane audit <name> [--repo DIR] [--base B] [--owns GLOBS] [--reported FILE]
 #   scripts/lane remove <name> [--repo DIR] [--allow-ignored]
+#   scripts/lane release <agent name or lane key> [--repo DIR]
+#
+# release (0.2.8) tells the dispatch cap (.claude/hooks/dispatch_limit.sh) that an agent lane is
+#         closed when TaskStop cannot: the agent is gone, or its dispatch never ran.
 #
 # new     refuses past the cap ([lanes] max_open in the repo's .agents/agent-registry.toml,
 #         default 4) and when .worktrees/ is not gitignored; branch <prefix>/<name> from base;
@@ -117,15 +121,30 @@ module Lane
         return ok
     end
 
-    "Append one JSON line to the repo's lane ledger (.lanes/ledger.jsonl); never fails the command."
+    "The lane ledger the hooks read: `[lanes] ledger` in the registry (gen.jl renders it into limits.env), default .lanes/ledger.jsonl."
+    function ledger_path(repo)
+        p = joinpath(repo, ".agents", "agent-registry.toml")
+        rel = isfile(p) ? get(get(TOML.parsefile(p), "lanes", Dict()), "ledger", ".lanes/ledger.jsonl") : ".lanes/ledger.jsonl"
+        return joinpath(repo, rel)
+    end
+
+    """
+    Append one JSON line to the repo's lane ledger; returns `true` if it was written. Never throws.
+    After a truncated last line (a crash mid-write) it starts a new line first, as the hooks'
+    `ledger` does (0.2.8): otherwise this record joins the fragment and is skipped as malformed.
+    """
     function ledger_line(repo, ev; kw...)
         esc(x) = "\"" * replace(string(x), "\\" => "\\\\", "\"" => "\\\"") * "\""
         val(v) = v isa AbstractVector ? "[" * join(esc.(v), ",") * "]" : esc(v)
         fields = ["\"ts\":" * esc(Dates_now()), "\"ev\":" * esc(ev), ("\"$k\":" * val(v) for (k, v) in kw)...]
+        f = ledger_path(repo)
         return try
-            mkpath(joinpath(repo, ".lanes"))
-            open(io -> println(io, "{", join(fields, ","), "}"), joinpath(repo, ".lanes", "ledger.jsonl"), "a")
+            mkpath(dirname(f))
+            torn = isfile(f) && filesize(f) > 0 && open(io -> (seekend(io); skip(io, -1); read(io, UInt8) != UInt8('\n')), f)
+            open(io -> print(io, torn ? "\n" : "", "{", join(fields, ","), "}\n"), f, "a")
+            true
         catch
+            false
         end
     end
     Dates_now() = Dates.format(Dates.now(Dates.UTC), "yyyy-mm-ddTHH:MM:SS") * "Z"
@@ -246,8 +265,32 @@ module Lane
         return 0
     end
 
+    """
+        cmd_release(repo, key)
+
+    Close an agent lane the dispatch cap still counts (factory 0.2.8, critic B1): appends
+    `{ev: close, ref: key, why: released, session: "*"}`, which `_lanes.sh` matches in every session
+    against a dispatch's name, key or agent id. For an agent that is gone: a TaskStop for it fails
+    validation and fires no hook. `key` is sanitised as the hooks' `ledger` does.
+    """
+    function cmd_release(repo, key; io = stdout)
+        k = replace(key, r"[^A-Za-z0-9_./:@-]" => "_")
+        try
+            ledger_path(repo)
+        catch # a registry that does not parse, or a `[lanes] ledger` that is not a string (re-review n4)
+            println(stderr, "lane: cannot read [lanes] ledger from .agents/agent-registry.toml (fix the file); $k is NOT released")
+            return 1
+        end
+        if !ledger_line(repo, "close"; session = "*", ref = k, why = "released")
+            println(stderr, "lane: could not write the lane ledger $(ledger_path(repo)); $k is NOT released")
+            return 1
+        end
+        println(io, "lane: released $k (the dispatch cap no longer counts a lane with that name, key or agent id)")
+        return 0
+    end
+
     function main(args)
-        usage = "usage: scripts/lane new <name> [--repo DIR] [--base B] [--prefix P] [--owns GLOBS] | list [--repo DIR] | audit <name> [--repo DIR] [--base B] [--owns GLOBS] [--reported FILE] | remove <name> [--repo DIR] [--allow-ignored]"
+        usage = "usage: scripts/lane new <name> [--repo DIR] [--base B] [--prefix P] [--owns GLOBS] | list [--repo DIR] | audit <name> [--repo DIR] [--base B] [--owns GLOBS] [--reported FILE] | remove <name> [--repo DIR] [--allow-ignored] | release <agent name or lane key> [--repo DIR]"
         opts, pos = try
             parse_args(args, ("--allow-ignored",), ("--repo", "--base", "--prefix", "--owns", "--reported"))
         catch e
@@ -264,6 +307,7 @@ module Lane
         sub == "list" && length(pos) == 1 && return cmd_list(repo)
         sub == "new" && length(pos) == 2 && return cmd_new(repo, pos[2], opts)
         sub == "audit" && length(pos) == 2 && return cmd_audit(repo, pos[2], opts)
+        sub == "release" && length(pos) == 2 && !isempty(pos[2]) && return cmd_release(repo, pos[2])
         sub == "remove" && length(pos) == 2 && return cmd_remove(repo, pos[2]; allow_ignored = get(opts, "--allow-ignored", false))
         println(stderr, usage)
         return 2
