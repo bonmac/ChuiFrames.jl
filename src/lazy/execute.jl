@@ -162,6 +162,10 @@ end
 # and the streamed stage.
 _readpart(ph::Physical, residual::Tables.Scan, h) =
     apply_scan(conform_types(_read(ph.scan.source, h), source_schema(ph.scan.source)), residual)
+# A partition read for its column kinds only (`_needs_levels`): its empty slice, taken before
+# the declared types, the residual and the stage, so no row is converted, filtered or computed.
+_readkinds(ph::Physical, residual::Tables.Scan, h, kernel) =
+    _runstage(ph, apply_scan(conform_types(take(_read(ph.scan.source, h), Int[]), source_schema(ph.scan.source)), residual), kernel)
 function _runstage(ph::Physical, f::Frame, kernel = interpret_stage(ph))
     isempty(ph.engine) || (f = apply(FilterStep(ph.engine, false), f))
     return kernel(f)
@@ -278,7 +282,7 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
             Threads.atomic_add!(pruned, 1)
             # A later step shows dictionary levels: the pruned partition's column kinds still
             # count (its empty slice through the stage), as eager `read_source` concatenates it.
-            levels && return _runstage(ph, take(_readpart(ph, residual, handles[i]), Int[]), kernel)
+            levels && return _readkinds(ph, residual, handles[i], kernel)
             return lock(emptylock) do
                 emptyout[] === nothing && (emptyout[] = _process_empty(ph))
                 emptyout[]::Frame
@@ -294,7 +298,9 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
         stats.pruned = pruned[]
         return run_rest(ph, agg; morsel, threads, from = nsteps + 1)
     end
-    frames = _run(ph, part, length(handles), threads, stats)
+    # the partitions an early-stopped limit never reached still count for the column kinds
+    kindsonly = levels ? (i -> _readkinds(ph, residual, handles[i], kernel)) : nothing
+    frames = _run(ph, part, length(handles), threads, stats, kindsonly)
     stats.pruned = pruned[]
     out = _gather(frames, () -> _process_empty(ph), Frame[f for f in frames if !ispruned(f)])
     ph.limit === nothing || (out = apply(HeadStep(ph.limit), out))
@@ -309,7 +315,9 @@ a `drop = false` scan)? Then a gathered dictionary column must have exactly the 
 read gives it (`_gathered_kind`): eager `read_source` concatenates every partition, so a
 partition pruned by statistics still decides whether the column stays a dictionary column
 (review MAJOR 1, CF-008). Such a pruned partition is read and its empty slice runs through the
-stage: no rows are processed, its column kinds are seen.
+stage: no rows are processed, its column kinds are seen (`_readkinds`). So do the partitions a
+row limit's early stop never reaches, when a gathered column is a dictionary column
+(`_sequential_limit`).
 """
 _needs_levels(ph) = !ph.scan.drop || any(s -> s isa GroupByStep && s.drop === false, ph.rest)
 
@@ -339,7 +347,14 @@ end
 # hold `limit` rows the fold returns `Reduced` (sequential, never under a parallel fold;
 # ChuiCore S1), but only when `stop_early`; otherwise every partition is processed, so a
 # non-total step raises on the same rows as eager (spec §1).
-function _sequential_limit(ph::Physical, part, n::Int, stats::ExecStats)
+#
+# After an early stop, `kindsonly(i)` (given when `_needs_levels`) adds each unreached morsel's
+# empty output (`_readkinds`), so the gather sees every partition's column kinds as eager
+# `read_source` does (CF-008). Safe: these frames have no rows, so the gathered rows, the
+# limit's rows and the R-total semantics do not change (the stage runs on no rows, so it cannot
+# raise where eager would not). Only when a gathered frame holds a dictionary column: otherwise
+# no kind can change (`_gathered_kinds`) and the scan still stops early.
+function _sequential_limit(ph::Physical, part, n::Int, stats::ExecStats, kindsonly = nothing)
     limit = ph.limit::Int
     rows = Ref(0)
     function rf(acc::Vector{Frame}, f::Frame)
@@ -348,14 +363,21 @@ function _sequential_limit(ph::Physical, part, n::Int, stats::ExecStats)
         rows[] += f.nrow
         return (ph.stop_early && rows[] >= limit) ? UP.Reduced(acc) : acc
     end
-    return UP.foldxl(rf, UP.Map(part), 1:n; init = Frame[])
+    acc = UP.foldxl(rf, UP.Map(part), 1:n; init = Frame[])
+    (kindsonly === nothing || length(acc) >= n) && return acc
+    any(f -> any(c -> c isa DictColumn, f.columns), acc) || return acc
+    for i in (length(acc) + 1):n
+        push!(acc, kindsonly(i)::Frame)
+        stats.read += 1
+    end
+    return acc
 end
 
 # Run `part(i)` for the morsels 1:n: with a limit sequentially; else in parallel when the stage,
 # as a transducer over morsels, is stateless (ADR-0003 rule 6) and threads are available; else
 # sequentially.
-function _run(ph::Physical, part, n::Int, threads::Bool, stats::ExecStats)
-    ph.limit === nothing || return _sequential_limit(ph, part, n, stats)
+function _run(ph::Physical, part, n::Int, threads::Bool, stats::ExecStats, kindsonly = nothing)
+    ph.limit === nothing || return _sequential_limit(ph, part, n, stats, kindsonly)
     xf = UP.Map(part)
     if threads && Threads.nthreads() > 1 && n > 1 && UP.isstateless(xf)
         stats.parallel = true
