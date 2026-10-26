@@ -213,6 +213,11 @@ Facts ([grammar.md](../research/grammar.md); [lane-checks.md](../research/lane-c
     call this out.
 16. **Joins** take keys as `on = :k` or `on = [:a => :b]` (left `=>` right), not a
     `join_by(a == b)` expression, because `==` on nodes is structural (CF-005).
+    - *Amended (2026-10-26, user at the ChuiFrames phase-4 ★):* `by` replaces `on` for joins
+      (dplyr parity); key forms: `nothing` (natural join + `@info`), `:a`, `"a"`, `[:a, :b]`,
+      `:a => :b`, vectors of those. The DataAPI methods (`DataAPI.innerjoin(x, y; on)` and the
+      other joins) keep DataAPI's own `on` keyword (ADR-0007) and forward it to `by`. Spec
+      `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md` §0.4, §1.1.
 17. **Lints** (warnings that can be silenced):
     - At build time:
       - the GR-03 chained-comparison shape (`a .> 1 .& b .< 2`);
