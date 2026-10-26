@@ -25,6 +25,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
   | p4-joinfix | DataAPI join methods reject `by`; `crossjoin` rejects keys | `a06a090` |
   | p4-bench | SUITE and budget rows, `RADIX_SWITCH` = 2²⁰, compare and calibrate | `5956626` |
   | p4-perf | linear concatenations; no per-row allocation in `take(::StringColumn)`; budgets re-tightened | `b30cea3` |
+  | p4-levels | final-review B1: a join's collected sides read skipped partitions' kinds under `drop = false` (CF-008) | `9ef025e` |
 
   The worktrees are removed; the branches are kept. Reviewer reports are in
   `ChuiFrames.jl/.lanes/reports/`, and lane evidence is archived under `.lanes/reports/lanes/`.
@@ -123,6 +124,13 @@ None. Every phase-4 lane is merged and its worktree removed.
   - several eager time rows (`summarise`, `count_by`, `filter`, `pipeline`, `window`) fell
     below half their baselines in earlier lanes; tighten them on a quiet machine;
   - `cross_join` raises Julia's generic `MethodError` for unknown keywords.
+- **p4-levels review minors:**
+  - `join_levels_tests.jl` "still stops early" should assert a read count;
+  - the explain "decided at collect" branch matches a literal `sinks.jl` message (use a reason
+    symbol);
+  - the explain wording "then eagerly" sits next to "sink decided at collect";
+  - a long line in `docs/src/lazy.md`;
+  - the `levels` flag is plan-wide, so a `drop = false` on another branch also turns it on.
 - **Sinks:** for `drop = false` queries, pruned partitions are still read in full; reading only
   their dictionaries would be cheaper. `explain`'s "pruned" count then overstates the saving.
 - **Carried from phase 3:** filters past provably total `mutate`s; sort skipping from
@@ -130,6 +138,7 @@ None. Every phase-4 lane is merged and its worktree removed.
 
 ## Next action
 
-1. Run `dod.jl` and the full gates at the final head.
+1. Run `dod.jl` and the full gates at the final head (after p4-levels, `9ef025e` + this
+   HANDOFF commit).
 2. Ask the ecosystem lead for the quiet window.
 3. Run the final reviewer on `main...feat/phase4`.
