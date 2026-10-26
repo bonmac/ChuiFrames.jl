@@ -79,3 +79,30 @@ end
     @test occursin("grouped-window sink", sprint(explain, mutate(cs = cumsum(c.y); by = :g)(lazy(fr))))
     @test !occursin("grouped-window sink", sprint(explain, mutate(cs = cumsum(c.y))(lazy(fr))))
 end
+
+@testitem "grouped-window sink behind a forced compiled stage kernel (spec §0.3, §3)" tags = [:unit] setup = [WS, Force, CompiledRan] begin
+    # a streamed stage (mutates, a filter on a computed column) runs compiled on every morsel
+    # before the gather; the grouped window then runs on the gathered frame
+    pres = Any[
+        mutate(z = c.y .* 2),
+        mutate(z = c.y .+ 1) ⨟ filter(c.z .> 0),
+        mutate(z = c.y .- 1, xx = c.x .* 2.0),
+    ]
+    d0 = CF._KERNEL_DISAGREE[]
+    for pre in pres
+        @test compiled_ran(pre(lazy(fr)))                  # a compiled program ran on the morsels
+        for s in MUTATES, gb in (group_by(:g), group_by(:d; drop = false))
+            p = pre ⨟ gb ⨟ s
+            e = outcome(() -> p(fr))
+            for m in (1, 4), th in (true, false)
+                l = withforce(CF._FORCE_KERNEL => :compiled) do
+                    outcome(() -> collect(p(lazy(fr)); morsel = m, threads = th))
+                end
+                @test e[1] === l[1]
+                e[1] === :ok && l[1] === :ok && @test identical(e[2], l[2])
+                e[1] === :err && l[1] === :err && @test e[2] === l[2]
+            end
+        end
+    end
+    @test CF._KERNEL_DISAGREE[] - d0 == 0                  # critic n7
+end

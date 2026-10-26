@@ -305,3 +305,104 @@ end
         @test sprint(io -> code_lowered(io, q)) == withforce(() -> sprint(io -> code_lowered(io, q)), CF._FORCE_KERNEL => :interpreter)
     end
 end
+
+@testitem "kernels: a non-whitelisted stage is decided before any shape key, no cache trace (p4-join review m5)" tags = [:unit] setup = [Force, KernelHelp] begin
+    # A step type not on §3.2's whitelist carrying per-plan data (as the join's `ProbeStep`
+    # carries its build table); hashing it is counted. Also a `Pipe` node (a fresh closure per
+    # plan) and a vector `Lit`. Physical plans are built directly: `physical` streams neither.
+    NHASH = Ref(0)
+    struct HeavyStep <: CF.Step
+        table::Vector{Int}
+    end
+    Base.hash(s::HeavyStep, h::UInt) = (NHASH[] += 1; hash(s.table, h))
+    CF.apply(s::HeavyStep, f::Frame) = f
+    t = (x = [1.0, 2.0, 3.0], y = [1, 2, 3])
+    scan = CF.physical(lazy(t).plan).scan
+    mk(stage) = CF.Physical(scan, CF.Step[stage...], nothing, false, CF.Step[])
+    fresh(i) = (
+        Any[HeavyStep(collect(1:(100 + i)))],
+        Any[mutate(z = c.x .+ 1.0), HeavyStep(fill(i, 50))],
+        Any[mutate(z = c.y |> (v -> v .+ i))],
+        Any[mutate(z = c.x .+ [1.0, 2.0, Float64(i)])],
+    )
+    # something compiled in the session, so small inputs look their shape up
+    ok = rawph(mutate(wlok = c.x .* 9.25)(lazy(t)))
+    withforce(() -> CF.stage_kernel(ok, 0)(Frame(t)), CF._FORCE_KERNEL => :compiled)
+    @test CF._KERNEL_ANY_COMPILED[]
+    n0 = (length(CF._KERNEL_CACHE), length(CF._KERNEL_SMALL))
+    NHASH[] = 0
+    for force in (:auto, :compiled), i in 1:40, stage in fresh(i)
+        ph = mk(stage)
+        withforce(CF._FORCE_KERNEL => force) do
+            @test CF.kernel_decision(ph, CF.INTERP_THRESHOLD)[1] === :interpreter
+            @test CF.kernel_decision(ph, 0)[1] === :interpreter
+            @test !(CF.stage_kernel(ph, 0) isa CF.CompiledStage)
+            # one morsel: a vector literal is sized for the whole frame
+            @test same(CF.execute(ph; morsel = 3), interp(ph, Frame(t)))
+        end
+    end
+    @test (length(CF._KERNEL_CACHE), length(CF._KERNEL_SMALL)) == n0   # no entry written
+    @test NHASH[] == 0                                                  # no shape key or hash
+    @test occursin("HeavyStep", CF.kernel_decision(mk(fresh(1)[1]), CF.INTERP_THRESHOLD)[2])
+end
+
+@testitem "kernels: the whitelist reason names the offending node (review MINOR-2)" tags = [:unit] setup = [Force, KernelHelp] begin
+    t = (x = [1.0, 2.0, 3.0], y = [1, 2, 3])
+    big = CF.INTERP_THRESHOLD
+    why(q) = CF.kernel_decision(rawph(q(lazy(t))), big)
+    k, w = why(mutate(z = case_when(c.y .> 1 => c.x .* 2.0; default = 0.0)))
+    @test k === :interpreter
+    @test occursin("case_when values must be columns or scalar literals, got", w)
+    @test !occursin("MutateStep", w)
+    # nodes `physical` does not stream, in directly built plans
+    scan = CF.physical(lazy(t).plan).scan
+    mk(s) = CF.Physical(scan, CF.Step[s], nothing, false, CF.Step[])
+    @test occursin("Pipe", CF.kernel_decision(mk(mutate(z = c.y |> v -> v .+ 1)), big)[2])
+    @test occursin("vector literal", CF.kernel_decision(mk(mutate(z = c.x .+ [1.0, 2.0, 3.0])), big)[2])
+    @test occursin("IfAnyAll", CF.kernel_decision(mk(filter(if_any([:x], v -> v .> 1.0))), big)[2])
+    @test occursin("mutate with by or keep", CF.kernel_decision(mk(mutate(z = c.x .+ 1.0; keep = :used)), big)[2])
+end
+
+@testitem "kernels: a failed build marks the shape rejected (review MINOR-3)" tags = [:unit] setup = [Force, KernelHelp] begin
+    # The declared schema says Int, the partition holds strings (`conform_types` keeps the column
+    # as read): the decision compiles on the declared probe, the morsel's program does not build.
+    struct LyingSrc <: CF.Source end
+    CF.source_schema(::LyingSrc) = Tables.Schema((:y,), (Int,))
+    CF.source_label(::LyingSrc) = "lying-schema test source"
+    CF.plan_partitions(::LyingSrc, scan::Tables.Scan; morsel::Int = 1) = ([1], scan)
+    CF.read_partition(::LyingSrc, p::Int) = Frame(y = ["p", "q"])
+    t = (x = [1.0, 2.0],)
+    other = rawph(mutate(wmin3 = c.x .- 3.5)(lazy(t)))
+    withforce(() -> CF.stage_kernel(other, 0)(Frame(t)), CF._FORCE_KERNEL => :compiled)
+    @test CF._KERNEL_ANY_COMPILED[]
+    ph = rawph(mutate(zz7 = c.y .+ 1)(lazy(LyingSrc())))
+    morsel = CF.conform_types(Frame(y = ["p", "q"]), CF.source_schema(LyingSrc()))
+    @test eltype(morsel.columns[1]) !== Int
+    @test errtype(() -> mutate(zz7 = c.y .+ 1)(morsel)) === MethodError        # eager raises
+    withforce(CF._FORCE_KERNEL => :compiled) do
+        k = CF.stage_kernel(ph, 0)
+        @test k isa CF.CompiledStage
+        @test errtype(() -> k(morsel)) === MethodError
+    end
+    @test CF.kernel_decision(ph, 0) == (:interpreter, "the compiled kernel was rejected for this shape")
+end
+
+@testitem "kernels: the small-path shape hash sees a non-frame source's schema (codegen review n1)" tags = [:unit] setup = [Force, KernelHelp] begin
+    # Two sources with one stage shape; `c.y .+ 1` compiles on Int `y`, not on String `y`. The
+    # verdict cached for the first must not make the second decide "compiled (cached)".
+    struct SchemaSrc <: CF.Source
+        f::Frame
+    end
+    CF.source_schema(s::SchemaSrc) = Tables.Schema(Tuple(s.f.names), Tuple(eltype(c) for c in s.f.columns))
+    CF.source_label(::SchemaSrc) = "schema test source"
+    CF.plan_partitions(s::SchemaSrc, scan::Tables.Scan; morsel::Int = 1) = ([1], scan)
+    CF.read_partition(s::SchemaSrc, p::Int) = s.f
+    a = SchemaSrc(Frame(y = [1, 2, 3]))
+    b = SchemaSrc(Frame(y = ["p", "q", "r"]))
+    p = mutate(zn1 = c.y .+ 1)
+    pha, phb = rawph(p(lazy(a))), rawph(p(lazy(b)))
+    withforce(() -> CF.stage_kernel(pha, 0)(a.f), CF._FORCE_KERNEL => :compiled)
+    @test CF.kernel_decision(pha, 0) == (:compiled, "cached")
+    @test CF.kernel_decision(phb, 0)[1] === :interpreter
+    @test CF.kernel_decision(phb, 0)[2] != "cached"
+end

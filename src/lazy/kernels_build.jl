@@ -214,6 +214,41 @@ end
 
 _bstep!(b::_Builder, s::Step, names, slots) = throw(_NotCompilable("$(nameof(typeof(s))) steps do not compile"))
 
+# §3.2's whitelist of steps and nodes, checked from the stage's structure alone (no schema, no
+# shape key, no hash): the steps and nodes `_bstep!`/`_checktypes` can build. A stage that fails
+# it never compiles, so `_decide` rejects it before it computes a shape key or hash, or touches
+# the cache (p4-join review m5: a `ProbeStep` carries its build table, so its key would be new
+# on every `collect`). The type checks (static types, the probe check) still need the schema.
+# Each returns `nothing` when on the whitelist, else why not (the builder's own wording).
+_wlnode(::Col) = nothing
+_wlnode(x::Lit) = x.scalar ? nothing : "a vector literal"
+_wlnode(x::Call) = _wlfirst(_wlnode, x.args)
+_wlvalue(v) = (v isa Col || (v isa Lit && v.scalar)) ? nothing :
+    "case_when values must be columns or scalar literals, got $(v)"
+_wlnode(x::CaseWhen) = something(_wlfirst(_wlnode, x.conds), _wlfirst(_wlvalue, x.vals), _wlvalue(x.default), Some(nothing))
+_wlnode(x) = "$(nameof(typeof(x))) nodes do not compile: $(x)"
+function _wlout(o)
+    o isa Pair || return "mutate with across"
+    o.second === nothing && return nothing
+    o.second isa Node || return "mutate output $(o.first) is not an expression"
+    return _wlnode(o.second)
+end
+_wlstep(s::FilterStep) = _wlfirst(_wlnode, s.preds)
+_wlstep(s::MutateStep) = (s.by === nothing && s.keep === :all) ? _wlfirst(_wlout, s.outs) : "mutate with by or keep"
+_wlstep(s::SelectStep) = _wlfirst(it -> it isa Pair ? _wlnode(it.second) : nothing, s.items)
+_wlstep(::Union{RenameStep, RenameWithStep, RelocateStep}) = nothing
+_wlstep(s) = "$(nameof(typeof(s))) is not on the kernel whitelist (spec §3.2)"
+# the first non-`nothing` reason of `f` over `xs`
+function _wlfirst(f, xs)
+    for x in xs
+        r = f(x)
+        r === nothing || return r
+    end
+    return nothing
+end
+"Why `stage` is off §3.2's whitelist (the first offending step or node), or `nothing`."
+_offwhitelist(stage) = _wlfirst(_wlstep, stage)
+
 # An empty frame with the state's names and types, every column a distinct object.
 _stateprobe(b::_Builder, names, slots) =
     Frame(copy(names), AbstractColumn[column(Vector{_slottype(b, s)}()) for s in slots])
@@ -302,8 +337,11 @@ function _small_set!(ph, verdict::Bool)
 end
 
 # The shape (as `_stageshape`, literal values left out), the projection and, for a frame source,
-# its column names and kinds, hashed into one accumulator. The helpers return `nothing`, so the
-# dynamic dispatch over steps and nodes boxes no `UInt` (the lazy `n=10` rows count allocations).
+# its column names and kinds; for any other source its type and declared schema (codegen review
+# n1: without them a verdict cached for one source's types showed as "compiled (cached)" for
+# another source with the same stage and other column types). Hashed into one accumulator. The
+# helpers return `nothing`, so the dynamic dispatch over steps and nodes boxes no `UInt` (the
+# lazy `n=10` rows count allocations).
 mutable struct _HAcc
     h::UInt
 end
@@ -318,10 +356,30 @@ function _shapehash(ph)
         for (n, col) in zip(src.frame.names, src.frame.columns)
             acc.h = hash(typeof(col), hash(n, acc.h))
         end
+    else
+        _hmix!(acc, typeof(src))
+        _hschema!(acc, src)
     end
     return acc.h
 end
 _hmix!(acc::_HAcc, x::Union{Symbol, Bool, DataType}) = (acc.h = hash(x, acc.h); nothing)
+# a non-frame source's declared column names and element types (none when it reports no schema)
+function _hschema!(acc::_HAcc, src)
+    sch = try
+        source_schema(src)
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
+    if sch isa Tables.Schema
+        for (n, T) in zip(sch.names, sch.types)
+            acc.h = hash(T, hash(n, acc.h))
+        end
+    else
+        _hmix!(acc, :noschema)
+    end
+    return nothing
+end
 # a value of unknown type (a selector, a `before`/`after`): `nothing` without a dynamic call
 _hany!(acc::_HAcc, @nospecialize(x)) = (acc.h = x === nothing ? hash(:nothing, acc.h) : hash(x, acc.h)::UInt; nothing)
 _hnode!(acc::_HAcc, x::Col) = (_hmix!(acc, :c); _hmix!(acc, x.name))
