@@ -1,7 +1,7 @@
 ### Fixed
 - A lazy join no longer shows unobserved dictionary levels: when a `group_by(...; drop = false)`
   (or a `drop = false` scan) is anywhere in the plan, a join's collected side (x when x is the
-  build side, y always) reads the partitions a row limit stopped before or statistics pruned
+  build side; y when y is the build side or both sides are partitioned) reads the partitions a row limit stopped before or statistics pruned
   for their column kinds, as eager `read_source` does, so a key read from partitions with
   different dictionaries is decoded and `drop = false` adds no group with `n = 0` (CF-008;
   test/lazy/join_levels_tests.jl and a new join property). No row changes; plans without

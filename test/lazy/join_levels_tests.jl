@@ -1,8 +1,9 @@
 # A join's collected side and the dictionary levels a `group_by(...; drop = false)` above the
 # join shows (CF-008; final review of phase 4, blocker B1). Eager `read_source` reads every
 # partition, so partitions with different dictionaries decode `g` and `drop = false` adds no
-# level. A collected side (x when x is the build side, y always) must not keep one partition's
-# dictionary, with its unobserved level "zz", after a row limit or a statistics-pruned partition.
+# level. A collected side (x when x is the build side; y when y is the build side or both
+# sides are partitioned) must not keep one partition's dictionary, with its unobserved level
+# "zz", after a row limit or a statistics-pruned partition.
 
 @testsnippet JoinLevels begin
     using Tables
