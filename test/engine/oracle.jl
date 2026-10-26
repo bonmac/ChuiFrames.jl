@@ -12,6 +12,7 @@
         cols::Vector{Pair{Symbol, Vector{Any}}}
         groups::Vector{Symbol}
     end
+    OTable(cols::Vector{<:Pair}, groups::Vector{Symbol}) = OTable(Pair{Symbol, Vector{Any}}[p.first => Any[v for v in p.second] for p in cols], groups)
     OTable(nt::NamedTuple) = OTable([k => Any[x for x in v] for (k, v) in pairs(nt)], Symbol[])
     nrows(t::OTable) = isempty(t.cols) ? 0 : length(t.cols[1].second)
     getc(t::OTable, n::Symbol) = (i = findfirst(p -> p.first == n, t.cols); i === nothing ? throw(ArgumentError("no column $n")) : t.cols[i].second)
@@ -191,6 +192,126 @@
         error("oracle: $kind")
     end
 
+    # --- joins: a nested-loop reference (phase-4 spec §1.1, §1.5, §1.6; §4 "Oracle") ----------
+    # Row loops only: rule-8 key equality after converting both keys to the pair's compare type
+    # `T` (given by the caller), dplyr's row order, `multiple`, `unmatched`, dplyr's suffix
+    # rule, and nest_join's nested tables (a nested table is an `OTable`).
+    # dplyr 1.2.0's add_suffixes, transcribed from its R source (`dplyr:::add_suffixes`)
+    function addsuffixes(names, against, suffix)
+        z = [string.(against); string.(names)]
+        while true
+            dup = [i > 1 && z[i] in z[1:(i - 1)] for i in eachindex(z)]
+            any(dup) || break
+            z[dup] = z[dup] .* suffix
+        end
+        return Symbol.(z[(length(against) + 1):end])
+    end
+    conv(v, T) = (ismissing(v) || T === nothing || T <: AbstractString || T === Union{}) ? v : convert(T, v)
+    isnullkey(v) = ismissing(v) || (v isa AbstractFloat && isnan(v))
+    "Do x row `i` and y row `j` match on every key pair?"
+    function rowsmatch(x, y, i, j, pairs, T, never)
+        for (p, (a, b)) in enumerate(pairs)
+            u, v = conv(getc(x, a)[i], T[p]), conv(getc(y, b)[j], T[p])
+            never && (isnullkey(u) || isnullkey(v)) && return false
+            keyeq(u, v) || return false
+        end
+        return true
+    end
+    """
+        ojoin(kind, x, y; by, T, na_matches, keep, multiple, unmatched, suffix, name)
+
+    The join of two `OTable`s. `by` is a vector of `x => y` name pairs, `T` the compare type of
+    each pair (`nothing`: no conversion). Raises an `ArgumentError` with dplyr's messages
+    (one ascending x pass, then y).
+    """
+    function ojoin(
+            kind::Symbol, x::OTable, y::OTable; by = Pair{Symbol, Symbol}[], T = fill(nothing, length(by)),
+            na_matches = :na, keep = false, multiple = :all, unmatched = :drop, suffix = ("_x", "_y"), name = :y,
+        )
+        never = na_matches === :never
+        nx, ny = nrows(x), nrows(y)
+        xnames = [p.first for p in x.cols]
+        ynames = [p.first for p in y.cols]
+        xkeys = [p.first for p in by]
+        ykeys = [p.second for p in by]
+        matches = [kind === :cross ? collect(1:ny) : [j for j in 1:ny if rowsmatch(x, y, i, j, by, T, never)] for i in 1:nx]
+        if kind === :semi || kind === :anti
+            return takerows(OTable(x.cols, Symbol[]), [i for i in 1:nx if isempty(matches[i]) == (kind === :anti)])
+        end
+        if kind === :nest
+            ysub = [n for n in ynames if keep || !(n in ykeys)]
+            if unmatched === :error
+                for j in 1:ny
+                    any(i -> j in matches[i], 1:nx) || throw(ArgumentError("Each row of `y` must be matched by `x`. Row $j of `y` was not matched."))
+                end
+            end
+            cols = Pair{Symbol, Vector{Any}}[]
+            nested = Any[OTable([n => getc(y, n)[matches[i]] for n in ysub], Symbol[]) for i in 1:nx]
+            replaced = false
+            for n in xnames
+                if n === name
+                    push!(cols, n => nested)
+                    replaced = true
+                elseif !keep && n in xkeys
+                    p = findfirst(==(n), xkeys)
+                    push!(cols, n => Any[conv(v, T[p]) for v in getc(x, n)])
+                else
+                    push!(cols, n => getc(x, n))
+                end
+            end
+            replaced || push!(cols, name => nested)
+            return OTable(cols, Symbol[])
+        end
+        # the x-side pass, then multiple
+        rows = Tuple{Int, Int}[]
+        for i in 1:nx
+            m = matches[i]
+            if isempty(m)
+                unmatched === :error && kind in (:inner, :right) && throw(ArgumentError("Each row of `x` must have a match in `y`. Row $i of `x` does not have a match."))
+                kind in (:left, :full) && push!(rows, (i, 0))
+                continue
+            end
+            length(m) > 1 && multiple === :error && throw(ArgumentError("Each row in `x` must match at most 1 row in `y`. Row $i of `x` matches multiple rows in `y`."))
+            chosen = multiple in (:first, :any) ? m[1:1] : multiple === :last ? m[end:end] : m
+            append!(rows, [(i, j) for j in chosen])
+        end
+        matchedy = Set(j for (_, j) in rows if j > 0)
+        if unmatched === :error && kind in (:inner, :left)
+            for j in 1:ny
+                j in matchedy || throw(ArgumentError("Each row of `y` must be matched by `x`. Row $j of `y` was not matched."))
+            end
+        end
+        kind in (:right, :full) && append!(rows, [(0, j) for j in 1:ny if !(j in matchedy)])
+        # names (dplyr's join_cols / add_suffixes)
+        sx, sy = suffix
+        if !keep          # dplyr's join_cols: y_aux = setdiff(y_names, c(by$x, by$y))
+            yaux = [n for n in ynames if !(n in xkeys) && !(n in ykeys)]
+            xo = copy(xnames)
+            aux = [!(n in xkeys) for n in xnames]
+            xo[aux] = addsuffixes(xnames[aux], [xkeys; yaux], sx)
+            ykeep = [!(n in ykeys) for n in ynames]
+        else
+            xo = addsuffixes(xnames, ynames, sx)
+            ykeep = fill(true, length(ynames))
+        end
+        yo = addsuffixes(ynames, xnames, sy)
+        cols = Pair{Symbol, Vector{Any}}[]
+        for (n, o) in zip(xnames, xo)
+            if kind !== :cross && !keep && n in xkeys
+                p = findfirst(==(n), xkeys)
+                yk = getc(y, ykeys[p])
+                push!(cols, o => Any[i > 0 ? conv(getc(x, n)[i], T[p]) : conv(yk[j], T[p]) for (i, j) in rows])
+            else
+                push!(cols, o => Any[i > 0 ? getc(x, n)[i] : missing for (i, _) in rows])
+            end
+        end
+        for (n, o, k) in zip(ynames, yo, ykeep)
+            k || continue
+            push!(cols, o => Any[j > 0 ? getc(y, n)[j] : missing for (_, j) in rows])
+        end
+        return OTable(cols, Symbol[])
+    end
+
     "Approximate frame equality (CF-008 Definitions) between an engine result and the oracle."
     function agree(f, o::OTable)
         names = collect(CF.Tables.columnnames(f))
@@ -201,6 +322,7 @@
             length(ev) == length(ov) || return false
             for (a, b) in zip(ev, ov)
                 isequal(a, b) && continue
+                a isa CF.Frame && b isa OTable && agree(a, b) && continue     # nest_join elements
                 a isa AbstractFloat && b isa AbstractFloat && isapprox(a, b; rtol = sqrt(eps()), atol = 1.0e-9) && continue
                 return false
             end
