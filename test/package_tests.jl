@@ -60,6 +60,11 @@ end
         :metadata,
         # DataAPI generics (README: "functions to be extended")
         :refarray, :refpool, :refvalue, :nrow, :ncol,
+        # DataAPI's join generics (ADR-0007; phase-4 spec §1.1, critic pass 3 MAJOR-4a): declared
+        # as bare `function innerjoin end` … in DataAPI's src/DataAPI.jl under the comment "The
+        # database-style join methods for tabular data type. The common interface is
+        # `*join(x, y; ...)`", with no docstring and no `public` declaration
+        :innerjoin, :leftjoin, :rightjoin, :outerjoin, :semijoin, :antijoin, :crossjoin,
         # DataAPI selector types, re-exported as the same bindings (ADR-0002 rule 7)
         :Cols, :Between, :All,
         # Base broadcasting interface (manual: "Customizing broadcasting"), the c.x capture
