@@ -484,8 +484,9 @@ function _partitioned_join(s::JoinStep, names::JoinNames, X::Frame, Y::Frame, T:
         tasks = [Threads.@spawn(work(r)) for r in ranges]
         foreach(wait, tasks)
     end
-    px = reduce(vcat, pxs; init = Int[])
-    py = reduce(vcat, pys; init = Int[])
+    # The vector form preallocates; `init` would fold left, quadratic in the partitions (P4-02).
+    px = reduce(vcat, pxs)
+    py = reduce(vcat, pys)
     perm = _sort_by_x(px, nx)
     px, py = px[perm], py[perm]
     r = 1:ny

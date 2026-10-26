@@ -337,14 +337,14 @@ precompile_ms = 60000
 "distinct/Int, String/n=10^4" = 300                             # 197
 "distinct/Int, String/n=10^6" = 300                             # 197
 "filter/x > 0/n=10" = 180                                       # 114
-"filter/x > 0/n=10^4" = 30000                                   # 19670
-"filter/x > 0/n=10^6" = 3100000                                 # 2000190
+"filter/x > 0/n=10^4" = 15000                                   # 9614 at 6396ca3 (rule 5; was 30000, baseline 19670)
+"filter/x > 0/n=10^6" = 1500000                                 # 999616 at 6396ca3 (rule 5; was 3100000, baseline 2000190)
 "io/read_arrow/n=10^5" = 510                                    # 337
 "io/read_csv/n=10^5" = 160000                                   # 101032
 "io/write_arrow/n=10^5" = 630                                   # 418
 "io/write_csv/n=10^5" = 3700                                    # 2461
 "lazy/filter, head 10/n=10^4" = 30000                           # 19820
-"lazy/filter, head 10/n=10^6" = 400000                          # 262165
+"lazy/filter, head 10/n=10^6" = 99000                           # 65525 at 6396ca3 (rule 5; was 400000, baseline 262165)
 "lazy/filter, mutate, select/n=10" = 940                        # 626
 "lazy/filter, mutate, select/n=10^4" = 16000                    # 10284 at 23881b4 (rule 5; was 37000, baseline 24479)
 "lazy/filter, mutate, select/n=10^6" = 1500000                  # 996855 at 23881b4 (rule 5; was 3800000, baseline 2490650)
@@ -369,7 +369,7 @@ precompile_ms = 60000
 "summarise/String few/n=10^4" = 770                             # 507 at 23881b4 (rule 5; was 30000, baseline 19775)
 "summarise/String few/n=10^6" = 770                             # 507 at 23881b4 (rule 5; was 4500000, baseline 2989775)
 "summarise/String many/n=10^4" = 72000                          # 47797
-"summarise/String many/n=10^6" = 9000000                        # 5987521
+"summarise/String many/n=10^6" = 4200000                        # 2798696 at 6396ca3 (rule 5; was 9000000, baseline 5987521)
 "window/row_number, cumsum by Int few/n=10" = 450               # 296
 "window/row_number, cumsum by Int few/n=10^4" = 130000          # 82606
 "window/row_number, cumsum by Int few/n=10^6" = 18000000        # 11962606
@@ -395,13 +395,13 @@ precompile_ms = 60000
 "groupby/Int, String few, eager/n=10^4" = 910                   # 606
 "groupby/Int, String few, eager/n=10^6" = 910                   # 606
 "groupby/Int, String few, lazy/n=10^4" = 1700                   # 1087
-"groupby/Int, String few, lazy/n=10^6" = 1600000                # 1004116
+"groupby/Int, String few, lazy/n=10^6" = 6100                   # 4034 at 6396ca3 (rule 5; was 1600000, baseline 1004116)
 "groupby/Int, String many, eager/n=10^4" = 44000                # 28896
 "groupby/Int, String many, eager/n=10^6" = 4500000              # 2998882
 "groupby/Int, String many, lazy/n=10^4" = 20000                 # 13100
 "groupby/Int, String many, lazy/n=10^6" = 4800000               # 3196359
 "groupby/String few, lazy/n=10^4" = 1400                        # 926
-"groupby/String few, lazy/n=10^6" = 1600000                     # 1003338
+"groupby/String few, lazy/n=10^6" = 5000                        # 3280 at 6396ca3 (rule 5; was 1600000, baseline 1003338)
 "groupby/String many, lazy/n=10^4" = 20000                      # 12880
 "groupby/String many, lazy/n=10^6" = 4800000                    # 3195434
 "join/anti, auto/n=10" = 180                                    # 116
@@ -478,14 +478,14 @@ precompile_ms = 60000
 "distinct/Int, String/n=10^4" = 290                             # 191
 "distinct/Int, String/n=10^6" = 290                             # 191
 "filter/x > 0/n=10" = 170                                       # 107
-"filter/x > 0/n=10^4" = 30000                                   # 19663
-"filter/x > 0/n=10^6" = 3100000                                 # 2000143
+"filter/x > 0/n=10^4" = 15000                                   # 9607 at 6396ca3 (rule 5; was 30000, baseline 19663)
+"filter/x > 0/n=10^6" = 1500000                                 # 999611 at 6396ca3 (rule 5; was 3100000, baseline 2000143)
 "io/read_arrow/n=10^5" = 510                                    # 338
 "io/read_csv/n=10^5" = 160000                                   # 100980
 "io/write_arrow/n=10^5" = 680                                   # 452
 "io/write_csv/n=10^5" = 2400                                    # 1584
-"lazy/filter, head 10/n=10^4" = 30000                           # 19801
-"lazy/filter, head 10/n=10^6" = 400000                          # 262060
+"lazy/filter, head 10/n=10^4" = 15000                           # 9899 at 6396ca3 (rule 5; was 30000, baseline 19801)
+"lazy/filter, head 10/n=10^6" = 99000                           # 65508 at 6396ca3 (rule 5; was 400000, baseline 262060)
 "lazy/filter, mutate, select/n=10" = 880                        # 586
 "lazy/filter, mutate, select/n=10^4" = 16000                    # 10250 at 23881b4 (rule 5; was 37000, baseline 24440)
 "lazy/filter, mutate, select/n=10^6" = 1500000                  # 996516 at 23881b4 (rule 5; was 3800000, baseline 2489491)
@@ -509,7 +509,7 @@ precompile_ms = 60000
 "summarise/String few/n=10" = 480                               # 319
 "summarise/String few/n=10^4" = 710                             # 473 at 23881b4 (rule 5; was 44000, baseline 29230)
 "summarise/String few/n=10^6" = 710                             # 473 at 23881b4 (rule 5; was 6000000, baseline 3989230)
-"summarise/String many/n=10^4" = 86000                          # 57208
+"summarise/String many/n=10^4" = 41000                          # 26685 at 6396ca3 (rule 5; was 86000, baseline 57208)
 "summarise/String many/n=10^6" = 4500000                        # 2998592 at 23881b4 (rule 5; was 11000000, baseline 6986919)
 "window/row_number, cumsum by Int few/n=10" = 380               # 249
 "window/row_number, cumsum by Int few/n=10^4" = 140000          # 92013
@@ -536,13 +536,13 @@ precompile_ms = 60000
 "groupby/Int, String few, eager/n=10^4" = 820                   # 545
 "groupby/Int, String few, eager/n=10^6" = 820                   # 545
 "groupby/Int, String few, lazy/n=10^4" = 1500                   # 996
-"groupby/Int, String few, lazy/n=10^6" = 1600000                # 1003899
+"groupby/Int, String few, lazy/n=10^6" = 5800                   # 3829 at 6396ca3 (rule 5; was 1600000, baseline 1003899)
 "groupby/Int, String many, eager/n=10^4" = 44000                # 28773
 "groupby/Int, String many, eager/n=10^6" = 4500000              # 2998724
 "groupby/Int, String many, lazy/n=10^4" = 18000                 # 11910
 "groupby/Int, String many, lazy/n=10^6" = 4600000               # 3000472
 "groupby/String few, lazy/n=10^4" = 1400                        # 869
-"groupby/String few, lazy/n=10^6" = 1600000                     # 1003236
+"groupby/String few, lazy/n=10^6" = 4800                        # 3176 at 6396ca3 (rule 5; was 1600000, baseline 1003236)
 "groupby/String many, lazy/n=10^4" = 18000                      # 11760
 "groupby/String many, lazy/n=10^6" = 4500000                    # 2999718
 "join/anti, auto/n=10" = 170                                    # 108
@@ -626,7 +626,7 @@ precompile_ms = 60000
 "io/write_arrow/n=10^5" = 9500000                               # 6324416
 "io/write_csv/n=10^5" = 30000000                                # 19478336
 "lazy/filter, head 10/n=10^4" = 1600000                         # 1026832
-"lazy/filter, head 10/n=10^6" = 26000000                        # 17069920
+"lazy/filter, head 10/n=10^6" = 12000000                        # 7631792 at 6396ca3 (rule 5; was 26000000, baseline 17069920)
 "lazy/filter, mutate, select/n=10" = 42000                      # 27456
 "lazy/filter, mutate, select/n=10^4" = 1300000                  # 847632
 "lazy/filter, mutate, select/n=10^6" = 270000000                # 173903504
@@ -695,17 +695,17 @@ precompile_ms = 60000
 "join/inner 1:1, broadcast build y/n=10^4" = 3200000            # 2083328
 "join/inner 1:1, broadcast build y/n=10^6" = 340000000          # 223989248
 "join/inner 1:1, partitioned build x/n=10^4" = 6800000          # 4513136
-"join/inner 1:1, partitioned build x/n=10^6" = 2300000000       # 1503547504
+"join/inner 1:1, partitioned build x/n=10^6" = 450000000        # 294984048 at 6396ca3 (rule 5; was 2300000000, baseline 1503547504)
 "join/inner 1:1, partitioned build y/n=10^4" = 6800000          # 4513136
-"join/inner 1:1, partitioned build y/n=10^6" = 2400000000       # 1542525040
+"join/inner 1:1, partitioned build y/n=10^6" = 450000000        # 294984048 at 6396ca3 (rule 5; was 2400000000, baseline 1542525040)
 "join/inner 1:n, broadcast build x/n=10^4" = 3900000            # 2547056
 "join/inner 1:n, broadcast build x/n=10^6" = 420000000          # 278888848
 "join/inner 1:n, broadcast build y/n=10^4" = 2400000            # 1591616
 "join/inner 1:n, broadcast build y/n=10^6" = 250000000          # 160877760
 "join/inner 1:n, partitioned build x/n=10^4" = 4800000          # 3193680
-"join/inner 1:n, partitioned build x/n=10^6" = 2100000000       # 1374974064
+"join/inner 1:n, partitioned build x/n=10^6" = 270000000        # 175552880 at 6396ca3 (rule 5; was 2100000000, baseline 1374974064)
 "join/inner 1:n, partitioned build y/n=10^4" = 5600000          # 3674480
-"join/inner 1:n, partitioned build y/n=10^6" = 2200000000       # 1450160240
+"join/inner 1:n, partitioned build y/n=10^6" = 320000000        # 212646256 at 6396ca3 (rule 5; was 2200000000, baseline 1450160240)
 "join/inner small x (10^3), auto/n=10^6" = 45000000             # 29428768
 "join/inner, auto/n=10" = 16384                                 # 10320
 "join/left 1:1, broadcast build x/n=10^4" = 5500000             # 3654624
@@ -713,20 +713,20 @@ precompile_ms = 60000
 "join/left 1:1, broadcast build y/n=10^4" = 3200000             # 2084784
 "join/left 1:1, broadcast build y/n=10^6" = 340000000           # 224120448
 "join/left 1:1, partitioned build x/n=10^4" = 6800000           # 4514592
-"join/left 1:1, partitioned build x/n=10^6" = 2300000000        # 1531400432
+"join/left 1:1, partitioned build x/n=10^6" = 450000000         # 295115248 at 6396ca3 (rule 5; was 2300000000, baseline 1531400432)
 "join/left 1:1, partitioned build y/n=10^4" = 6800000           # 4514592
-"join/left 1:1, partitioned build y/n=10^6" = 2100000000        # 1366806768
+"join/left 1:1, partitioned build y/n=10^6" = 450000000         # 295115248 at 6396ca3 (rule 5; was 2100000000, baseline 1366806768)
 "join/left 1:n, broadcast build x/n=10^4" = 3900000             # 2548512
 "join/left 1:n, broadcast build x/n=10^6" = 460000000           # 303452800
 "join/left 1:n, broadcast build y/n=10^4" = 2400000             # 1593072
 "join/left 1:n, broadcast build y/n=10^6" = 280000000           # 185327024
 "join/left 1:n, partitioned build x/n=10^4" = 4800000           # 3195136
-"join/left 1:n, partitioned build x/n=10^6" = 2100000000        # 1387364704
+"join/left 1:n, partitioned build x/n=10^6" = 310000000         # 200002144 at 6396ca3 (rule 5; was 2100000000, baseline 1387364704)
 "join/left 1:n, partitioned build y/n=10^4" = 5600000           # 3675936
-"join/left 1:n, partitioned build y/n=10^6" = 2200000000        # 1461272928
+"join/left 1:n, partitioned build y/n=10^6" = 360000000         # 237095520 at 6396ca3 (rule 5; was 2200000000, baseline 1461272928)
 "join/left, auto/n=10" = 16384                                  # 10448
 "join/nest 1:1, auto/n=10^4" = 16000000                         # 10490736
-"join/nest 1:1, auto/n=10^6" = 3500000000                       # 2277789664
+"join/nest 1:1, auto/n=10^6" = 1800000000                       # 1134958816 at 6396ca3 (rule 5; was 3500000000, baseline 2277789664)
 "join/nest, auto/n=10" = 26000                                  # 16720
 "join/right, auto/n=10" = 20000                                 # 12832
 "join/semi, auto/n=10" = 16384                                  # 6720
@@ -735,12 +735,12 @@ precompile_ms = 60000
 "lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 30000000  # 19868048
 "lazy/inner join 1:n, broadcast build x/n=10^6" = 820000000     # 541015360
 "lazy/inner join 1:n, broadcast build y/n=10^6" = 600000000     # 397720656
-"lazy/inner join 1:n, partitioned build x/n=10^6" = 2500000000  # 1629357344
-"lazy/inner join 1:n, partitioned build y/n=10^6" = 2500000000  # 1606426528
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 340000000   # 223709984 at 6396ca3 (rule 5; was 2500000000, baseline 1629357344)
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 390000000   # 256779488 at 6396ca3 (rule 5; was 2500000000, baseline 1606426528)
 "lazy/inner join small x (10^3), auto/n=10^6" = 130000000       # 82026912
-"lazy/inner join, non-key mutate after/n=10^6" = 740000000      # 491789488
-"lazy/inner join, non-key mutate before/n=10^6" = 1100000000    # 681516992
-"lazy/mutate, filter, select stage, compiled/n=10^6" = 230000000  # 148359232
+"lazy/inner join, non-key mutate after/n=10^6" = 350000000      # 232788912 at 6396ca3 (rule 5; was 740000000, baseline 491789488)
+"lazy/inner join, non-key mutate before/n=10^6" = 370000000     # 241045504 at 6396ca3 (rule 5; was 1100000000, baseline 681516992)
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 110000000  # 72827840 at 6396ca3 (rule 5; was 230000000, baseline 148359232)
 "lazy/mutate, filter, select stage, interpreted/n=10^6" = 360000000  # 239461696
 
 [memory."1.10"]
@@ -767,10 +767,10 @@ precompile_ms = 60000
 "io/write_arrow/n=10^5" = 9500000                               # 6288592
 "io/write_csv/n=10^5" = 31000000                                # 20031808
 "lazy/filter, head 10/n=10^4" = 1500000                         # 977048
-"lazy/filter, head 10/n=10^6" = 26000000                        # 16878808
+"lazy/filter, head 10/n=10^6" = 12000000                        # 7445304 at 6396ca3 (rule 5; was 26000000, baseline 16878808)
 "lazy/filter, mutate, select/n=10" = 50000                      # 32712
 "lazy/filter, mutate, select/n=10^4" = 1200000                  # 793128
-"lazy/filter, mutate, select/n=10^6" = 260000000                # 171810888
+"lazy/filter, mutate, select/n=10^6" = 130000000                # 81520200 at 6396ca3 (rule 5; was 260000000, baseline 171810888)
 "mutate/z = 2x + y/n=10" = 16384                                # 8432
 "mutate/z = 2x + y/n=10^4" = 1200000                            # 799744
 "mutate/z = 2x + y/n=10^6" = 120000000                          # 79999744
@@ -836,17 +836,17 @@ precompile_ms = 60000
 "join/inner 1:1, broadcast build y/n=10^4" = 3800000            # 2490008
 "join/inner 1:1, broadcast build y/n=10^6" = 220000000          # 145813720
 "join/inner 1:1, partitioned build x/n=10^4" = 5400000          # 3590552
-"join/inner 1:1, partitioned build x/n=10^6" = 1900000000       # 1256259800
+"join/inner 1:1, partitioned build x/n=10^6" = 370000000        # 240918072 at 6396ca3 (rule 5; was 1900000000, baseline 1256259800)
 "join/inner 1:1, partitioned build y/n=10^4" = 5400000          # 3590552
-"join/inner 1:1, partitioned build y/n=10^6" = 1900000000       # 1256259800
+"join/inner 1:1, partitioned build y/n=10^6" = 370000000        # 240918072 at 6396ca3 (rule 5; was 1900000000, baseline 1256259800)
 "join/inner 1:n, broadcast build x/n=10^4" = 4500000            # 2965272
 "join/inner 1:n, broadcast build x/n=10^6" = 300000000          # 199313208
 "join/inner 1:n, broadcast build y/n=10^4" = 2700000            # 1793768
 "join/inner 1:n, broadcast build y/n=10^6" = 190000000          # 121933304
 "join/inner 1:n, partitioned build x/n=10^4" = 4100000          # 2674760
-"join/inner 1:n, partitioned build x/n=10^6" = 1800000000       # 1165571160
+"join/inner 1:n, partitioned build x/n=10^6" = 230000000        # 149603256 at 6396ca3 (rule 5; was 1800000000, baseline 1165571160)
 "join/inner 1:n, partitioned build y/n=10^4" = 4800000          # 3139288
-"join/inner 1:n, partitioned build y/n=10^6" = 1900000000       # 1202068184
+"join/inner 1:n, partitioned build y/n=10^6" = 280000000        # 186100280 at 6396ca3 (rule 5; was 1900000000, baseline 1202068184)
 "join/inner small x (10^3), auto/n=10^6" = 45000000             # 29752880
 "join/inner, auto/n=10" = 18000                                 # 11408
 "join/left 1:1, broadcast build x/n=10^4" = 6500000             # 4268200
@@ -854,17 +854,17 @@ precompile_ms = 60000
 "join/left 1:1, broadcast build y/n=10^4" = 3800000             # 2491448
 "join/left 1:1, broadcast build y/n=10^6" = 220000000           # 145938904
 "join/left 1:1, partitioned build x/n=10^4" = 5400000           # 3591992
-"join/left 1:1, partitioned build x/n=10^6" = 1900000000        # 1256384984
+"join/left 1:1, partitioned build x/n=10^6" = 370000000         # 241043256 at 6396ca3 (rule 5; was 1900000000, baseline 1256384984)
 "join/left 1:1, partitioned build y/n=10^4" = 5400000           # 3591992
-"join/left 1:1, partitioned build y/n=10^6" = 1900000000        # 1256384984
+"join/left 1:1, partitioned build y/n=10^6" = 370000000         # 241043256 at 6396ca3 (rule 5; was 1900000000, baseline 1256384984)
 "join/left 1:n, broadcast build x/n=10^4" = 5200000             # 3413800
 "join/left 1:n, broadcast build x/n=10^6" = 320000000           # 209831848
 "join/left 1:n, broadcast build y/n=10^4" = 3400000             # 2242296
 "join/left 1:n, broadcast build y/n=10^6" = 200000000           # 132451944
 "join/left 1:n, partitioned build x/n=10^4" = 4700000           # 3123288
-"join/left 1:n, partitioned build x/n=10^6" = 1800000000        # 1176089800
+"join/left 1:n, partitioned build x/n=10^6" = 250000000         # 160121896 at 6396ca3 (rule 5; was 1800000000, baseline 1176089800)
 "join/left 1:n, partitioned build y/n=10^4" = 5400000           # 3587816
-"join/left 1:n, partitioned build y/n=10^6" = 1900000000        # 1212586824
+"join/left 1:n, partitioned build y/n=10^6" = 300000000         # 196618920 at 6396ca3 (rule 5; was 1900000000, baseline 1212586824)
 "join/left, auto/n=10" = 18000                                  # 11552
 "join/nest 1:1, auto/n=10^4" = 19000000                         # 12647344
 "join/nest 1:1, auto/n=10^6" = 3500000000                       # 2272257392
@@ -876,10 +876,10 @@ precompile_ms = 60000
 "lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 30000000  # 19705488
 "lazy/inner join 1:n, broadcast build x/n=10^6" = 800000000     # 532451952
 "lazy/inner join 1:n, broadcast build y/n=10^6" = 490000000     # 324144112
-"lazy/inner join 1:n, partitioned build x/n=10^6" = 2100000000  # 1338426840
-"lazy/inner join 1:n, partitioned build y/n=10^6" = 2100000000  # 1370912792
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 300000000   # 197678360 at 6396ca3 (rule 5; was 2100000000, baseline 1338426840)
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 350000000   # 230164024 at 6396ca3 (rule 5; was 2100000000, baseline 1370912792)
 "lazy/inner join small x (10^3), auto/n=10^6" = 120000000       # 76705208
-"lazy/inner join, non-key mutate after/n=10^6" = 730000000      # 485120312
-"lazy/inner join, non-key mutate before/n=10^6" = 1100000000    # 680479632
-"lazy/mutate, filter, select stage, compiled/n=10^6" = 230000000  # 146712576
+"lazy/inner join, non-key mutate after/n=10^6" = 360000000      # 235558008 at 6396ca3 (rule 5; was 730000000, baseline 485120312)
+"lazy/inner join, non-key mutate before/n=10^6" = 370000000     # 243745600 at 6396ca3 (rule 5; was 1100000000, baseline 680479632)
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 110000000  # 72109728 at 6396ca3 (rule 5; was 230000000, baseline 146712576)
 "lazy/mutate, filter, select stage, interpreted/n=10^6" = 360000000  # 237514416
