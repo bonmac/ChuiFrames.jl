@@ -305,85 +305,80 @@ _intfloat(Sx::Type, Sy::Type) =
 """
     _lossless_key_promotion(Sx::Type, Sy::Type) -> Bool
 
-Whether two non-missing numeric key types may be compared as join keys after promotion (phase-4
-spec §1.1, critic N1, amended by the user's ★ K4 answer of 2026-10-26): both are in
-`Union{Bool, Base.BitInteger, Base.IEEEFloat}` and
+Whether two non-missing numeric key types promote without loss (phase-4 spec §1.1, critic N1):
+both are in `Union{Bool, Base.BitInteger, Base.IEEEFloat}` and `T = promote_type(Sx, Sy)` keeps
+every value of both:
 
-- integer → integer when `typemin`/`typemax` fit in `T = promote_type(Sx, Sy)` (`Int64`/`UInt64`
-  and `Int8`/`UInt8` are rejected);
-- float → wider float;
-- **an integer (or `Bool`) with a float: always allowed (★ K4)**, compared as `Float64` (see
-  [`_keypair_compare_type`](@ref)). This one is not lossless above 2^53, as in dplyr.
+- integer → integer when `typemin`/`typemax` fit in `T` (`Int64`/`UInt64` and `Int8`/`UInt8`
+  are rejected);
+- integer → float when the integer's bit width (`Bool`: 1) is ≤ the float's `precision`
+  (significand bits + 1): `Int32`/`Float64` and `Int8`/`Float32` are lossless, `Int64`/`Float64`
+  and `Int32`/`Float32` are not;
+- float → wider float.
 
-Identical numeric types are allowed. A side of type `Union{}` (the non-missing type of an
-all-missing key column) pairs with any type: its keys can only be `missing`. Anything else is
-`false`. It is symmetric.
+Identical numeric types are lossless. A side of type `Union{}` (the non-missing type of an
+all-missing key column) is lossless with any type: its keys can only be `missing`. Anything else
+is `false`. It is symmetric. Strictly lossless: the ★ K4 integer/float pairs that are not
+lossless are allowed as join keys by [`_keypair_compare_type`](@ref), not here.
 """
 function _lossless_key_promotion(Sx::Type, Sy::Type)
     (Sx === Union{} || Sy === Union{}) && return true   # an all-missing side: nothing to promote
     (Sx <: _NumKey && Sy <: _NumKey) || return false
     Sx === Sy && return true
-    _intfloat(Sx, Sy) && return true                     # ★ K4: compared as Float64
     T = promote_type(Sx, Sy)
     return _keyfits(Sx, T) && _keyfits(Sy, T)
 end
 
 """
-    _keypair_compare_type(Sx::Type, Sy::Type) -> Type
+    _keypair_compare_type(Sx::Type, Sy::Type) -> Union{Nothing, Type}
 
-The type both sides' keys are converted to before [`typed_keys`](@ref)/[`keyhash`](@ref) in a
-join, for an allowed pair of non-missing key types ([`_keypair_allowed`](@ref)):
+The type both sides' join keys are converted to before [`typed_keys`](@ref)/[`keyhash`](@ref),
+for the non-missing key types `Sx`, `Sy` (phase-4 plan task 3a, spec §1.1, the user's ★ K4
+answer of 2026-10-26), or `nothing` when the pair cannot be a join key. It never throws: the
+caller raises the `ArgumentError` naming the columns. In order:
 
-- an integer (or `Bool`) with a float (★ K4): `Float64`, or the float type when it is wider
-  (`promote_type(F, Float64)`; with the IEEE types that is always `Float64`);
-- other numeric pairs (lossless integer/integer, float/float): `promote_type(Sx, Sy)`;
-- identical types: that type; two string types: `String`;
-- a `Union{}` side (an all-missing key column): the other type.
+1. a `Union{}` side (an all-missing key column): the other type;
+2. identical types: that type;
+3. two string types: `String`;
+4. a lossless numeric pair ([`_lossless_key_promotion`](@ref)): `promote_type(Sx, Sy)`, e.g.
+   `(Int8, Float32)` → `Float32`, `(Bool, Float16)` → `Float16`, `(Int32, Int64)` → `Int64`;
+5. any other integer (or `Bool`) with an IEEE float (★ K4): `Float64`;
+6. anything else (`Int64`/`UInt64`, `Date`/`DateTime`, string/number, `Rational`, `BigFloat`):
+   `nothing`.
 
-A pair that is not allowed is an `ArgumentError`. **Above 2^53, two different integer keys can
-convert to the same `Float64` and then match the same float key** (`Float64(2^53 + 1) ==
-2.0^53`), as dplyr's integer/double joins do.
+**Above 2^53, two different integer keys can convert to the same `Float64` and then match the
+same float key** (`Float64(2^53 + 1) == 2.0^53`), as dplyr's integer/double joins do.
 """
 function _keypair_compare_type(Sx::Type, Sy::Type)
+    # Union{} first: it is a subtype of everything, so the tests below would answer vacuously
     Sx === Union{} && return Sy
     Sy === Union{} && return Sx
-    _keypair_allowed(Sx, Sy) || throw(ArgumentError("join keys of types $Sx and $Sy cannot be compared; convert them first"))
     Sx === Sy && return Sx
     Sx <: AbstractString && Sy <: AbstractString && return String
-    if _intfloat(Sx, Sy)
-        F = Sx <: _KeyFloat ? Sx : Sy
-        return promote_type(F, Float64)
-    end
-    return promote_type(Sx, Sy)
+    _lossless_key_promotion(Sx, Sy) && return promote_type(Sx, Sy)
+    _intfloat(Sx, Sy) && return Float64
+    return nothing
 end
 
 """
     _keypair_allowed(Sx::Type, Sy::Type) -> Bool
 
-The join key-pair rule of phase-4 spec §1.1 (critic N1) on the non-missing key types
-`Sx = nonmissingtype(Tx)`, `Sy = nonmissingtype(Ty)`: allowed only when `Sx === Sy`, when both
-are `<: AbstractString` (unified to `String`), or when
-[`_lossless_key_promotion`](@ref)`(Sx, Sy)`, which since the user's ★ K4 answer includes every
-integer (or `Bool`) with a float, compared as `Float64` ([`_keypair_compare_type`](@ref) gives
-the type both sides are converted to). For every allowed pair, `isequal(a, b)` implies
-`keyhash(a) == keyhash(b)`, also after that conversion. Rejected pairs include `Date`/`DateTime`
-(they can be `isequal` but hash differently), `Int64`/`UInt64`, `String`/`Int`, `Rational`,
-`BigFloat`.
-The caller raises the `ArgumentError` naming the columns.
+The join key-pair rule of phase-4 spec §1.1 (critic N1, ★ K4) on the non-missing key types
+`Sx = nonmissingtype(Tx)`, `Sy = nonmissingtype(Ty)`: exactly the pairs that have a compare type,
+`_keypair_compare_type(Sx, Sy) !== nothing`. That is: identical types, two string types (unified
+to `String`), lossless numeric pairs, any integer (or `Bool`) with a float (compared as
+`Float64`), and a `Union{}` side (an all-missing key column, which can only match `missing`).
+For every allowed pair, `isequal(a, b)` implies `keyhash(a) == keyhash(b)` after conversion to
+the compare type. Rejected pairs include `Date`/`DateTime` (they can be `isequal` but hash
+differently), `Int64`/`UInt64`, `String`/`Int`, `Rational`, `BigFloat`. The caller raises the
+`ArgumentError` naming the columns.
 
-- A side whose non-missing type is `Union{}` (an all-missing key column) pairs with **any**
-  type: it can only match `missing`. This is checked first, before any subtype test (`Union{}`
-  is a subtype of everything).
-- The string branch relies on each string type's `hash` agreeing with `String`'s for equal
-  contents (Base's `AbstractString` contract). That is tested for `String`, `SubString{String}`
-  and a `StringColumn`'s `StringView` elements. A string type that hashes differently would
-  break `isequal` ⇒ equal `keyhash` and must be converted to `String` first.
+The string branch relies on each string type's `hash` agreeing with `String`'s for equal
+contents (Base's `AbstractString` contract). That is tested for `String`, `SubString{String}`
+and a `StringColumn`'s `StringView` elements. A string type that hashes differently would break
+`isequal` ⇒ equal `keyhash` and must be converted to `String` first.
 """
-function _keypair_allowed(Sx::Type, Sy::Type)
-    # Union{} first: it is a subtype of everything, so the tests below would answer vacuously
-    (Sx === Union{} || Sy === Union{}) && return true
-    return Sx === Sy || (Sx <: AbstractString && Sy <: AbstractString) || _lossless_key_promotion(Sx, Sy)
-end
+_keypair_allowed(Sx::Type, Sy::Type) = _keypair_compare_type(Sx, Sy) !== nothing
 
 # ---------------------------------------------------------------------------------------------
 # Simple aggregates (phase-4 spec §2.1): what the lazy hash-aggregate sink can fold row by row

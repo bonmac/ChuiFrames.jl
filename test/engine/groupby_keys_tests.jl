@@ -222,12 +222,13 @@ end
     @test _lossless_key_promotion(Int64, Int64)
     @test !_lossless_key_promotion(Int64, UInt64)
     @test !_lossless_key_promotion(Int8, UInt8)
-    # ★ K4 (user, 2026-10-26): integer/float pairs are allowed, compared as Float64 (dplyr)
-    @test _lossless_key_promotion(Int64, Float64)
-    @test _lossless_key_promotion(Int32, Float32)
-    @test _lossless_key_promotion(UInt16, Float16)
-    @test _lossless_key_promotion(Int128, Float64)
-    @test _lossless_key_promotion(Float32, UInt64)
+    # strictly lossless (review B2): a wide integer with a float is not, even though ★ K4 allows
+    # the pair as a join key (compared as Float64, `_keypair_compare_type`)
+    @test !_lossless_key_promotion(Int64, Float64)
+    @test !_lossless_key_promotion(Int32, Float32)
+    @test !_lossless_key_promotion(UInt16, Float16)
+    @test !_lossless_key_promotion(Int128, Float64)
+    @test !_lossless_key_promotion(Float32, UInt64)
     # the pair rule: identical, both strings, lossless numeric, or integer/Bool with a float
     @test _keypair_allowed(String, SubString{String})
     @test _keypair_allowed(Date, Date)
@@ -329,9 +330,16 @@ end
         Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
         Float16, Float32, Float64,
     )
+    # plan task 3a order: Union{} side, identical, strings, lossless promote_type, other
+    # integer/float Float64, else nothing (review B2)
     @test _keypair_compare_type(Int64, Float64) === Float64
-    @test _keypair_compare_type(Float32, Int8) === Float64
-    @test _keypair_compare_type(Bool, Float16) === Float64
+    @test _keypair_compare_type(Int8, Float32) === Float32
+    @test _keypair_compare_type(Float32, Int8) === Float32
+    @test _keypair_compare_type(Bool, Float16) === Float16
+    @test _keypair_compare_type(UInt8, Float16) === Float16
+    @test _keypair_compare_type(Int32, Float32) === Float64
+    @test _keypair_compare_type(UInt16, Float16) === Float64
+    @test _keypair_compare_type(Int32, Float64) === Float64
     @test _keypair_compare_type(UInt64, Float64) === Float64
     @test _keypair_compare_type(Int32, Int64) === Int64
     @test _keypair_compare_type(Float32, Float64) === Float64
@@ -341,9 +349,14 @@ end
     @test _keypair_compare_type(String, SubString{String}) === String
     @test _keypair_compare_type(Union{}, Int32) === Int32
     @test _keypair_compare_type(Float64, Union{}) === Float64
-    @test_throws ArgumentError _keypair_compare_type(Int64, UInt64)
-    @test_throws ArgumentError _keypair_compare_type(Date, DateTime)
-    @test_throws ArgumentError _keypair_compare_type(String, Int)
+    @test _keypair_compare_type(Int64, UInt64) === nothing          # never throws
+    @test _keypair_compare_type(Date, DateTime) === nothing
+    @test _keypair_compare_type(String, Int) === nothing
+    @test _keypair_compare_type(Rational{Int}, Int) === nothing
+    # _keypair_allowed is exactly "has a compare type"
+    for a in (NUM..., Date, DateTime, String, SubString{String}, Union{}), b in (NUM..., Date, DateTime, String, SubString{String}, Union{})
+        @test _keypair_allowed(a, b) == (_keypair_compare_type(a, b) !== nothing)
+    end
     # symmetric, and defined exactly on the allowed pairs
     for a in NUM, b in NUM
         _keypair_allowed(a, b) || continue
