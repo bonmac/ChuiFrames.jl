@@ -548,8 +548,9 @@ The rules:
     (as before), and the N2 key pushdown may fire (§1.3);
   - otherwise: `JoinNames` stores no compare type, the N2 key pushdown does not fire, and at
     `collect` the lowering **collects every side whose key type is not static before choosing
-    the shape**. The collected frame's column types (those CF-008 already guarantees equal to
-    eager's for the subplan) give the compare type and run the N1/n6 checks, raising the eager
+    the shape**. The collected frame's column types (probed equal to eager's for the subplan, and
+    checked by the join comparator, MAJOR-4b; CF-008's `isequal` alone does not see types) give
+    the compare type and run the N1/n6 checks, raising the eager
     `ArgumentError` there. The collected side is then replaced by `lazy(collected)` (a
     `FrameSource`, exact rows and types), so it can still stream as a probe side, and
     `join_decision` sees exact estimates for it.
@@ -1152,13 +1153,18 @@ the dotted `join_by(c.a .== c.b)` form: no design exists (★ K3). Also: join re
 spilling, async I/O, `source_ordering`-based sort skipping, filters past total `mutate`s,
 partially compiled stages (a compiled prefix before a non-whitelisted step), hashing x's keys
 inside its streamed stage for the partitioned join, and a `Dict`-based join path for abstract key
-types.
+types. Also deferred (critic pass-3 p1): per-key-column static types. `node_schema` is
+all-or-nothing, so any upstream `mutate` (even one not touching a key) makes a side's key types
+non-static and that side is collected before the join (correct, but shape (a) then does not
+stream x).
 
 ## 7. Revisit triggers
 
 - p4-bench measures the order-restoring sort above 25 % of a shape-(b)/(c) join's time, or a
   small-x/large-y join more than 2× slower than DuckDB → reopen the K2 shapes in ADR-0023 (for
   example a merge of per-partition sorted runs instead of a global counting sort).
+- p4-bench's join with an upstream `mutate` (not on a key) is more than 1.5× slower than the
+  same join without it → track static types per key column (§6, critic pass-3 p1).
 - The user reports the 2⁵³ precision loss (★ K4) as a problem in practice → reconsider an
   opt-in strict mode that rejects lossy integer/float pairs.
 - `_KERNEL_DISAGREE` is ever non-zero in CI → the kernel is wrong; fall back to the interpreter
