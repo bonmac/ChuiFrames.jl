@@ -1268,8 +1268,9 @@ starts after the critic's FINAL on this revision:
 | N2 (pass 2) under K4 | re-checked, holds | push a key predicate to x only when the compare type equals x's nonmissing type; 2⁵³ must-not-fire case and the `Float64`/`Int64` fires case | §1.3 |
 | B1, M1, M3 (pass 1) under K2 | kept | totality unchanged and independent of the shape; hidden-column tails in every shape, no `execute.jl` change; names still resolved at `JoinNode` construction, hidden columns added only by the lowering | §1.2, §1.3, §1.4 |
 
-Critic pass 3 (ACCEPT WITH CHANGES, at 8375452, which includes the coordinator's nest_join
-name-clash edit: replace x's column with a `@warn`), answered 2026-10-26:
+Critic pass 3 (ACCEPT WITH CHANGES, at 8375452, which includes the nest_join name-clash rule,
+the user's answer at the phase-4 ★, 2026-10-26: replace x's column with a `@warn`), answered
+2026-10-26:
 
 | Finding | Answer | Where |
 |---|---|---|

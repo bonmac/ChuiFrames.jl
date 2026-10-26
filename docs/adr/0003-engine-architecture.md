@@ -64,6 +64,11 @@ machine, so compare ratios within a run):
    summary is a hash-aggregate sink. A grouped window is a **grouped-window sink** (rule 5): it
    materializes its input, builds the group index, evaluates per group and scatters the results
    back in row order.
+   - *Note (2026-10-26, the user at the ChuiFrames phase-4 ★):* in phase 4 only summaries of
+     simple aggregates over plain key columns stream as hash-aggregate sinks. Holistic
+     aggregates (`median`, `quantile`, …), computed keys, `across`, a row limit and grouped
+     scans gather the frame and run the eager summary. ADR-0024 rule 4; spec
+     `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md` §2.1.
 
 **Optimizer**
 4. **Ordered rule passes, then a narrow cost stage.**
@@ -102,6 +107,9 @@ machine, so compare ratios within a run):
      set it to 1–7.
    - Work runs on `Threads.@spawn` tasks, each assigned **a contiguous range of morsels**.
    - Task results go into concretely typed containers (EN-05's `Vector{Any}` pitfall).
+   - *Note (2026-10-26, the user at the ChuiFrames phase-4 ★):* in phase 4 the hash-aggregate
+     sink's `MapM` and `ReduceM` accumulators, and those of any other aggregator without a typed
+     accumulator, keep `Vector{Any}` task state. ADR-0024 rule 5.
 6. **Order (CF-008, CC-005).**
    - **Only `isstateless` stages run per partition** (ChuiCore ADR-0003 rule 4, accepted
      2026-10-20). `ChuiCore.isstateless` is fail-closed, so a fused stage is parallel only if
@@ -170,6 +178,11 @@ machine, so compare ratios within a run):
     not match nulls by default. The differential suites record that as an expected divergence,
     and a `na_matches = :never` option matches DuckDB. Dictionary-encoded keys from two
     different frames are unified before codes are compared.
+    - *Note (2026-10-26, the user at the ChuiFrames phase-4 ★):* `na_matches = :never` follows
+      dplyr: a key holding `missing` or NaN matches nothing. DuckDB (and Polars) match NaN to
+      NaN even then, so `:never` matches DuckDB on `missing` keys only; the NaN difference is
+      an encoded divergence in the differential tests (docs/research/differentials-joins.md).
+      ADR-0023.
 
 **Code generation**
 12. **Shape-keyed kernels.** Each fused stage compiles into one kernel by composing closures,
@@ -182,6 +195,12 @@ machine, so compare ratios within a run):
       Phase 4 recalibrates it.
     - `eval`, `invokelatest` and RuntimeGeneratedFunctions are not used: they recompile per
       literal unless restructured, and RGF compiles slowly at depth.
+    - *Note (2026-10-26, the user at the ChuiFrames phase-4 ★):* phase 4 recalibrated the
+      interpreter rule (ADR-0025): a shape not yet compiled runs the interpreter below
+      `INTERP_THRESHOLD = 500_000` estimated rows (a new 1–10-step shape costs 18–45 ms to
+      compile, docs/research/codegen-phase4.md); a stage with more than 50 operations (`Call`
+      plus `case_when` nodes summed over its steps) runs the interpreter, replacing "deeper
+      than 50"; and an unknown row count runs the interpreter unless the shape is cached.
 13. **`code_lowered(q)`** prints the CodeInfo of a **rendered** kernel: a Julia function
     expression generated from the fused stage and lowered with `Meta.lower`, as the prototype
     does. A closure kernel's own lowered code is the same generic loop for every plan (probe

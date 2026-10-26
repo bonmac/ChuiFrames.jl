@@ -3,7 +3,7 @@
 - **Status:** Proposed (2026-10-26)
 - **Date:** 2026-10-26
 - **Deciders:** the user (★ K1–K4 and the `nest_join` name-clash ruling, 2026-10-26, at the
-  ChuiFrames phase-4 ★); acceptance of this record: the ecosystem lead or the user
+  ChuiFrames phase-4 ★); acceptance of this record: the user, at the phase-4 merge ★
 - **Scope:** ChuiFrames.jl
 
 ## Context
@@ -13,9 +13,10 @@ Phase 4 adds joins (DESIGN §7 item 1). The design is spec
 ADR records it as built on `feat/phase4` at 50dbf18 (joins merged in 0db65f4). It **refines and
 implements** ADR-0003 rules 4 (the cost stage picks the build side and strategy), 8 (key
 equality), 10 (one radix primitive) and 11 (broadcast, else both sides radix-partitioned).
-Under ★ K2 ADR-0003 is kept as written: this ADR amends none of its rules. ADR-0002 rule 16
-carries the dated ★ K1 amendment (`by` replaces `on`); `join_by` extends its key forms (★ K3).
-dplyr facts: `Rscript`, dplyr 1.2.0 (spec §1.6). Code: src/engine/{join,join_shapes,verbs_join}.jl,
+Under ★ K2 ADR-0003 is kept as written; the user's dated note on ADR-0003 rule 11 (2026-10-26)
+records that `na_matches = :never` follows dplyr on NaN. ADR-0002 rule 16 carries the ★ K1
+amendment (`by` replaces `on`) and the ★ K3 note (`join_by` equality pairs). dplyr facts:
+`Rscript`, dplyr 1.2.0 (spec §1.6). Code: src/engine/{join,join_shapes,verbs_join}.jl,
 src/lazy/joins.jl.
 
 ## Decision
@@ -28,9 +29,11 @@ src/lazy/joins.jl.
 2. `join_by` **must** accept equality pairs only; a node (`c.a .== c.b`) is an `ArgumentError`
    pointing to `:a => :b`. Inequality and rolling joins are deferred: no design exists.
 3. The DataAPI methods `innerjoin`, `leftjoin`, `rightjoin`, `outerjoin`, `semijoin` and
-   `antijoin` on `(x::Frame, y)` **must** keep DataAPI's keyword `on` and forward it to `by`,
-   other keywords unchanged (ADR-0007); `crossjoin(x, y)` forwards to `cross_join`. The seven
-   names sit in the ExplicitImports `INTERFACE` of `test/package_tests.jl` (non-public in DataAPI).
+   `antijoin` on `(x::Frame, y)` **must** take DataAPI's keyword `on` and forward it to `by`,
+   other keywords unchanged (ADR-0007). Passing both `on` and `by` **must** raise
+   `ArgumentError` (lane p4-joinfix; at 3bc2be9 `by` silently wins). `crossjoin(x, y)` forwards
+   to `cross_join`. The seven names sit in the ExplicitImports `INTERFACE` of
+   `test/package_tests.jl` (non-public in DataAPI).
 4. `nest_join`'s column is an `ObjectColumn` of `Frame`s (tidyr `nest`'s representation). A
    `name` equal to an x column **must** replace it at its position, as dplyr does, and log one
    `@warn` when names resolve, never in replay (user ruling). A `name` equal to x's key under
@@ -49,9 +52,10 @@ src/lazy/joins.jl.
 7. `join_decision(spec, x::SideEstimate, y::SideEstimate)` is the cost stage for eager apply,
    the lowering at `collect` and `explain`. Build side: fewer estimated bytes (rows × nominal
    width); a tie or both unknown → y; one unknown side counts as larger. Broadcast **must** be
-   used below `BROADCAST_MAX_ROWS = 131_072` rows and `BROADCAST_MAX_BYTES = 4 MiB`; otherwise
-   both sides go through `radix_partition` into 2ᵖ partitions, `p = clamp(⌈log2 rows⌉ − 13, 4, 8)`
-   of the larger side (4 when unknown). `collect` confirms the strategy on the collected build side.
+   used below `BROADCAST_MAX_ROWS = 131_072` rows and `BROADCAST_MAX_BYTES = 4 MiB` (pending
+   p4-bench calibration, spec §5); otherwise both sides go through `radix_partition` into 2ᵖ
+   partitions, `p = clamp(⌈log2 rows⌉ − 13, 4, 8)` of the larger side (4 when unknown).
+   `collect` confirms the strategy on the collected build side.
 8. **Three shapes.** (a) broadcast, build y: `ProbeStep` streams x; pairs come out in (xrow,
    yrow) order, so the order-restoring sort **must** be skipped. (b) broadcast, build x: y
    streams; a `JoinTailStep` numbers y rows (`cumsum(##chui_ystart)`) and sorts. (c)
@@ -80,7 +84,7 @@ src/lazy/joins.jl.
 | Alternative | Why rejected |
 |---|---|
 | Always build on y | Contradicts ADR-0003 rule 4, kept by the user (★ K2); a 10³-row x against 10⁷-row y would build 10⁷ entries. |
-| Partition only the build side, stream the probe | Contradicts rule 11 as written (★ K2); needs hashing inside x's stage (deferred, spec §6). |
+| Partition only the build side, stream the probe | Contradicts ADR-0003 rule 11 as written (★ K2); needs hashing inside x's stage (deferred, spec §6). |
 | Keep `on =` | dplyr parity (★ K1); DataAPI keeps `on`. |
 | Reject integer/float key pairs (critic pass 2 N1) | dplyr compares them as double (★ K4); the 2⁵³ loss is documented. |
 | Error on, or rename, a `nest_join` `name` clash | dplyr replaces silently; the user chose dplyr's result plus a `@warn`. |
@@ -94,20 +98,29 @@ src/lazy/joins.jl.
 - Any upstream `mutate`, even off the key, makes a side non-static, so shape (a) then collects it.
 - Divergences (docs/research/differentials-joins.md, parity-dplyr.md): suffix `("_x", "_y")`;
   `nest_join` default `name` `:y`; no `multiple = "warning"` or many-to-many warning; Polars and
-  DuckDB match NaN with NaN under `:never`, ChuiFrames follows dplyr (encoded in the test).
-- **As-built deviation:** eager broadcast joins probe the whole frame on the calling task at any
-  size (spec §1.2 says below 65 536 rows); eager partitioned joins spawn tasks from 65 536 rows.
-- **Open follow-ups:** an x key held as `ObjectColumn{SubString}` keeps that kind on
+  DuckDB match NaN with NaN under `:never`, ChuiFrames follows dplyr (ADR-0003 rule 11 note;
+  encoded in the test).
+- **As-built task use (eager).** Broadcast joins probe the whole frame on the calling task at
+  any size (spec §1.2 says below 65 536 rows). Partitioned joins spawn tasks when
+  `nx + ny >= 65_536` (src/engine/join_shapes.jl). That trigger counts both inputs together:
+  two inputs each under one morsel can spawn, which reads against ADR-0003 rule 2's
+  per-verb "below 65 536 rows, no task spawn" if that means per input. In practice an eager
+  join is partitioned only when its build side passes the broadcast limits (≥ 131 072 rows or
+  ≥ 4 MiB), or when forced. p4-bench decides whether the trigger becomes per side.
+- **Owed before main (ADR-0022 rules 1 and 3; p4-bench):** `SUITE` entries and budget rows for
+  the joins (inner, left; 1:1, 1:n; broadcast and partitioned; build x and y; small x/large y),
+  `nest_join` and `cross_join`, plus an `n=10` row per join verb (spec §5).
+- **Open follow-ups:** the broadcast limits, partition bits p and nominal widths are
+  uncalibrated (p4-bench, spec §5); an x key held as `ObjectColumn{SubString}` keeps that kind on
   inner/left/nest instead of `String` (reviewer p4-join pass 2; lazy == eager); parallel eager
-  broadcast probes (p4-bench); partition bits p and nominal widths untuned (p4-bench); static
-  types per key column.
+  broadcast probes (p4-bench); static types per key column.
 
 ## Verification
 
 - Main checkout `.lanes/reports/` (gitignored): `reviewer-p4-join-pass1.md` (pre-K4, at
   0d00cda: 20 dplyr cases, every `_FORCE_JOIN` value, morsels 1–7, `-t 4`, 0 differences),
   `reviewer-p4-join-pass2.md` (APPROVE FINAL at 8e63b5e: K4 probed under every shape),
-  `critic-p4.md`, `critic-p4-pass2.md`, `critic-p4-pass3.md`.
+  `critic-p4.md`, `critic-p4-pass2.md`, `critic-p4-pass3.md`, `critic-p4-adrs.md`.
 - Gates: `.lanes/reports/lanes/p4-join/evidence/` files `tests-8e63b5e.txt`,
   `tests-t4-8e63b5e.txt`, `tests-lts-8e63b5e.txt`, `tests-diff-8e63b5e.txt`,
   `tests-slow-t4-8e63b5e.txt`. Differentials: evidence `tests-diff-b13e506.txt`.
@@ -115,9 +128,10 @@ src/lazy/joins.jl.
 
 ## Revisit when
 
-- p4-bench measures the order-restoring sort above 25 % of a shape-(b)/(c) join, or a
-  small-x/large-y join more than 2× slower than DuckDB → reconsider shapes (b)/(c).
-- A join behind an upstream non-key `mutate` is more than 1.5× slower than without → static
-  types per key column.
+- p4-bench's order-restoring-sort rows (spec §5; owed) show the sort above 25 % of a
+  shape-(b)/(c) join, or its join q1–q3 in the future directory benchmark/compare/ show a small-x/large-y join more
+  than 2× slower than DuckDB → reconsider shapes (b)/(c).
+- A join behind an upstream non-key `mutate` is more than 1.5× slower than without it (spec §7;
+  p4-bench owes the row) → static types per key column.
 - A user reports the 2⁵³ loss as a problem → an opt-in strict mode rejecting lossy pairs.
 - The inequality/rolling `join_by` design starts → reopen rule 2.

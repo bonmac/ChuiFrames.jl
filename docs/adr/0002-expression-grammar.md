@@ -218,6 +218,10 @@ Facts ([grammar.md](../research/grammar.md); [lane-checks.md](../research/lane-c
       `:a => :b`, vectors of those. The DataAPI methods (`DataAPI.innerjoin(x, y; on)` and the
       other joins) keep DataAPI's own `on` keyword (ADR-0007) and forward it to `by`. Spec
       `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md` §0.4, §1.1.
+    - *Note (2026-10-26, the user at the ChuiFrames phase-4 ★):* `join_by(:a => :b, :c)` is
+      also a key form (★ K3): equality pairs only, in the forms above, usable as
+      `by = join_by(...)` and as the DataAPI methods' `on`. A node (`c.a .== c.b`) is an
+      `ArgumentError`; inequality and rolling `join_by` are deferred. Spec §1.5, ADR-0023.
 17. **Lints** (warnings that can be silenced):
     - At build time:
       - the GR-03 chained-comparison shape (`a .> 1 .& b .< 2`);
