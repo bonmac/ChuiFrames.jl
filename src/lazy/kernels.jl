@@ -151,8 +151,10 @@ reported). Each morsel `f::Frame` runs as `kernel(f)` after the engine's scan pr
 
 The callable is shared by every task of a parallel run: it must be reentrant, allocating its
 outputs per call (never buffers preallocated once per `stage_kernel` call). Its output column
-types must equal the interpreter's on the same morsel, including an empty one (empty and pruned
-morsels run through `interpret_stage`, in `_process_empty`).
+types must equal the interpreter's on the same morsel, including an empty one: an empty morsel,
+and a pruned or unreached morsel read for its column kinds (its empty slice, `_readkinds`), run
+through this kernel, while the output on no data and a pruned morsel's shared empty output come
+from `interpret_stage` (`_process_empty`), and the two are gathered together.
 """
 function stage_kernel(ph, est_rows::Union{Nothing, Int})
     kind, _ = _decide(ph, est_rows)

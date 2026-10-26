@@ -106,7 +106,13 @@ collect(q)          # the same rows, order and types as the eager pipeline
 
 ## Not yet
 
-Hash-aggregate and grouped-window sinks with parallel partial aggregation, compiled kernels
-(phase 4), and asynchronous I/O (phase 5). Inequality and rolling joins (`join_by(a >= b)`,
-`closest`, `between`, `within`, `overlaps`) have no design yet. `code_lowered` shows a kernel rendered from
-the plan for reading; the engine runs the interpreter.
+Asynchronous I/O (phase 5). Inequality and rolling joins (`join_by(a >= b)`, `closest`,
+`between`, `within`, `overlaps`) have no design yet.
+
+Phase 4 added what earlier versions listed here: a grouped `summarise` of simple aggregates runs
+as a hash-aggregate sink (each task folds its morsels into partial aggregates, merged in morsel
+order), a grouped `mutate` of window functions as a grouped-window sink when threads > 1, and
+the streamed stage runs as a compiled kernel when its steps can be compiled and the source is
+large enough or the stage's shape was compiled before (else the interpreter). `explain` names each sink, or why a summary runs on the gathered
+frame instead; `explain(q; kernel = true)` names the stage's kernel. `code_lowered` shows the
+kernel rendered from the plan.

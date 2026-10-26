@@ -30,10 +30,11 @@ are 3–17× faster than ChuiFrames on one thread.
   `summarise` at 10⁶ rows went from 166 ms to 9 ms (Int key) and from 990 ms to 235 ms (10⁵ string
   groups).
 - **Losses:** joins q2, q3 and small-x joins are 4–11× slower than DataFrames.jl; group-by q4 and
-  q5 are 4–5× slower than DataFrames.jl. **Lazy joins are 5–7× slower than eager joins** at 10⁷
-  rows (3.5–4.7 s), and the lazy group-by is slower than eager for few string groups; both are
-  known engine issues (performance-phase4.md P4-02, P4-05), so prefer eager joins on large
-  frames for now.
+  q5 are 4–5× slower than DataFrames.jl. When measured, **lazy joins were 5–7× slower than eager
+  joins** at 10⁷ rows (3.5–4.7 s), and the lazy group-by was slower than eager for few string
+  groups. Both causes (performance-phase4.md P4-02: quadratic concatenations; P4-05: a per-row
+  allocation when slicing string columns) are fixed since commit b30cea3, but these timings have
+  not been re-measured on a quiet machine yet, so the numbers above are the old ones.
 
 Load time and the first call are unchanged in kind: `using ChuiFrames` 421 ms and the first call
 38 ms on Julia 1.13.2 (598 ms and 73 ms on 1.10.12), measured at load average 8–11.

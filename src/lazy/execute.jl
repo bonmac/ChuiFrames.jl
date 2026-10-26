@@ -252,7 +252,7 @@ function _gathered_kinds(out::Frame, kinds::Vector{Frame})
 end
 
 """
-    execute(ph::Physical; morsel, threads) -> Frame
+    execute(ph::Physical; morsel, threads, levels = _needs_levels(ph)) -> Frame
 
 Run a physical plan (spec §6). Partitions are planned with the pushed `Scan`, pruned from their
 statistics, read (behind the source lock unless `isthreadsafe`), passed through the residual,
@@ -264,8 +264,12 @@ When the steps after the stage start with a summary the hash-aggregate sink comp
 (`_hashagg_plan`, phase-4 spec §2.1), the morsels are folded per task into partial aggregates
 instead of being gathered (`_run_hashagg`, src/lazy/sinks.jl); every morsel still runs through
 `_runstage` with the stage's kernel. The steps after the summary then run eagerly.
+
+`levels = true` gathers every dictionary column with the kind the eager read gives it, even when
+no step of `ph` shows levels (`_needs_levels`): a join's collected side (`_run_subplan`) passes
+it when a step of the outer plan shows them (CF-008, final review B1).
 """
-function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = true, stats::ExecStats = ExecStats())
+function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = true, stats::ExecStats = ExecStats(), levels::Bool = _needs_levels(ph))
     scan = ph.scan
     src = scan.source
     handles, residual = plan_partitions(src, pushed_scan(scan); morsel)
@@ -278,7 +282,6 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
     # column types (`conform_types`, as `read_source` does), so the stage sees the eager types.
     emptyout = Ref{Union{Nothing, Frame}}(nothing)    # computed once, by the first pruned morsel
     emptylock = ReentrantLock()
-    levels = _needs_levels(ph)
     function part(i)
         if _pruned(scan, handles[i])
             Threads.atomic_add!(pruned, 1)
