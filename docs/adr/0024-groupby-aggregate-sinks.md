@@ -1,6 +1,7 @@
 # ADR-0024: Group-by runs on typed keys in an open-addressing table; lazy summaries of simple aggregates run in a two-phase, order-preserving hash-aggregate sink with an adaptive radix switch
 
-- **Status:** Proposed (2026-10-26). **As-built note (2026-10-26):** refreshed to the code after
+- **Status:** Accepted (2026-10-26, the user, at the phase-4 merge ★). Proposed 2026-10-26.
+  **As-built note (2026-10-26):** refreshed to the code after
   lanes p4-bench (merged in 5956626: `RADIX_SWITCH` = 2²⁰, `SUITE` and budget rows), p4-perf
   (b30cea3: linear concatenations, P4-02; `take` without a per-row allocation, P4-05; 43
   allocation and memory rows tightened) and p4-levels (9ef025e, fix 3ff0e2f: rule 11 for a

@@ -10,8 +10,9 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 - **Phase:** phase 4: joins, the fast group-by with aggregate sinks, codegen kernels.
   - Spec: `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md`.
   - Plan: `docs/superpowers/plans/2026-10-26-phase4.md`.
-  - ADRs 0023 (joins), 0024 (group-by and sinks), 0025 (codegen): **Proposed**. The user accepts
-    them at the phase-4 merge ★.
+  - ADRs 0023 (joins), 0024 (group-by and sinks), 0025 (codegen): **Accepted** by the user on
+    2026-10-26, at the phase-4 merge ★. ADR-0025 keeps an open condition: quiet timings before
+    the first release.
 - **Merged into `feat/phase4`.** Each lane merged `--no-ff`, after `scripts/lane audit` and a
   reviewer FINAL:
 
@@ -108,13 +109,17 @@ None. Every phase-4 lane is merged and its worktree removed.
    tightened; no time row fell below half its baseline.
 5. ~~`julia scripts/ci.jl bench` against `main`~~: deferred with item 1 to the same
    pre-release gate (p4-bench review MINOR-4).
-6. **ADR-0022 rule 1's "public API only":** the SUITE now uses the internal switches
-   `_FORCE_JOIN`/`_FORCE_KERNEL` (p4-bench review MINOR-3). The DRAFT dated note is on rule 1
-   (`f87784e`); the user decides it at the phase-4 ★.
+6. ~~ADR-0022 rule 1's "public API only"~~: the dated note allowing `_FORCE_JOIN`/`_FORCE_KERNEL`
+   in the SUITE (p4-bench review MINOR-3) was accepted by the user on 2026-10-26.
 7. ~~Final reviewer and `dod.jl`~~: APPROVE WITH CONDITIONS (FINAL) at `d410a46`, after B1 was
    fixed by p4-levels (`.lanes/reports/reviewer-p4-final.md`); `dod.jl --base main` DONE. The
    docs-only commits after `d410a46` get the reviewer's delta check.
-8. **The user accepts ADRs 0023–0025** at the phase-4 merge ★.
+8. ~~The user accepts ADRs 0023–0025~~: accepted on 2026-10-26, at the phase-4 merge ★.
+
+No open condition blocks the merge into main. Gate before ChuiFrames' first release:
+quiet-machine timings (`benchmark/ttfx.jl --check`, `benchmark/run.jl --check` on 1.13 and LTS,
+load < 2) plus `julia scripts/ci.jl bench` against main (items 1 and 5; user deferral
+2026-10-26: load ~8 from outside work).
 
 ## Process deviations
 
@@ -159,8 +164,7 @@ None. Every phase-4 lane is merged and its worktree removed.
 
 ## Next action
 
-1. The user, through the ecosystem lead (★): accept ADRs 0023–0025 and decide the ADR-0022
-   rule 1 DRAFT note.
+1. ~~The user's ★~~: done on 2026-10-26 (ADRs 0023–0025 and the ADR-0022 rule 1 note accepted).
 2. The ecosystem lead re-runs the tests and merges `feat/phase4` into `main`.
 3. Before the first release: the quiet timing run (open condition 1) and the `###` fragment fix
    for `changelog.jl fold` (owned by the ecosystem lead).

@@ -1,9 +1,9 @@
 # ADR-0025: Streamed stages compile into closure-composed kernels for a whitelist of steps and nodes, with the interpreter as the exact fallback; a new shape compiles from 5×10⁵ estimated rows
 
-- **Status:** Proposed (2026-10-26). **Open condition:** quiet-machine `ttfx.jl --check` and
-  `run.jl --check` timings, 1.13 and 1.10. The user deferred them (2026-10-26) from the phase-4
-  merge to a gate before ChuiFrames' first release, because the timings at `d410a46` ran under
-  load and are INCONCLUSIVE.
+- **Status:** Accepted (2026-10-26, the user, at the phase-4 merge ★). Proposed 2026-10-26.
+  **Open condition:** quiet-machine `ttfx.jl --check` and `run.jl --check` timings, 1.13 and
+  1.10, before ChuiFrames' first release (user deferral, 2026-10-26: load ~8 from outside work;
+  the timings at `d410a46` ran under load and are INCONCLUSIVE).
   **As-built note (2026-10-26):** refreshed to the code after lanes p4-bench (merged in 5956626:
   the compiled-stage and interpreter `SUITE` and budget rows), p4-perf (b30cea3: linear
   concatenations, P4-02; 43 allocation and memory rows tightened) and p4-levels (9ef025e, fix

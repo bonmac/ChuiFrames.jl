@@ -46,7 +46,7 @@
    10, 10^4 and 10^6 rows ("many groups" skips 10 rows), and `read_csv`/`write_csv`/
    `read_arrow`/`write_arrow` of a 10^5-row frame. A new hot path (a verb, a kernel, a reader)
    **must** add a `SUITE` entry and budget rows for every Julia version table in the same PR.
-   - *Note (2026-10-26, DRAFT pending the user at the ChuiFrames phase-4 ★):* the `SUITE` may
+   - *Note (2026-10-26, accepted by the user 2026-10-26 at the ChuiFrames phase-4 ★):* the `SUITE` may
      use the internal forcing switches `_FORCE_JOIN` and `_FORCE_KERNEL`, and only to force a
      join's build side and strategy or the stage kernel (compiled or interpreter), so each
      physical path phase 4 adds has its own row (phase-4 spec §5). It may also build

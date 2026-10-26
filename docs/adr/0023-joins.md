@@ -1,7 +1,7 @@
 # ADR-0023: Joins follow dplyr 1.2.0 through one hash-join operator in three physical shapes, chosen by the cost stage; keys are `by =`, and integer/float key pairs compare as `Float64`
 
-- **Status:** Proposed (2026-10-26). Rule 3's `on`/`by` `ArgumentError` landed with lane
-  p4-joinfix (a06a090). **As-built note (2026-10-26):** refreshed to the code after lanes
+- **Status:** Accepted (2026-10-26, the user, at the phase-4 merge ★). Proposed 2026-10-26.
+  Rule 3's `on`/`by` `ArgumentError` landed with lane p4-joinfix (a06a090). **As-built note (2026-10-26):** refreshed to the code after lanes
   p4-bench (merged in 5956626: `SUITE` and budget rows, broadcast limits kept), p4-perf (b30cea3:
   linear concatenations, P4-02; 43 allocation and memory rows tightened) and p4-levels (9ef025e,
   fix 3ff0e2f: collected sides and `drop = false`, Consequences). No decision changed.
