@@ -162,10 +162,12 @@ end
 # and the streamed stage.
 _readpart(ph::Physical, residual::Tables.Scan, h) =
     apply_scan(conform_types(_read(ph.scan.source, h), source_schema(ph.scan.source)), residual)
-# A partition read for its column kinds only (`_needs_levels`): its empty slice, taken before
-# the declared types, the residual and the stage, so no row is converted, filtered or computed.
+# A partition read for its column kinds only (`_needs_levels`): conformed to the declared types
+# on its real rows (`conform_types` narrows by the values it sees, so it must see the rows eager
+# `read_source` sees; review MINOR-1), then its empty slice through the residual and the stage,
+# so no row is filtered or computed.
 _readkinds(ph::Physical, residual::Tables.Scan, h, kernel) =
-    _runstage(ph, apply_scan(conform_types(take(_read(ph.scan.source, h), Int[]), source_schema(ph.scan.source)), residual), kernel)
+    _runstage(ph, apply_scan(take(conform_types(_read(ph.scan.source, h), source_schema(ph.scan.source)), Int[]), residual), kernel)
 function _runstage(ph::Physical, f::Frame, kernel = interpret_stage(ph))
     isempty(ph.engine) || (f = apply(FilterStep(ph.engine, false), f))
     return kernel(f)

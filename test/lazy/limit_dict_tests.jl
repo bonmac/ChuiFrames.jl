@@ -84,3 +84,45 @@ end
     @test st.read == 2 && st.planned == 2
     @test r.nrow == 2
 end
+
+@testitem "kinds-only reads conform the real rows, then slice (review MINOR-1)" tags = [:unit] setup = [LimDict] begin
+    # `conform_types` narrows by the values it sees: a `missing` under a declared non-nullable
+    # type keeps the column as read (nullable). A kinds-only read must see the same column types
+    # as eager `read_source`, so it conforms the whole partition before taking its empty slice.
+    struct DeclSource <: CF.Source
+        parts::Vector{Frame}
+        sch::Tables.Schema
+    end
+    CF.source_schema(s::DeclSource) = s.sch
+    CF.source_label(::DeclSource) = "declared-schema source"
+    CF.plan_partitions(s::DeclSource, scan::Tables.Scan; morsel::Int = 1) = (collect(eachindex(s.parts)), scan)
+    CF.read_partition(s::DeclSource, p::Int) = s.parts[p]
+    function CF.partition_stats(s::DeclSource, p::Int, col::Symbol)
+        col === :y || return nothing
+        y = collect(skipmissing(s.parts[p].columns[2]))
+        return (; lo = minimum(y), hi = maximum(y), nnull = count(ismissing, s.parts[p].columns[2]), nnan = 0, ndistinct = nothing)
+    end
+    eltypes(f) = Type[eltype(col) for col in f.columns]
+    function check(p, s)
+        e = p(CF.read_source(s))
+        for th in (false, true)
+            r, _ = rawrun(p(lazy(s)); threads = th)
+            @test eltypes(r) == eltypes(e)
+            @test same(e, r)
+            @test eltypes(collect(p(lazy(s)); threads = th)) == eltypes(e)
+        end
+        return e
+    end
+    # pruned path: every partition pruned; partition 1 holds a missing under declared Int
+    sch = Tables.Schema((:g, :y), (String, Int))
+    pr = DeclSource([mk(["a", "zz"], ["a", "zz"], Union{Missing, Int}[missing, 50]), mk(["c"], ["c", "c"], [20, 30])], sch)
+    e = check(filter(c.y .< 10) ⨟ group_by(:g; drop = false), pr)
+    @test eltype(e.columns[2]) == Union{Missing, Int}
+    # limit path: the unreached partition's dictionary column is nullable under declared String
+    nd = CF.DictColumn(UInt8[1, 0, 2], CF.column(["c", "a"]), BitVector([1, 0, 1]))
+    lm = DeclSource([mk(["a", "b", "zz"], ["a", "b", "a"], [1, 2, 3]), Frame(g = nd, y = [10, 11, 12])], sch)
+    for tail in (group_by(:g; drop = false), group_by(:g; drop = false) ⨟ summarise(n = n_rows()))
+        el = check(head(2) ⨟ tail, lm)
+        @test Missing <: eltype(el.columns[1])             # eager keeps the missing
+    end
+end
