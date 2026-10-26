@@ -63,8 +63,50 @@ If a lazy run throws, the query is run again eagerly without the optimizer, and 
 is the one raised. Lazy and eager can otherwise raise different exceptions when two steps fail
 on different rows, because a partition runs every step before the next partition starts.
 
+## Joins
+
+The join verbs (`inner_join`, `left_join`, `right_join`, `full_join`, `semi_join`,
+`anti_join`, `nest_join`, `cross_join`) work on lazy queries too, and `y` may itself be lazy:
+
+```julia
+orders = lazy(ChuiFrames.scan_file("orders.parquet"))
+q = orders |> filter(c.amount .> 10) |>
+    left_join(lazy(customers) |> select(:id, :country); by = :customer => :id) |>
+    filter(c.country .== "KE")
+explain(q)          # the plan is a tree: the join's x: and y: subplans
+collect(q)          # the same rows, order and types as the eager pipeline
+```
+
+- **Names are fixed when the join is applied.** The key pairs and the output names (suffixes
+  included) are resolved from both sides' schemas when the join is added to the query, so the
+  natural-join message `@info "Joining with by = [...]"` is logged then, once. When a side's
+  schema cannot be known without running it, the names are resolved, and the message logged,
+  when the query is collected.
+- **Filters move through joins only when that cannot change the result.** A filter above a
+  join that reads columns of one side moves to that side when the join cannot raise
+  (`unmatched = :drop`, `multiple != :error`): to x for inner, left, semi, anti and nest joins,
+  to y for inner and right joins only under `multiple = :all` (filtering y first would change
+  which match `:first`/`:last` picks), never for full joins. A condition on the merged key
+  moves to x only when x's key needs no conversion to the compare type. Each side reads only the
+  columns the query needs, plus its keys and every column whose name clashes.
+- **How it runs.** At `collect` the cost stage picks the build side (the side with fewer
+  estimated bytes) and the strategy: a broadcast join (one shared hash table) when the build
+  side is small, otherwise both sides are radix-partitioned. When y is the build side, x streams
+  through the probe morsel by morsel and the result is already in order; otherwise a final step
+  restores dplyr's row order (x order, then y order) with a stable counting sort. `explain`
+  names the strategy, the build side with its estimated size, which side streams, and whether
+  the sort runs; its decision is a prediction from estimates, confirmed at `collect` on the
+  collected build side.
+- **Key types.** A side whose key types are not known from the schema (for example a key made
+  by `mutate`) is collected before the join runs, and its column types decide the compare type.
+  Integer keys joined with float keys are compared as `Float64`: integers above 2^53 in
+  magnitude can then match the same float key (convert the key first if that matters).
+- If the lazy run raises, `collect` reruns the query eagerly and raises eager's exception, as
+  for every lazy query.
+
 ## Not yet
 
-Hash-aggregate and grouped-window sinks with parallel partial aggregation, joins, compiled
-kernels (phase 4), and asynchronous I/O (phase 5). `code_lowered` shows a kernel rendered from
+Hash-aggregate and grouped-window sinks with parallel partial aggregation, compiled kernels
+(phase 4), and asynchronous I/O (phase 5). Inequality and rolling joins (`join_by(a >= b)`,
+`closest`, `between`, `within`, `overlaps`) have no design yet. `code_lowered` shows a kernel rendered from
 the plan for reading; the engine runs the interpreter.
