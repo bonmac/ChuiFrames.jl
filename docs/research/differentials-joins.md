@@ -14,10 +14,11 @@ docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md §1.6, 
   Polars and DuckDB" (tags `:differential`, `:polars_duckdb`):
   `uv run --no-project --python 3.13 --with polars==2.0.0 --with duckdb==1.5.6 --with pyarrow==26.0.0`.
 
-**Results.** Lane run before the K4 helper merged (2026-10-26): Polars 48/48 and DuckDB
-48/48 (36 exact, 12 under the encoded NaN divergence); dplyr 38/42 (the 4 integer/double key
-cases wait for the K4 helper, `_keypair_compare_type`, and pass after it merges). The final
-counts and evidence file are in the lane report.
+**Results.** Evidence file `.lanes/evidence/tests-diff-b13e506.txt` (lane p4-join, head
+b13e506, `dirty: false`; `julia scripts/evidence.jl tests-diff -- julia scripts/ci.jl test --timeout 3000 -- differential`).
+Its log lines "join cases agree with dplyr 1.2.0", "join cases agree with polars" and "join
+cases agree with duckdb" give the counts: every join case agrees, the Polars and DuckDB ones
+partly under the encoded divergence below.
 
 ## dplyr
 
@@ -50,8 +51,9 @@ the six keyed joins × keys `k` (nullable `Float64` with NaN, ±0.0, `missing`),
 (nullable `String`) and `[k, i]` × `na_matches = :na` / `:never`. `:na` is paired with Polars
 `nulls_equal=True` and DuckDB `IS NOT DISTINCT FROM`; `:never` with `nulls_equal=False` and `=`.
 
-Observed (lane run, 2026-10-26): 36 cases agree exactly with each engine; the other 12 are the
-encoded divergence below, and the test asserts that it still occurs in all 12.
+Observed (evidence file above): the cases that allow it are exactly the 12 `:never` cases on
+`k`, and the test asserts that the divergence still occurs in each of them; all other cases
+agree exactly.
 
 - **NaN keys under `na_matches = :never`** (encoded as `(:nan_rows,)`, 12 cases per engine: every
   `:never` case whose keys include `k`). ChuiFrames follows dplyr: under `"never"` a NaN key
