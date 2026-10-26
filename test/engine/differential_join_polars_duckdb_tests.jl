@@ -140,21 +140,21 @@
                     continue
                 end
                 f = canon(r)
-                if j == f
+                if isequal(j, f)
                     passed[eng] += 1
                     exact[eng] += 1
                     continue
                 end
                 # (:nan_rows,): only pairs involving a NaN key may differ
                 if kind isa Tuple && kind[1] === :nan_rows
-                    restok = filter(!nanrow, j) == filter(!nanrow, f)
+                    restok = isequal(filter(!nanrow, j), filter(!nanrow, f))
                     restok || @info "differential mismatch (outside NaN-key pairs)" case = nm engine = eng julia = j foreign = f
                     @test restok
                     restok && (passed[eng] += 1; push!(divergent[eng], nm))
                     continue
                 else
                     @info "differential mismatch" case = nm engine = eng julia = j foreign = f
-                    @test j == f
+                    @test isequal(j, f)
                 end
             end
         end

@@ -270,6 +270,12 @@ end
     for r in forall(() -> semi_join(y; by = :k)(x))
         @test groupcols(r) == [:g]
     end
+    # a grouping column renamed by a suffix is dropped from the grouping (dplyr 1.2.0)
+    xg = group_by(:i, :g)(Frame(k = [1, 2], i = [1, 2], g = ["a", "b"]))
+    for r in forall(() -> left_join(Frame(k = [1], i = [5]); by = :k)(xg))
+        @test r.names == [:k, :i_x, :g, :i_y]
+        @test groupcols(r) == [:g]
+    end
 end
 
 @testitem "join: reserved names, abstract and rejected key types" tags = [:unit] setup = [Force, JoinHelpers] begin

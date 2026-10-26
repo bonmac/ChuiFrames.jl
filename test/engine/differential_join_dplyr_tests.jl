@@ -126,7 +126,7 @@
         out = read(`$rscript --vanilla $rfile`, String)
 
         parseval(s) = s == "NA" ? missing : s == "NaN" ? NaN : s == "TRUE" ? true : s == "FALSE" ? false :
-            (x = tryparse(Float64, s); x === nothing ? s : x)
+            (num = tryparse(Float64, s); num === nothing ? s : num)   # not `x`: that would rebind the table
         rres = Dict{String, Any}()
         rerr = Dict{String, String}()
         cur = ""
@@ -171,7 +171,13 @@
         for (nm, thunk, _) in cases
             @test haskey(rres, nm)
             haskey(rres, nm) || continue
-            jl = thunk()
+            jl = try
+                thunk()
+            catch err
+                @info "differential: Julia side raised" case = nm exception = sprint(showerror, err)
+                @test false
+                continue
+            end
             jl isa Frame || (jl = Frame(jl))
             passed += compare(nm, jl, rres[nm])
         end
