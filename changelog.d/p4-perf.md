@@ -3,11 +3,13 @@
   quadratic (docs/research/performance-phase4.md P4-02). They are the lazy gather's
   `vcat_columns` (values, dictionary codes and validity of many morsels), the partitioned
   join's per-partition pairs, `bind_rows(...; id)`'s id column and `reframe`'s key rows. Their
-  allocations are now linear in the output; for example, a lazy gather of 1,000 morsels
-  allocated about 550× its payload and now allocates about 9×. Outputs are unchanged.
+  allocations are now linear in the output (test/lazy/alloc_gather_tests.jl and
+  test/engine/alloc_concat_tests.jl bound them by bytes). Outputs are unchanged.
 - Slicing a string or binary column (`take`) no longer allocates once per row. Every lazy scan
-  of a frame with string columns slices it this way, so the lazy String-key group-by now
-  allocates about 0.01 times per row instead of once (P4-05). Outputs are unchanged.
+  of a frame with string columns slices it this way, so the lazy String-key group-by no longer
+  allocates per row: `groupby/String few, lazy/n=10^6` went from 1,003,338 to 3,280 allocations
+  (`bench-113-6396ca3.txt`, archived under `.lanes/reports/lanes/p4-perf/evidence/`). Outputs
+  are unchanged.
 
 ### Changed
 - Allocation and memory budgets of rows that fell below half their baseline are tightened

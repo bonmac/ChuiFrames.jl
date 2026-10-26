@@ -214,7 +214,8 @@ end
 widen_offsets(offsets::Vector{Int64}, ::Integer) = offsets
 
 # Build a variable-width column from byte sequences (nothing = null), widening offsets on
-# overflow instead of wrapping. `nullable` may be the validity itself (`take`).
+# overflow instead of wrapping. `nullable` may be the validity itself (`take`): that BitVector is
+# taken over (a `nothing` item writes into it), so it must be fresh, never a column's own.
 function _build_var(::Type{C}, items, nullable::Union{Bool, BitVector}) where {C}
     n = length(items)
     offsets = Vector{Int32}(undef, n + 1)
