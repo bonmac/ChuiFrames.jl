@@ -2,16 +2,17 @@
 # promised).
 
 """
-    explain([io,] q::LazyFrame; morsel = 65_536)
+    explain([io,] q::LazyFrame; morsel = 65_536, kernel = false)
 
 Print how `q` runs, in sections: `logical plan` (the verbs as written, last first),
 `optimized plan`, `rules fired`, `physical plan` (the pipeline, the streamed stage, parallel or
 sequential and why, the limit), `pruning` (partitions kept and pruned by statistics, from the
 source's `partition_stats`; no data is read) and `rendered kernel` (the streamed stage as
-Julia code, see `code_lowered`). Planning only: `explain` reads no data.
+Julia code, see `code_lowered`). With `kernel = true` the physical plan also says which kernel
+runs the streamed stage. Planning only: `explain` reads no data.
 """
 explain(q::LazyFrame; kw...) = explain(stdout, q; kw...)
-function explain(io::IO, q::LazyFrame; morsel::Integer = DEFAULT_MORSEL)
+function explain(io::IO, q::LazyFrame; morsel::Integer = DEFAULT_MORSEL, kernel::Bool = false)
     plan, log = optimize_plan(q.plan)
     ph = physical(plan)
     _section(io, "logical plan")
@@ -23,7 +24,7 @@ function explain(io::IO, q::LazyFrame; morsel::Integer = DEFAULT_MORSEL)
     foreach(r -> println(io, "  - ", r), log.fired)
     foreach(p -> println(io, "  - fixpoint cap hit: ", p, " (kept the last plan)"), log.capped)
     _section(io, "physical plan")
-    _printphysical(io, ph)
+    _printphysical(io, ph; kernel)
     _section(io, "pruning")
     _printpruning(io, ph, Int(morsel))
     _section(io, "rendered kernel")
@@ -38,7 +39,7 @@ end
 
 _section(io::IO, title::String) = println(io, "== ", title, " ==")
 
-function _printphysical(io::IO, ph::Physical)
+function _printphysical(io::IO, ph::Physical; kernel::Bool = false)
     scan = ph.scan
     println(io, "  scan: ", source_label(scan.source))
     q = pushed_scan(scan)
@@ -61,7 +62,7 @@ function _printphysical(io::IO, ph::Physical)
     else
         println(io, "  execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential")
     end
-    _explain_kernel(io, ph)
+    _explain_kernel(io, ph; kernel)
     return _explain_rest(io, ph)
 end
 

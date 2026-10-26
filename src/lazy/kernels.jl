@@ -24,5 +24,9 @@ morsels run through `interpret_stage`, in `_process_empty`).
 """
 stage_kernel(ph, ::Union{Nothing, Int}) = interpret_stage(ph)
 
-"`explain`'s kernel line for `ph`'s streamed stage (seam version: prints nothing)."
-_explain_kernel(io::IO, ph) = nothing
+"""
+`explain`'s kernel line for `ph`'s streamed stage, printed only when `kernel = true` (so the
+default `explain` output does not depend on the session's kernel cache). Seam version: prints
+nothing.
+"""
+_explain_kernel(io::IO, ph; kernel::Bool = false) = nothing
