@@ -14,7 +14,8 @@ runs the streamed stage. Planning only: `explain` reads no data.
 explain(q::LazyFrame; kw...) = explain(stdout, q; kw...)
 function explain(io::IO, q::LazyFrame; morsel::Integer = DEFAULT_MORSEL, kernel::Bool = false)
     plan, log = optimize_plan(q.plan)
-    ph = physical(plan)
+    joins = _JoinNote[]
+    ph = physical(_hasjoin(plan) ? _explain_lower(plan, joins, Int(morsel)) : plan)
     _section(io, "logical plan")
     _printplan(io, q.plan, "  ")
     _section(io, "optimized plan")
@@ -24,12 +25,15 @@ function explain(io::IO, q::LazyFrame; morsel::Integer = DEFAULT_MORSEL, kernel:
     foreach(r -> println(io, "  - ", r), log.fired)
     foreach(p -> println(io, "  - fixpoint cap hit: ", p, " (kept the last plan)"), log.capped)
     _section(io, "physical plan")
+    _printjoins(io, joins; kernel)
     _printphysical(io, ph; kernel)
     _section(io, "pruning")
     _printpruning(io, ph, Int(morsel))
     _section(io, "rendered kernel")
     ex = render_kernel(ph)
-    if ex === nothing
+    if any(s -> s isa ProbeStep, ph.stage)
+        println(io, "  not rendered (the stage holds a join probe)")
+    elseif ex === nothing
         println(io, "  none (no streamed stage)")
     else
         println(io, "  ", replace(_exprstring(ex), "\n" => "\n  "))
@@ -89,10 +93,99 @@ promised (CF-017 open items).
 Base.code_lowered(q::LazyFrame) = code_lowered(stdout, q)
 function Base.code_lowered(io::IO, q::LazyFrame)
     plan, _ = optimize_plan(q.plan)
-    ex = render_kernel(physical(plan))
+    ph = physical(_hasjoin(plan) ? _explain_lower(plan, _JoinNote[], DEFAULT_MORSEL) : plan)
+    ex = any(s -> s isa ProbeStep, ph.stage) ? nothing : render_kernel(ph)
     ex === nothing && return println(io, "no streamed stage: nothing to render")
     println(io, "# rendered kernel: one partition's columns as `cols`")
     show(io, MIME("text/plain"), lower_kernel(ex))
     println(io)
+    return nothing
+end
+
+# ---------------------------------------------------------------------------------------------
+# Joins in `explain` (phase-4 spec §1.4): the plan is lowered symbolically (nothing runs), one
+# note per join, innermost first.
+
+struct _JoinNote
+    label::String
+    strategy::Symbol         # :broadcast, :partitioned or :cross
+    build::Symbol
+    p::Int
+    why::String
+    est::SideEstimate        # the build (collected) side's estimate
+    collected::Any           # the collected side's lowered plan
+    collected_side::Symbol
+    resolved::Bool           # names resolved when the query was built
+    static::Bool             # both sides' key types static
+end
+
+_placeholder_names() = JoinNames(Pair{Symbol, Symbol}[], false, Symbol[], Symbol[], Symbol[], Symbol[], Symbol[], Symbol[], Symbol[], nothing)
+
+_explain_lower(n::ScanNode, notes::Vector{_JoinNote}, m::Int) = n
+_explain_lower(n::StepNode, notes::Vector{_JoinNote}, m::Int) = StepNode(n.step, _explain_lower(n.child, notes, m))
+function _explain_lower(j::JoinNode, notes::Vector{_JoinNote}, m::Int)
+    s = j.spec
+    names = j.names === nothing ? _placeholder_names() : j.names
+    resolved = j.names !== nothing
+    label = _joinlabel(j)
+    if s.kind === :cross
+        ylow = _explain_lower(j.right, notes, m)
+        push!(notes, _JoinNote(label, :cross, :y, 0, "a cross join has no hash table", _plan_estimate(j.right), ylow, :y, resolved, true))
+        return StepNode(ProbeStep(:y, j.right, s, names, false), _explain_lower(j.left, notes, m))
+    end
+    static = resolved && names.compare !== nothing
+    xe, ye = _plan_estimate(j.left), _plan_estimate(j.right)
+    strategy, build, p, why = join_decision(s, xe, ye)
+    if strategy === :broadcast && build === :y
+        ylow = _explain_lower(j.right, notes, m)
+        main = _explain_lower(j.left, notes, m)
+        push!(notes, _JoinNote(label, strategy, build, p, why, ye, ylow, :y, resolved, static))
+        tail = _needs_ytail(s)
+        node = StepNode(ProbeStep(:y, j.right, s, names, tail), main)
+        return tail ? StepNode(JoinTailStep(:y, j.right, s, names), node) : node
+    elseif strategy === :broadcast
+        xlow = _explain_lower(j.left, notes, m)
+        main = _explain_lower(j.right, notes, m)
+        push!(notes, _JoinNote(label, strategy, build, p, why, xe, xlow, :x, resolved, static))
+        return StepNode(JoinTailStep(:x, j.left, s, names), StepNode(ProbeStep(:x, j.left, s, names, true), main))
+    end
+    ylow = _explain_lower(j.right, notes, m)
+    main = _explain_lower(j.left, notes, m)
+    push!(notes, _JoinNote(label, strategy, build, p, why, build === :x ? xe : ye, ylow, :y, resolved, static))
+    return StepNode(PartitionedJoinStep(j.right, s, names, build, p, Type[], m, true), main)
+end
+
+function _estimate_str(e::SideEstimate)
+    rows = e.rows === nothing ? "unknown rows" : string(e.exact ? "" : "at most ", e.rows, " rows")
+    b = _estimated_bytes(e)
+    return string(rows, ", ", b === nothing ? "unknown bytes" : "$(b) bytes")
+end
+
+function _printjoins(io::IO, notes::Vector{_JoinNote}; kernel::Bool = false)
+    isempty(notes) && return nothing
+    for (k, n) in enumerate(notes)
+        println(io, "  join ", k, ": ", n.label)
+        if n.strategy === :cross
+            println(io, "    y is collected and every x morsel is paired with it, in x order (no hash table, no sort)")
+        else
+            println(io, "    strategy: ", n.strategy === :broadcast ? "broadcast" : "partitioned into 2^$(n.p)", ", build ", n.build, " (estimated ", _estimate_str(n.est), ")")
+            if n.strategy === :broadcast && n.build === :y
+                println(io, "    the probe streams x; the order-restoring sort is skipped (the pairs come out in order)")
+            elseif n.strategy === :broadcast
+                println(io, "    the probe streams y; join_tail runs the order-restoring sort")
+            else
+                println(io, "    no side streams (x is gathered, y collected); the order-restoring sort runs")
+            end
+            println(io, "    ", n.why == "forced by _FORCE_JOIN" ? "forced by _FORCE_JOIN" : "predicted from estimates; confirmed on the collected build side")
+            n.resolved || println(io, "    names: resolved at collect (a side's schema is not static)")
+            n.resolved && !n.static && println(io, "    key types are not static: those sides are collected first, at collect")
+        end
+        println(io, "    ", n.collected_side, ", collected", n.strategy === :partitioned ? " when the step runs" : " first", ":")
+        sub = sprint(io2 -> _printphysical(io2, physical(n.collected); kernel))
+        for line in split(chomp(sub), '\n')
+            println(io, "    ", line)
+        end
+    end
+    println(io, "  main pipeline:")
     return nothing
 end
