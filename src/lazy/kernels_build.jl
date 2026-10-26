@@ -302,68 +302,83 @@ function _small_set!(ph, verdict::Bool)
 end
 
 # The shape (as `_stageshape`, literal values left out), the projection and, for a frame source,
-# its column names and kinds, hashed without allocating.
+# its column names and kinds, hashed into one accumulator. The helpers return `nothing`, so the
+# dynamic dispatch over steps and nodes boxes no `UInt` (the lazy `n=10` rows count allocations).
+mutable struct _HAcc
+    h::UInt
+end
 function _shapehash(ph)
-    h = hash(:chui_kernel_shape)
+    acc = _HAcc(hash(:chui_kernel_shape))
     for s in ph.stage
-        h = _hstep(s, h)
+        _hstep!(acc, s)
     end
-    h = hash(ph.scan.select, h)
+    acc.h = hash(ph.scan.select, acc.h)
     src = ph.scan.source
     if src isa FrameSource
         for (n, col) in zip(src.frame.names, src.frame.columns)
-            h = hash(typeof(col), hash(n, h))
+            acc.h = hash(typeof(col), hash(n, acc.h))
         end
     end
-    return h
+    return acc.h
 end
-_hnode(x::Col, h::UInt) = hash(x.name, hash(:c, h))
-_hnode(x::Lit, h::UInt) = hash(typeof(x.value), hash(x.scalar, hash(:l, h)))
-function _hnode(x::Call, h::UInt)
-    h = hash(x.f, hash(:f, h))
+_hmix!(acc::_HAcc, x::Union{Symbol, Bool, DataType}) = (acc.h = hash(x, acc.h); nothing)
+# a value of unknown type (a selector, a `before`/`after`): `nothing` without a dynamic call
+_hany!(acc::_HAcc, @nospecialize(x)) = (acc.h = x === nothing ? hash(:nothing, acc.h) : hash(x, acc.h)::UInt; nothing)
+_hnode!(acc::_HAcc, x::Col) = (_hmix!(acc, :c); _hmix!(acc, x.name))
+_hnode!(acc::_HAcc, x::Lit) = (_hmix!(acc, :l); _hmix!(acc, x.scalar); _hmix!(acc, typeof(x.value)))
+function _hnode!(acc::_HAcc, x::Call)
+    _hmix!(acc, :f)
+    acc.h = hash(x.f, acc.h)
     for a in x.args
-        h = _hnode(a, h)
+        _hnode!(acc, a)
     end
-    return hash(:end, h)
+    return _hmix!(acc, :end)
 end
-function _hnode(x::CaseWhen, h::UInt)
-    h = hash(:w, h)
+function _hnode!(acc::_HAcc, x::CaseWhen)
+    _hmix!(acc, :w)
     for a in x.conds
-        h = _hnode(a, h)
+        _hnode!(acc, a)
     end
     for a in x.vals
-        h = _hnode(a, h)
+        _hnode!(acc, a)
     end
-    return hash(:end, _hnode(x.default, h))
+    _hnode!(acc, x.default)
+    return _hmix!(acc, :end)
 end
-_hnode(@nospecialize(x), h::UInt) = hash(x, hash(:v, h))
-function _hout(@nospecialize(o), h::UInt)
-    o isa Pair || return hash(o, h)
-    h = hash(o.first, h)
-    return o.second === nothing ? hash(:nothing, h) : _hnode(o.second, h)
+_hnode!(acc::_HAcc, @nospecialize(x)) = (_hmix!(acc, :v); _hany!(acc, x))
+function _hout!(acc::_HAcc, o::Pair)
+    _hmix!(acc, o.first::Symbol)
+    o.second === nothing ? _hmix!(acc, :nothing) : _hnode!(acc, o.second)
+    return nothing
 end
-function _hstep(s::FilterStep, h::UInt)
-    h = hash(s.out, hash(:filter, h))
+_hout!(acc::_HAcc, @nospecialize(o)) = _hany!(acc, o)
+function _hstep!(acc::_HAcc, s::FilterStep)
+    _hmix!(acc, :filter)
+    _hmix!(acc, s.out)
     for p in s.preds
-        h = _hnode(p, h)
+        _hnode!(acc, p)
     end
-    return h
+    return nothing
 end
-function _hstep(s::MutateStep, h::UInt)
-    h = hash(:mutate, h)
+function _hstep!(acc::_HAcc, s::MutateStep)
+    _hmix!(acc, :mutate)
     for o in s.outs
-        h = _hout(o, h)
+        _hout!(acc, o)
     end
-    return hash(s.after, hash(s.before, hash(s.keep, hash(s.by, h))))
+    _hany!(acc, s.by)
+    _hmix!(acc, s.keep)
+    _hany!(acc, s.before)
+    _hany!(acc, s.after)
+    return nothing
 end
-function _hstep(s::SelectStep, h::UInt)
-    h = hash(:select, h)
+function _hstep!(acc::_HAcc, s::SelectStep)
+    _hmix!(acc, :select)
     for it in s.items
-        h = _hout(it, h)
+        _hout!(acc, it)
     end
-    return h
+    return nothing
 end
-_hstep(s::Step, h::UInt) = hash(_stepvalue(s), hash(nameof(typeof(s)), h))
+_hstep!(acc::_HAcc, s::Step) = (_hmix!(acc, nameof(typeof(s))); _hany!(acc, _stepvalue(s)))
 
 function _cache_set!(key, verdict::Bool)
     lock(_KERNEL_LOCK) do
