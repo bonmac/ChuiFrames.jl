@@ -29,8 +29,9 @@ module TTFX
 
     # The TTFX workload: the first calls a user makes. It mirrors the `@compile_workload` in
     # src/ChuiFrames.jl on purpose (ADR-0011, ADR-0022): build a frame, one pipeline of the core
-    # verbs, print it, an Arrow IPC and a CSV round trip. SETUP (Base only: the inputs and a
-    # temporary directory) runs before the timer starts.
+    # verbs, print it, one lazy collect through a compiled stage kernel (forced, as in the
+    # workload: 4 rows are below INTERP_THRESHOLD), an Arrow IPC and a CSV round trip. SETUP
+    # (Base only: the inputs and a temporary directory) runs before the timer starts.
     const SETUP = raw"""
     nt = (g = ["a", "b", "a", missing], x = [1.5, 2.0, NaN, 4.0], n = [1, 2, 3, 4])
     dir = mktempdir()
@@ -41,6 +42,9 @@ module TTFX
     r = f |> filter(c.n .> 1) |> mutate(y = c.x .* 2) |> group_by(:g) |>
         summarise(m = mean(c.y), k = n_rows()) |> arrange(desc(c.m))
     show(out, MIME("text/plain"), r)
+    ChuiFrames._FORCE_KERNEL[] = :compiled
+    collect(filter(c.z .> 1)(mutate(z = c.x .* 2.0 .+ c.n)(lazy(f))))
+    ChuiFrames._FORCE_KERNEL[] = :auto
     write_arrow(f, joinpath(dir, "w.arrow")); read_arrow(joinpath(dir, "w.arrow"))
     write_csv(f, joinpath(dir, "w.csv")); read_csv(joinpath(dir, "w.csv"))
     """
