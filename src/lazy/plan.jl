@@ -331,11 +331,18 @@ function _empty_output(n::JoinNode)
     return _join_frames(n.spec, names, _empty_output(n.left), _empty_output(n.right))
 end
 
-"The column names at a plan's output from the empty-frame probe, or `nothing` when it throws."
+"""
+The column names at a plan's output from the empty-frame probe, or `nothing` when the probe
+raises an ordinary `Exception` from running a step on no rows (an `ArgumentError`, a
+`MethodError`, a `DomainError`, …: then the names are resolved at `collect`). An interrupt and
+the resource errors (`OutOfMemoryError`, `StackOverflowError`) are rethrown.
+"""
 function _plan_names(plan)
     return try
         _empty_output(plan).names
-    catch
+    catch err
+        err isa Union{InterruptException, OutOfMemoryError, StackOverflowError} && rethrow()
+        err isa Exception || rethrow()
         nothing
     end
 end

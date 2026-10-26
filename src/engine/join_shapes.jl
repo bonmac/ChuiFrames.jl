@@ -205,7 +205,8 @@ struct PartitionedJoinStep <: Step
 end
 
 _bystr(ps::Vector{Pair{Symbol, Symbol}}) = "[" * join([p.first === p.second ? repr(p.first) : "$(repr(p.first)) => $(repr(p.second))" for p in ps], ", ") * "]"
-_bystr(n::JoinNames) = _bystr(n.pairs)
+# keyed joins always have pairs once resolved; none means explain's placeholder (names unresolved)
+_bystr(n::JoinNames) = isempty(n.pairs) ? "(keys resolved at collect)" : _bystr(n.pairs)
 Base.show(io::IO, p::ProbeStep) = p.spec.kind === :cross ?
     print(io, "probe(cross; y collected, x streamed)") :
     print(io, "probe(", p.spec.kind, "; build ", p.side, ", stream ", p.side === :y ? :x : :y, ", by = ", _bystr(p.names), p.tail ? ", emits hidden columns" : "", ")")

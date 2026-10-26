@@ -22,3 +22,21 @@
     @test_opt target_modules = (CF,) CF._partition_pairs!(Int[], Int[], keys, h, [1, 2, 3, 4, 5], nothing, pk, CF.keyhashes(pk), [1, 2, 3], nothing, false)
     @test_opt target_modules = (CF,) CF._fillkeys!(Vector{Int}(undef, 2), [1, 2], [3, 4], [1, 0], [0, 2])
 end
+
+@testset "opt: join loops on StringView and Union{Missing, Float64} keys" begin
+    CF = ChuiFrames
+    # StringView keys, as typed_keys gives them for a string column (codes = false)
+    sc = CF.column(["a", "b", "a"])
+    sk = CF.typed_keys(CF.AbstractVector[sc], 3; codes = false)
+    @test_opt target_modules = (CF,) CF._build_table(CF.Frame(k = sc), CF.AbstractVector[sc], Type[String], sk, nothing)
+    sb = CF._build_table(CF.Frame(k = sc), CF.AbstractVector[sc], Type[String], sk, nothing)
+    @test_opt target_modules = (CF,) CF._probe_loop!(Int[], Int[], sb.table, sb.first, sb.next, sk, nothing)
+    @test_opt target_modules = (CF,) CF._partition_pairs!(Int[], Int[], sk, CF.keyhashes(sk), [1, 2, 3], nothing, sk, CF.keyhashes(sk), [1, 3], nothing, true)
+    # nullable float keys, with na_matches = :never's null mask
+    mk = Union{Missing, Float64}[1.0, missing, NaN, -0.0]
+    null = CF._nullkeys(CF.AbstractVector[mk], 4)
+    @test_opt target_modules = (CF,) CF._build_table(CF.Frame(k = mk), CF.AbstractVector[mk], Type[Float64], mk, null)
+    mb = CF._build_table(CF.Frame(k = mk), CF.AbstractVector[mk], Type[Float64], mk, null)
+    @test_opt target_modules = (CF,) CF._probe_loop!(Int[], Int[], mb.table, mb.first, mb.next, mk, null)
+    @test_opt target_modules = (CF,) CF._partition_pairs!(Int[], Int[], mk, CF.keyhashes(mk), [1, 2, 3, 4], null, mk, CF.keyhashes(mk), [1, 4], null, false)
+end

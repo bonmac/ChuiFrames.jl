@@ -17,7 +17,9 @@ force us to change (CF-009: no collision with Base/stdlib exports, no piracy)?
   verb-set item that `chui-frames.md` lists as PROVISIONAL.
 
 **Status counts** (187 rows covering all 283 exports; a shared row counts once): prototype 16,
-planned 82, done 8 (the phase-4 joins, 2026-10-26), adapted 16, base 13, skip 52. Of the skip rows, 9 are the grouped
+planned 82, done 8 (the phase-4 joins, 2026-10-26), adapted 16, base 13, skip 52. Statuses
+are those of docs/research/README.md, plus `done`: shipped in ChuiFrames with the spelling
+shown (a `planned` row that a phase delivered; other delivered rows are not yet updated). Of the skip rows, 9 are the grouped
 superseded/deprecated/defunct rows covering 81 names (42 superseded, 6 deprecated, 33 defunct);
 2 are the shared `db_*`/`sql_*` rows. Coverage checked by script (PR-10).
 

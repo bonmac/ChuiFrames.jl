@@ -69,6 +69,27 @@ end
     @test ChuiFrames.getcol(want, :w)[(end - 1):end] == [1, 4]
 end
 
+@testitem "join: the multi-task partitioned path on large inputs (slow)" tags = [:slow] setup = [Force] begin
+    # 90k x rows against 70k y rows: nx + ny >= 65_536, so with threads the partitioned shape
+    # splits the partitions over several tasks. Every shape must give the same rows and types.
+    # Run with `julia -t 4 scripts/ci.jl test -- slow`.
+    Threads.nthreads() > 1 || @info "single thread: the partitioned join runs one task here"
+    nx, ny = 90_000, 70_000
+    x = Frame(k = [mod(i * 7919, 50_000) for i in 1:nx], a = collect(1:nx))
+    y = Frame(k = Union{Missing, Int}[i % 13 == 0 ? missing : mod(i * 104_729, 60_000) for i in 1:ny], b = collect(1:ny))
+    for verb in (inner_join, left_join, full_join, semi_join, anti_join)
+        j = verb(y; by = :k)
+        want = withforce(() -> j(x), ChuiFrames._FORCE_JOIN => :broadcast_y)
+        for v in (:partitioned_x, :partitioned_y, :broadcast_x)
+            got = withforce(() -> j(x), ChuiFrames._FORCE_JOIN => v)
+            @test isequal(got, want)
+            @test [eltype(c) for c in got.columns] == [eltype(c) for c in want.columns]
+        end
+        lazygot = withforce(() -> collect(j(lazy(x)); morsel = 4096), ChuiFrames._FORCE_JOIN => :partitioned_y)
+        @test isequal(lazygot, want)
+    end
+end
+
 @testitem "join: x-side pass and multiple on sorted pairs" tags = [:unit] begin
     CF = ChuiFrames
     px = [1, 1, 3, 3, 3]
