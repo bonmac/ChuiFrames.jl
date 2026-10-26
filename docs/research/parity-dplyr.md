@@ -17,7 +17,7 @@ force us to change (CF-009: no collision with Base/stdlib exports, no piracy)?
   verb-set item that `chui-frames.md` lists as PROVISIONAL.
 
 **Status counts** (187 rows covering all 283 exports; a shared row counts once): prototype 16,
-planned 90, adapted 16, base 13, skip 52. Of the skip rows, 9 are the grouped
+planned 82, done 8 (the phase-4 joins, 2026-10-26), adapted 16, base 13, skip 52. Of the skip rows, 9 are the grouped
 superseded/deprecated/defunct rows covering 81 names (42 superseded, 6 deprecated, 33 defunct);
 2 are the shared `db_*`/`sql_*` rows. Coverage checked by script (PR-10).
 
@@ -51,8 +51,10 @@ superseded/deprecated/defunct rows covering 81 names (42 superseded, 6 deprecate
    (or a `Symbol`) as an ordinary argument; `.data$x` / `.data[[v]]` → `c.x` / `c[v]` (the indexing
    form is PROVISIONAL in `chui-frames.md`); `!!sym(v)` → `c[v]`; `.env$x` → the Julia variable `x`.
 5. **Plain `==` is not overloaded on nodes (CF-005)**, so `join_by(a == b)` cannot be spelled
-   `join_by(c.a == c.b)` (it returns a `Bool`). Proposal: key pairs `on = [:a => :b]`; inequality
-   and rolling joins via dotted nodes on explicit sides (design in the joins ADR).
+   `join_by(c.a == c.b)` (it returns a `Bool`). Shipped in phase 4: key pairs
+   `by = [:a => :b]` or `by = join_by(:a => :b)` (equality pairs only). Inequality and rolling
+   joins, and the dotted `join_by(c.a .== c.b)` form, are deferred: no design exists (phase-4 ★
+   K3; spec docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md §1.5).
 6. **Semantics differences to test, not spelling** (PR-09): R `NA` vs Julia `missing`/`NaN`;
    `near()` uses an absolute tolerance, `isapprox` a relative one; ranking ties.
 
@@ -148,16 +150,28 @@ superseded/deprecated/defunct rows covering 81 names (42 superseded, 6 deprecate
 
 | R function | Julia equivalent | Status | Phase | Notes | Test |
 |---|---|---|---|---|---|
-| `inner_join` | `inner_join(y; on=:id)` | planned | 4 | Hash join; not in prototype. | `differential:dplyr`, `lazy==eager` |
-| `left_join` | `left_join(y; on=[:a => :b])` | planned | 4 |  | `differential:dplyr`, `lazy==eager` |
-| `right_join` | `right_join(y; on=)` | planned | 4 |  | `differential:dplyr` |
-| `full_join` | `full_join(y; on=)` | planned | 4 |  | `differential:dplyr` |
-| `semi_join` | `semi_join(y; on=)` | planned | 4 |  | `differential:dplyr` |
-| `anti_join` | `anti_join(y; on=)` | planned | 4 |  | `differential:dplyr` |
-| `nest_join` | `nest_join(y; on=, name=:y)` | planned | 4 |  | `differential:dplyr` |
-| `cross_join` | `cross_join(y)` | planned | 4 |  | `differential:dplyr` |
-| `join_by` | `join_by(:a => :b)`; inequality form TBD | adapted | 4 | `c.a == c.b` returns `Bool` (CF-005), so R's `a == b` form cannot be copied (constraint 5). | `differential:dplyr` |
+| `inner_join` | `inner_join(y; by=:id)` | done | 4 | Hash join (spec §1.2). Divergences: suffix default `("_x", "_y")` (dplyr `(".x", ".y")`: `c."v.x"` is awkward in Julia); `multiple = "warning"` not offered; `multiple = :any` is `:first` (deterministic, so lazy == eager); dplyr's `relationship` many-to-many warning not reproduced. | `differential:dplyr`, `differential:polars_duckdb`, `lazy==eager` |
+| `left_join` | `left_join(y; by=[:a => :b])` | done | 4 | As `inner_join`. | `differential:dplyr`, `differential:polars_duckdb`, `lazy==eager` |
+| `right_join` | `right_join(y; by=:id)` | done | 4 | As `inner_join`. | `differential:dplyr`, `differential:polars_duckdb`, `lazy==eager` |
+| `full_join` | `full_join(y; by=:id)` | done | 4 | As `inner_join`; no `unmatched` (as dplyr). | `differential:dplyr`, `differential:polars_duckdb`, `lazy==eager` |
+| `semi_join` | `semi_join(y; by=:id)` | done | 4 | Returns x's columns unconverted. | `differential:dplyr`, `differential:polars_duckdb`, `lazy==eager` |
+| `anti_join` | `anti_join(y; by=:id)` | done | 4 | Returns x's columns unconverted. | `differential:dplyr`, `differential:polars_duckdb`, `lazy==eager` |
+| `nest_join` | `nest_join(y; by=:id, name=:y)` | done | 4 | The nested column is an object column of `Frame`s, as tidyr `nest` builds. Divergence: the default `name` is `:y` (dplyr deparses the `y` argument; a Julia function cannot see it). Warning added: a `name` equal to an x column replaces that column at its position as dplyr does, and ChuiFrames also logs a `@warn` naming it (user, 2026-10-26). | `differential:dplyr`, `lazy==eager` |
+| `cross_join` | `cross_join(y; suffix=("_x", "_y"))` | done | 4 | `DataAPI.crossjoin(x, y)` forwards to it. | `differential:dplyr`, `lazy==eager` |
+| `join_by` | `join_by(:a => :b, :c)` (equality pairs only) | adapted | 4 | `c.a == c.b` returns `Bool` (CF-005), so R's `a == b` form cannot be copied (constraint 5). Inequality and rolling helpers (`closest`, `between`, `within`, `overlaps`) and the dotted `c.a .== c.b` form are deferred: no design exists (phase-4 ★ K3). A node passed to `join_by` is an `ArgumentError`. | `differential:dplyr` |
 | `common_by` | — | skip | — | Internal helper for backends. | — |
+
+Join notes (phase 4, 2026-10-26):
+
+- **`by` is the keyword** (★ K1, dplyr parity; ADR-0002 rule 16 as amended): `nothing` (a natural
+  join on the common names, with an `@info` naming them), `:a`, `"a"`, `[:a, :b]`, `:a => :b`,
+  vectors of those, or `join_by(...)`. The DataAPI methods (`DataAPI.innerjoin(x, y; on)` and the
+  other six, ADR-0007) keep DataAPI's own keyword `on` and forward it to `by`.
+- **Integer/double keys are compared as `Float64`** (★ K4, parity with dplyr's integer/double
+  joins). Integers above 2^53 in magnitude do not all survive that conversion, so two different
+  `Int64` keys can match one `Float64` key; this is documented (convert the key first), not a
+  divergence: dplyr cannot show the case (R integers are 32 bits, and dplyr 1.2.0 rejects a
+  `bit64::integer64` key against a double).
 | `bind_rows` | `bind_rows(t1, t2; id=nothing)`; `vcat(t1, t2)` | planned | 2 | `vcat` method on owned frames is legal. | `differential:dplyr` |
 | `bind_cols` | `bind_cols(t1, t2)`; `hcat` | planned | 2 |  | `differential:dplyr` |
 | `rows_insert` | `rows_insert(y; by=:id)` | planned | 4 |  | `differential:dplyr` |
@@ -307,7 +321,7 @@ superseded/deprecated/defunct rows covering 81 names (42 superseded, 6 deprecate
 
 - That `select` can accept `Base.Fix2` predicates without ambiguity against Symbol and range
   arguments: a design proposal, not built or run.
-- The inequality/rolling form of `join_by`: no design exists yet.
+- The inequality/rolling form of `join_by`: deferred: no design exists (phase-4 ★ K3).
 - R `if_else` and `case_when` type-strictness versus Julia promotion: noted from dplyr docs
   knowledge, not run here.
 - `coalesce` treatment of `NaN` in R vs Julia: to be checked by the differential test.
