@@ -10,5 +10,8 @@
   allocates about 0.01 times per row instead of once (P4-05). Outputs are unchanged.
 
 ### Changed
-- The budgets of rows whose allocations, memory or time fell below half their baseline are
-  tightened (ADR-0022 rule 5): joins, lazy joins, lazy gathers and the String-key sink.
+- Allocation and memory budgets of rows that fell below half their baseline are tightened
+  (ADR-0022 rule 5), on 1.13 and 1.10 (43 rows). They cover the partitioned joins, the
+  partitioned lazy joins, the lazy joins behind a `mutate`, `nest_join` (1.13), the lazy
+  gathers, the String and Int-plus-String lazy group-by, `filter` and `summarise/String many`.
+  No time budget changed.
