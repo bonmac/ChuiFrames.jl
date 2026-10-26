@@ -349,13 +349,24 @@ end
 # ---------------------------------------------------------------------------------------------
 # DataAPI's join methods (ADR-0007): DataAPI's keyword `on` is forwarded to the verb's `by`; every
 # other keyword is passed through unchanged (so a DataFrames-only keyword raises the verb's error).
+# A `by` keyword is an ArgumentError: forwarded after `by = on` it would silently win over `on`.
+# `crossjoin` rejects `on` and `by` with an ArgumentError too (a cross join has no keys; `cross_join`
+# itself takes neither, so Julia would raise a less helpful keyword MethodError).
 
-DataAPI.innerjoin(x::Frame, y; on = nothing, kw...) = inner_join(y; by = on, kw...)(x)
-DataAPI.leftjoin(x::Frame, y; on = nothing, kw...) = left_join(y; by = on, kw...)(x)
-DataAPI.rightjoin(x::Frame, y; on = nothing, kw...) = right_join(y; by = on, kw...)(x)
-DataAPI.outerjoin(x::Frame, y; on = nothing, kw...) = full_join(y; by = on, kw...)(x)
-DataAPI.semijoin(x::Frame, y; on = nothing, kw...) = semi_join(y; by = on, kw...)(x)
-DataAPI.antijoin(x::Frame, y; on = nothing, kw...) = anti_join(y; by = on, kw...)(x)
-DataAPI.crossjoin(x::Frame, y; kw...) = cross_join(y; kw...)(x)
+function _dataapi_kw(verb, kw)
+    haskey(kw, :by) && throw(ArgumentError("DataAPI.$verb: DataAPI's join methods take `on`; ChuiFrames' verbs take `by`; pass one of them (`on` here)"))
+    return kw
+end
+
+DataAPI.innerjoin(x::Frame, y; on = nothing, kw...) = inner_join(y; by = on, _dataapi_kw(:innerjoin, kw)...)(x)
+DataAPI.leftjoin(x::Frame, y; on = nothing, kw...) = left_join(y; by = on, _dataapi_kw(:leftjoin, kw)...)(x)
+DataAPI.rightjoin(x::Frame, y; on = nothing, kw...) = right_join(y; by = on, _dataapi_kw(:rightjoin, kw)...)(x)
+DataAPI.outerjoin(x::Frame, y; on = nothing, kw...) = full_join(y; by = on, _dataapi_kw(:outerjoin, kw)...)(x)
+DataAPI.semijoin(x::Frame, y; on = nothing, kw...) = semi_join(y; by = on, _dataapi_kw(:semijoin, kw)...)(x)
+DataAPI.antijoin(x::Frame, y; on = nothing, kw...) = anti_join(y; by = on, _dataapi_kw(:antijoin, kw)...)(x)
+function DataAPI.crossjoin(x::Frame, y; kw...)
+    (haskey(kw, :on) || haskey(kw, :by)) && throw(ArgumentError("DataAPI.crossjoin: a cross join has no keys; drop `on`/`by` (use innerjoin with `on` for a keyed join)"))
+    return cross_join(y; kw...)(x)
+end
 
 export inner_join, left_join, right_join, full_join, semi_join, anti_join, nest_join, cross_join, join_by
