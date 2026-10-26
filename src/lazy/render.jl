@@ -118,3 +118,19 @@ function lower_kernel(ex::Expr)
     th = Meta.lower(@__MODULE__, Expr(:let, Expr(:(=), :cols, :partition), body))
     return th isa Expr && th.head === :thunk ? th.args[1] : th
 end
+
+# TTFX workload for the compiled stage kernels (kernels.jl; here because it needs the physical
+# plan of execute.jl): the kernel machinery (the decision, the builder, the probe check, the
+# guarded run, the output assembly) is compiled into the package image, so the first compiled
+# kernel of a session pays only for its own shape (docs/research/codegen-phase4.md). The session
+# cache is emptied afterwards: its keys hold `objectid`s, which differ between sessions.
+@setup_workload begin
+    nt = (x = [1.5, -0.0, NaN, 2.0], y = [1, 2, 3, 4], s = ["a", "b", "a", "c"])
+    @compile_workload begin
+        f = Frame(nt)
+        ph = physical(mutate(z = c.x .* 2.0 .+ c.y)(filter(c.y .> 1)(lazy(f))).plan)
+        kernel_decision(ph, 0)
+        CompiledStage(ph)(f)
+        lock(() -> empty!(_KERNEL_CACHE), _KERNEL_LOCK)
+    end
+end

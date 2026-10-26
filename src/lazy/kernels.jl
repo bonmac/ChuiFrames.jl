@@ -51,10 +51,11 @@ const _KERNEL_CACHE_MAX = 4096
 
 """
 Estimated rows from which a stage whose shape is not compiled yet is compiled at `collect`
-(ADR-0003 rule 12): below it the interpreter runs. Set from docs/research/codegen-phase4.md
-(compile time per new shape against the per-row saving, Julia 1.13 and 1.10).
+(ADR-0003 rule 12): below it the interpreter runs. Set from docs/research/codegen-phase4.md:
+a new shape costs about 20-45 ms to compile for 1-10-step stages, which the per-row saving
+repays at 1.6×10⁵-1.3×10⁶ rows (median about 5×10⁵ on Julia 1.13 and on 1.10).
 """
-const INTERP_THRESHOLD = 100_000
+const INTERP_THRESHOLD = 500_000
 
 "Stages with more expression nodes than this run the interpreter (ADR-0003 rule 12, EN-08)."
 const MAX_KERNEL_NODES = 50
