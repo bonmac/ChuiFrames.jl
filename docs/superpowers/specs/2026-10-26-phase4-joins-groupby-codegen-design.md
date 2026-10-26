@@ -885,6 +885,10 @@ keyvalues(t::KeyTable{K})::Vector{K}              # keys in id order
   (`_FORCE_RADIX_SWITCH[]` if > 0, else `RADIX_SWITCH`, initially 2¹⁶) flushes its accumulators
   into 2ᵖ radix partitions by key hash, stamped `(range, seq)`, and routes later rows'
   accumulators there. A source whose `ndistinct` statistics exceed the limit starts in radix mode.
+  *As built (p4-groupby2, review pass 2):* `_starts_radix` reads only partition 1's `ndistinct`
+  for the key columns, before the partial phase, and only makes the merge partitioned from the
+  start; each task still begins with one table and flushes it past the limit. The result never
+  depends on it.
   - **Mixed modes:** tasks that never switched hand over their single table at the merge,
     partitioned by the same hash bits (`radix_partition` over their group hashes) and stamped
     `(range, 0)`. One task's range contributes either one accumulator per group, or flushed then
@@ -900,7 +904,8 @@ keyvalues(t::KeyTable{K})::Vector{K}              # keys in id order
   semigroup over an empty group throws the eager error).
 - **Floats:** partial sums associate differently from Base's pairwise `sum` over a group, and
   `Moments` differs from the two-pass `var`. So the lazy sink's float results agree with eager
-  within CC-004's tolerance (CF-008's approximate frame equality, `rtol = 1e-12`). Integer
+  within CC-004's tolerance (CF-008's approximate frame equality: `rtol = √eps(T)` of the
+  input's float type, `atol = τ(agg, v)`; test/contracts/chui-core.md, "Float tolerance"). Integer
   results (wrapping addition is associative), `Bool`, string, `first`/`last` and
   `minimum`/`maximum` results are exact.
 - **Unit tests:** each typed accumulator against the protocol call on the same rows, exact for
@@ -984,6 +989,11 @@ by `stage_kernel` and `_explain_kernel`, so `explain` and `collect` agree:
   `mutate(a = log.(c.x)) ⨟ mutate(b = div.(c.y, c.z))` with x = [1, −1], z = [0, 1] raises
   `DivideError` fused but `DomainError` interpreted. So on any exception the kernel re-runs
   that morsel through `interpret_stage(ph)` and rethrows the interpreter's exception.
+  - **Decline path (as built, p4-codegen; reviewer-approved):** when a computed value's type
+    differs from the static type the interpreter's `typed_column` would narrow to (e.g. `c.y ./ 2`
+    on `Int` columns), the kernel hands the morsel to the interpreter and rejects that shape and
+    column types for the session. This is decided by types, not data, so nothing is lost; it is
+    not counted in `_KERNEL_DISAGREE`.
   - The one exception is `InterruptException`, which is rethrown **at once**, with no re-run
     (critic n1).
   - If the interpreter succeeds, its result is used and an internal counter
