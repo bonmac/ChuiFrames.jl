@@ -390,7 +390,7 @@ _keypair_allowed(Sx::Type, Sy::Type) = _keypair_compare_type(Sx, Sy) !== nothing
 Groups a task's table holds before it flushes into a run and starts a new table (ADR-0003
 rule 9, "adaptive radix switch"). Initially 2^16; p4-bench calibrates it.
 """
-const RADIX_SWITCH = 65_536
+const RADIX_SWITCH = 1_048_576   # 2^20, p4-bench (docs/research/performance-phase4.md P4-03)
 
 """
 Test switch (phase-4 spec §0.3): `0` uses [`RADIX_SWITCH`](@ref); a value `> 0` overrides it.

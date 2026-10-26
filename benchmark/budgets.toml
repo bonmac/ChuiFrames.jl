@@ -89,6 +89,94 @@ precompile_ms = 60000
 "window/row_number, cumsum by Int few/n=10" = 100000            # 26.21 μs
 "window/row_number, cumsum by Int few/n=10^4" = 10000000        # 1.69 ms
 "window/row_number, cumsum by Int few/n=10^6" = 1000000000      # 256.14 ms
+# phase-4 rows (p4-bench): baseline 23881b4 (.lanes/evidence/bench-113-23881b4.txt, load 6.6-9.9;
+# docs/research/performance-phase4.md P4-05)
+"group_by/Dict String/n=10" = 50000                             # 6.69 μs
+"group_by/Int, String/n=10" = 50000                             # 7.38 μs
+"group_by/Int/n=10" = 20000                                     # 5.87 μs
+"group_by/String/n=10" = 20000                                  # 6.42 μs
+"groupby/Dict String few, eager/n=10" = 100000                  # 24.96 μs
+"groupby/Dict String few, eager/n=10^4" = 500000                # 115.58 μs
+"groupby/Dict String few, eager/n=10^6" = 50000000              # 9.29 ms
+"groupby/Dict String few, lazy/n=10^4" = 1000000                # 226.75 μs
+"groupby/Dict String few, lazy/n=10^6" = 50000000               # 11.12 ms
+"groupby/Dict String many, eager/n=10^4" = 5000000              # 1.05 ms
+"groupby/Dict String many, eager/n=10^6" = 1000000000           # 187.91 ms
+"groupby/Dict String many, lazy/n=10^4" = 2000000               # 616.54 μs
+"groupby/Dict String many, lazy/n=10^6" = 500000000             # 137.38 ms
+"groupby/Int few, lazy/n=10^4" = 500000                         # 122.08 μs
+"groupby/Int few, lazy/n=10^6" = 50000000                       # 10.66 ms
+"groupby/Int many, lazy/n=10^4" = 2000000                       # 339.38 μs
+"groupby/Int many, lazy/n=10^6" = 500000000                     # 71.29 ms
+"groupby/Int, String few, eager/n=10" = 100000                  # 24.29 μs
+"groupby/Int, String few, eager/n=10^4" = 1000000               # 198.5 μs
+"groupby/Int, String few, eager/n=10^6" = 100000000             # 19.17 ms
+"groupby/Int, String few, lazy/n=10^4" = 1000000                # 314.71 μs
+"groupby/Int, String few, lazy/n=10^6" = 200000000              # 34.98 ms
+"groupby/Int, String many, eager/n=10^4" = 5000000              # 1.34 ms
+"groupby/Int, String many, eager/n=10^6" = 1000000000           # 238.88 ms
+"groupby/Int, String many, lazy/n=10^4" = 5000000               # 818.69 μs
+"groupby/Int, String many, lazy/n=10^6" = 1000000000            # 297.32 ms
+"groupby/String few, lazy/n=10^4" = 1000000                     # 289.96 μs
+"groupby/String few, lazy/n=10^6" = 100000000                   # 31.47 ms
+"groupby/String many, lazy/n=10^4" = 5000000                    # 718.42 μs
+"groupby/String many, lazy/n=10^6" = 1000000000                 # 191.18 ms
+"join/anti, auto/n=10" = 20000                                  # 6.26 μs
+"join/cross, auto/n=10" = 20000                                 # 3.34 μs
+"join/cross, auto/n=10^3" = 50000000                            # 7.98 ms
+"join/full, auto/n=10" = 50000                                  # 9.54 μs
+"join/inner 1:1, broadcast build x/n=10^4" = 2000000            # 481.06 μs
+"join/inner 1:1, broadcast build x/n=10^6" = 1000000000         # 201.95 ms
+"join/inner 1:1, broadcast build y/n=10^4" = 2000000            # 361.44 μs
+"join/inner 1:1, broadcast build y/n=10^6" = 500000000          # 159.8 ms
+"join/inner 1:1, partitioned build x/n=10^4" = 2000000          # 431.92 μs
+"join/inner 1:1, partitioned build x/n=10^6" = 1000000000       # 207.48 ms
+"join/inner 1:1, partitioned build y/n=10^4" = 2000000          # 419.33 μs
+"join/inner 1:1, partitioned build y/n=10^6" = 1000000000       # 222.58 ms
+"join/inner 1:n, broadcast build x/n=10^4" = 1000000            # 246.71 μs
+"join/inner 1:n, broadcast build x/n=10^6" = 200000000          # 50.61 ms
+"join/inner 1:n, broadcast build y/n=10^4" = 500000             # 159.5 μs
+"join/inner 1:n, broadcast build y/n=10^6" = 500000000          # 81.38 ms
+"join/inner 1:n, partitioned build x/n=10^4" = 1000000          # 260.31 μs
+"join/inner 1:n, partitioned build x/n=10^6" = 500000000        # 138.66 ms
+"join/inner 1:n, partitioned build y/n=10^4" = 1000000          # 301.96 μs
+"join/inner 1:n, partitioned build y/n=10^6" = 500000000        # 155.12 ms
+"join/inner small x (10^3), auto/n=10^6" = 100000000            # 18.02 ms
+"join/inner, auto/n=10" = 50000                                 # 8.42 μs
+"join/left 1:1, broadcast build x/n=10^4" = 2000000             # 528.81 μs
+"join/left 1:1, broadcast build x/n=10^6" = 1000000000          # 199.13 ms
+"join/left 1:1, broadcast build y/n=10^4" = 2000000             # 372.12 μs
+"join/left 1:1, broadcast build y/n=10^6" = 1000000000          # 176.43 ms
+"join/left 1:1, partitioned build x/n=10^4" = 2000000           # 434.96 μs
+"join/left 1:1, partitioned build x/n=10^6" = 1000000000        # 194.05 ms
+"join/left 1:1, partitioned build y/n=10^4" = 2000000           # 481.17 μs
+"join/left 1:1, partitioned build y/n=10^6" = 1000000000        # 244.79 ms
+"join/left 1:n, broadcast build x/n=10^4" = 1000000             # 260.5 μs
+"join/left 1:n, broadcast build x/n=10^6" = 500000000           # 80.54 ms
+"join/left 1:n, broadcast build y/n=10^4" = 500000              # 156.38 μs
+"join/left 1:n, broadcast build y/n=10^6" = 500000000           # 115.79 ms
+"join/left 1:n, partitioned build x/n=10^4" = 1000000           # 250.96 μs
+"join/left 1:n, partitioned build x/n=10^6" = 500000000         # 140.57 ms
+"join/left 1:n, partitioned build y/n=10^4" = 1000000           # 309.88 μs
+"join/left 1:n, partitioned build y/n=10^6" = 500000000         # 143.28 ms
+"join/left, auto/n=10" = 50000                                  # 8.75 μs
+"join/nest 1:1, auto/n=10^4" = 10000000                         # 3.21 ms
+"join/nest 1:1, auto/n=10^6" = 5000000000                       # 1.021 s
+"join/nest, auto/n=10" = 50000                                  # 11.46 μs
+"join/right, auto/n=10" = 50000                                 # 9.38 μs
+"join/semi, auto/n=10" = 20000                                  # 6.44 μs
+"lazy/filter, mutate, select, interpreter/n=10^6" = 200000000   # 53.65 ms
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = false/n=10^6" = 20000000  # 5.12 ms
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 20000000  # 4.9 ms
+"lazy/inner join 1:n, broadcast build x/n=10^6" = 500000000     # 165.54 ms
+"lazy/inner join 1:n, broadcast build y/n=10^6" = 1000000000    # 286.18 ms
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 500000000   # 162.14 ms
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 1000000000  # 178.55 ms
+"lazy/inner join small x (10^3), auto/n=10^6" = 100000000       # 22.47 ms
+"lazy/inner join, non-key mutate after/n=10^6" = 500000000      # 114.28 ms
+"lazy/inner join, non-key mutate before/n=10^6" = 500000000     # 106.55 ms
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 50000000  # 14.92 ms
+"lazy/mutate, filter, select stage, interpreted/n=10^6" = 200000000  # 58.15 ms
 
 [time."1.10"]
 "arrange/Float64/n=10" = 20000                                  # 5.26 μs
@@ -144,6 +232,93 @@ precompile_ms = 60000
 "window/row_number, cumsum by Int few/n=10" = 100000            # 33.25 μs
 "window/row_number, cumsum by Int few/n=10^4" = 10000000        # 1.87 ms
 "window/row_number, cumsum by Int few/n=10^6" = 1000000000      # 268.14 ms
+# phase-4 rows (p4-bench): baseline 23881b4 (.lanes/evidence/bench-110-23881b4.txt, load 9.4-12.9)
+"group_by/Dict String/n=10" = 50000                             # 7.32 μs
+"group_by/Int, String/n=10" = 50000                             # 8.3 μs
+"group_by/Int/n=10" = 20000                                     # 6.49 μs
+"group_by/String/n=10" = 50000                                  # 7.47 μs
+"groupby/Dict String few, eager/n=10" = 100000                  # 24.75 μs
+"groupby/Dict String few, eager/n=10^4" = 500000                # 150.21 μs
+"groupby/Dict String few, eager/n=10^6" = 50000000              # 11.78 ms
+"groupby/Dict String few, lazy/n=10^4" = 1000000                # 233.88 μs
+"groupby/Dict String few, lazy/n=10^6" = 50000000               # 11.21 ms
+"groupby/Dict String many, eager/n=10^4" = 5000000              # 1.01 ms
+"groupby/Dict String many, eager/n=10^6" = 1000000000           # 168.62 ms
+"groupby/Dict String many, lazy/n=10^4" = 2000000               # 637.94 μs
+"groupby/Dict String many, lazy/n=10^6" = 500000000             # 111.28 ms
+"groupby/Int few, lazy/n=10^4" = 500000                         # 132.96 μs
+"groupby/Int few, lazy/n=10^6" = 50000000                       # 10.1 ms
+"groupby/Int many, lazy/n=10^4" = 2000000                       # 380.9 μs
+"groupby/Int many, lazy/n=10^6" = 200000000                     # 60.3 ms
+"groupby/Int, String few, eager/n=10" = 100000                  # 28.96 μs
+"groupby/Int, String few, eager/n=10^4" = 1000000               # 282.21 μs
+"groupby/Int, String few, eager/n=10^6" = 100000000             # 26.23 ms
+"groupby/Int, String few, lazy/n=10^4" = 2000000                # 359.96 μs
+"groupby/Int, String few, lazy/n=10^6" = 200000000              # 35.16 ms
+"groupby/Int, String many, eager/n=10^4" = 5000000              # 1.2 ms
+"groupby/Int, String many, eager/n=10^6" = 1000000000           # 207.17 ms
+"groupby/Int, String many, lazy/n=10^4" = 5000000               # 817.88 μs
+"groupby/Int, String many, lazy/n=10^6" = 500000000             # 147.91 ms
+"groupby/String few, lazy/n=10^4" = 1000000                     # 316.58 μs
+"groupby/String few, lazy/n=10^6" = 100000000                   # 29.41 ms
+"groupby/String many, lazy/n=10^4" = 5000000                    # 742.08 μs
+"groupby/String many, lazy/n=10^6" = 500000000                  # 131.37 ms
+"join/anti, auto/n=10" = 50000                                  # 8.38 μs
+"join/cross, auto/n=10" = 20000                                 # 4.07 μs
+"join/cross, auto/n=10^3" = 50000000                            # 10.44 ms
+"join/full, auto/n=10" = 50000                                  # 12.12 μs
+"join/inner 1:1, broadcast build x/n=10^4" = 5000000            # 676.38 μs
+"join/inner 1:1, broadcast build x/n=10^6" = 1000000000         # 183.89 ms
+"join/inner 1:1, broadcast build y/n=10^4" = 2000000            # 516.71 μs
+"join/inner 1:1, broadcast build y/n=10^6" = 1000000000         # 174.53 ms
+"join/inner 1:1, partitioned build x/n=10^4" = 2000000          # 577.58 μs
+"join/inner 1:1, partitioned build x/n=10^6" = 1000000000       # 192.23 ms
+"join/inner 1:1, partitioned build y/n=10^4" = 2000000          # 573.58 μs
+"join/inner 1:1, partitioned build y/n=10^6" = 1000000000       # 184.55 ms
+"join/inner 1:n, broadcast build x/n=10^4" = 2000000            # 446.96 μs
+"join/inner 1:n, broadcast build x/n=10^6" = 200000000          # 55.64 ms
+"join/inner 1:n, broadcast build y/n=10^4" = 1000000            # 293.67 μs
+"join/inner 1:n, broadcast build y/n=10^6" = 500000000          # 66.83 ms
+"join/inner 1:n, partitioned build x/n=10^4" = 2000000          # 369.58 μs
+"join/inner 1:n, partitioned build x/n=10^6" = 500000000        # 93.56 ms
+"join/inner 1:n, partitioned build y/n=10^4" = 2000000          # 412.81 μs
+"join/inner 1:n, partitioned build y/n=10^6" = 500000000        # 113.99 ms
+"join/inner small x (10^3), auto/n=10^6" = 100000000            # 18.32 ms
+"join/inner, auto/n=10" = 50000                                 # 10.38 μs
+"join/left 1:1, broadcast build x/n=10^4" = 5000000             # 697.92 μs
+"join/left 1:1, broadcast build x/n=10^6" = 1000000000          # 197.47 ms
+"join/left 1:1, broadcast build y/n=10^4" = 2000000             # 503.67 μs
+"join/left 1:1, broadcast build y/n=10^6" = 1000000000          # 182.28 ms
+"join/left 1:1, partitioned build x/n=10^4" = 2000000           # 578.0 μs
+"join/left 1:1, partitioned build x/n=10^6" = 1000000000        # 181.72 ms
+"join/left 1:1, partitioned build y/n=10^4" = 2000000           # 574.62 μs
+"join/left 1:1, partitioned build y/n=10^6" = 1000000000        # 188.26 ms
+"join/left 1:n, broadcast build x/n=10^4" = 2000000             # 466.56 μs
+"join/left 1:n, broadcast build x/n=10^6" = 200000000           # 57.06 ms
+"join/left 1:n, broadcast build y/n=10^4" = 1000000             # 294.71 μs
+"join/left 1:n, broadcast build y/n=10^6" = 500000000           # 75.22 ms
+"join/left 1:n, partitioned build x/n=10^4" = 2000000           # 393.96 μs
+"join/left 1:n, partitioned build x/n=10^6" = 500000000         # 111.55 ms
+"join/left 1:n, partitioned build y/n=10^4" = 2000000           # 426.25 μs
+"join/left 1:n, partitioned build y/n=10^6" = 500000000         # 105.16 ms
+"join/left, auto/n=10" = 50000                                  # 10.33 μs
+"join/nest 1:1, auto/n=10^4" = 10000000                         # 2.75 ms
+"join/nest 1:1, auto/n=10^6" = 5000000000                       # 802.47 ms
+"join/nest, auto/n=10" = 50000                                  # 11.75 μs
+"join/right, auto/n=10" = 50000                                 # 12.17 μs
+"join/semi, auto/n=10" = 50000                                  # 8.24 μs
+"lazy/filter, mutate, select, interpreter/n=10^6" = 200000000   # 35.97 ms
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = false/n=10^6" = 20000000  # 4.57 ms
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 20000000  # 4.77 ms
+"lazy/inner join 1:n, broadcast build x/n=10^6" = 500000000     # 77.19 ms
+"lazy/inner join 1:n, broadcast build y/n=10^6" = 500000000     # 92.64 ms
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 500000000   # 109.81 ms
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 500000000   # 97.85 ms
+"lazy/inner join small x (10^3), auto/n=10^6" = 100000000       # 22.4 ms
+"lazy/inner join, non-key mutate after/n=10^6" = 200000000      # 58.03 ms
+"lazy/inner join, non-key mutate before/n=10^6" = 200000000     # 49.05 ms
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 50000000  # 11.17 ms
+"lazy/mutate, filter, select stage, interpreted/n=10^6" = 200000000  # 47.58 ms
 
 [allocs."1.13"]
 "arrange/Float64/n=10" = 240                                    # 154
@@ -156,8 +331,8 @@ precompile_ms = 60000
 "arrange/String/n=10^4" = 870000                                # 575120
 "arrange/String/n=10^6" = 130000000                             # 82862195
 "count_by/String few/n=10" = 390                                # 258
-"count_by/String few/n=10^4" = 30000                            # 19608
-"count_by/String few/n=10^6" = 4500000                          # 2989608
+"count_by/String few/n=10^4" = 520                              # 345 at 23881b4 (rule 5; was 30000, baseline 19608)
+"count_by/String few/n=10^6" = 520                              # 345 at 23881b4 (rule 5; was 4500000, baseline 2989608)
 "distinct/Int, String/n=10" = 270                               # 180
 "distinct/Int, String/n=10^4" = 300                             # 197
 "distinct/Int, String/n=10^6" = 300                             # 197
@@ -171,8 +346,8 @@ precompile_ms = 60000
 "lazy/filter, head 10/n=10^4" = 30000                           # 19820
 "lazy/filter, head 10/n=10^6" = 400000                          # 262165
 "lazy/filter, mutate, select/n=10" = 940                        # 626
-"lazy/filter, mutate, select/n=10^4" = 37000                    # 24479
-"lazy/filter, mutate, select/n=10^6" = 3800000                  # 2490650
+"lazy/filter, mutate, select/n=10^4" = 16000                    # 10284 at 23881b4 (rule 5; was 37000, baseline 24479)
+"lazy/filter, mutate, select/n=10^6" = 1500000                  # 996855 at 23881b4 (rule 5; was 3800000, baseline 2490650)
 "mutate/z = 2x + y/n=10" = 290                                  # 187
 "mutate/z = 2x + y/n=10^4" = 45000                              # 29672
 "mutate/z = 2x + y/n=10^6" = 4500000                            # 2999672
@@ -186,18 +361,105 @@ precompile_ms = 60000
 "slice_head/n = 10/n=10^4" = 140                                # 90
 "slice_head/n = 10/n=10^6" = 140                                # 90
 "summarise/Int few/n=10" = 500                                  # 333
-"summarise/Int few/n=10^4" = 30000                              # 19745
-"summarise/Int few/n=10^6" = 4500000                            # 2989745
+"summarise/Int few/n=10^4" = 720                                # 477 at 23881b4 (rule 5; was 30000, baseline 19745)
+"summarise/Int few/n=10^6" = 720                                # 477 at 23881b4 (rule 5; was 4500000, baseline 2989745)
 "summarise/Int many/n=10^4" = 69000                             # 45789
-"summarise/Int many/n=10^6" = 8700000                           # 5787602
+"summarise/Int many/n=10^6" = 4200000                           # 2798684 at 23881b4 (rule 5; was 8700000, baseline 5787602)
 "summarise/String few/n=10" = 530                               # 353
-"summarise/String few/n=10^4" = 30000                           # 19775
-"summarise/String few/n=10^6" = 4500000                         # 2989775
+"summarise/String few/n=10^4" = 770                             # 507 at 23881b4 (rule 5; was 30000, baseline 19775)
+"summarise/String few/n=10^6" = 770                             # 507 at 23881b4 (rule 5; was 4500000, baseline 2989775)
 "summarise/String many/n=10^4" = 72000                          # 47797
 "summarise/String many/n=10^6" = 9000000                        # 5987521
 "window/row_number, cumsum by Int few/n=10" = 450               # 296
 "window/row_number, cumsum by Int few/n=10^4" = 130000          # 82606
 "window/row_number, cumsum by Int few/n=10^6" = 18000000        # 11962606
+# phase-4 rows (p4-bench): baseline 23881b4 (.lanes/evidence/bench-113-23881b4.txt)
+"group_by/Dict String/n=10" = 160                               # 102
+"group_by/Int, String/n=10" = 190                               # 124
+"group_by/Int/n=10" = 140                                       # 92
+"group_by/String/n=10" = 160                                    # 102
+"groupby/Dict String few, eager/n=10" = 500                     # 333
+"groupby/Dict String few, eager/n=10^4" = 740                   # 492
+"groupby/Dict String few, eager/n=10^6" = 740                   # 492
+"groupby/Dict String few, lazy/n=10^4" = 1400                   # 892
+"groupby/Dict String few, lazy/n=10^6" = 4700                   # 3068
+"groupby/Dict String many, eager/n=10^4" = 41000                # 26779
+"groupby/Dict String many, eager/n=10^6" = 4200000              # 2798755
+"groupby/Dict String many, lazy/n=10^4" = 14000                 # 8925
+"groupby/Dict String many, lazy/n=10^6" = 1700000               # 1100504
+"groupby/Int few, lazy/n=10^4" = 1300                           # 822
+"groupby/Int few, lazy/n=10^6" = 4400                           # 2920
+"groupby/Int many, lazy/n=10^4" = 8800                          # 5844
+"groupby/Int many, lazy/n=10^6" = 1300000                       # 800261
+"groupby/Int, String few, eager/n=10" = 650                     # 431
+"groupby/Int, String few, eager/n=10^4" = 910                   # 606
+"groupby/Int, String few, eager/n=10^6" = 910                   # 606
+"groupby/Int, String few, lazy/n=10^4" = 1700                   # 1087
+"groupby/Int, String few, lazy/n=10^6" = 1600000                # 1004116
+"groupby/Int, String many, eager/n=10^4" = 44000                # 28896
+"groupby/Int, String many, eager/n=10^6" = 4500000              # 2998882
+"groupby/Int, String many, lazy/n=10^4" = 20000                 # 13100
+"groupby/Int, String many, lazy/n=10^6" = 4800000               # 3196359
+"groupby/String few, lazy/n=10^4" = 1400                        # 926
+"groupby/String few, lazy/n=10^6" = 1600000                     # 1003338
+"groupby/String many, lazy/n=10^4" = 20000                      # 12880
+"groupby/String many, lazy/n=10^6" = 4800000                    # 3195434
+"join/anti, auto/n=10" = 180                                    # 116
+"join/cross, auto/n=10" = 210                                   # 139
+"join/cross, auto/n=10^3" = 310                                 # 201
+"join/full, auto/n=10" = 370                                    # 245
+"join/inner 1:1, broadcast build x/n=10^4" = 630                # 414
+"join/inner 1:1, broadcast build x/n=10^6" = 800                # 528
+"join/inner 1:1, broadcast build y/n=10^4" = 390                # 256
+"join/inner 1:1, broadcast build y/n=10^6" = 480                # 320
+"join/inner 1:1, partitioned build x/n=10^4" = 1700             # 1071
+"join/inner 1:1, partitioned build x/n=10^6" = 16000            # 10079
+"join/inner 1:1, partitioned build y/n=10^4" = 1700             # 1071
+"join/inner 1:1, partitioned build y/n=10^6" = 16000            # 10079
+"join/inner 1:n, broadcast build x/n=10^4" = 610                # 402
+"join/inner 1:n, broadcast build x/n=10^6" = 770                # 508
+"join/inner 1:n, broadcast build y/n=10^4" = 370                # 244
+"join/inner 1:n, broadcast build y/n=10^6" = 450                # 300
+"join/inner 1:n, partitioned build x/n=10^4" = 1400             # 880
+"join/inner 1:n, partitioned build x/n=10^6" = 13000            # 8543
+"join/inner 1:n, partitioned build y/n=10^4" = 1500             # 943
+"join/inner 1:n, partitioned build y/n=10^6" = 13000            # 8543
+"join/inner small x (10^3), auto/n=10^6" = 650                  # 430
+"join/inner, auto/n=10" = 290                                   # 187
+"join/left 1:1, broadcast build x/n=10^4" = 630                 # 418
+"join/left 1:1, broadcast build x/n=10^6" = 800                 # 533
+"join/left 1:1, broadcast build y/n=10^4" = 390                 # 260
+"join/left 1:1, broadcast build y/n=10^6" = 490                 # 325
+"join/left 1:1, partitioned build x/n=10^4" = 1700              # 1075
+"join/left 1:1, partitioned build x/n=10^6" = 16000             # 10084
+"join/left 1:1, partitioned build y/n=10^4" = 1700              # 1075
+"join/left 1:1, partitioned build y/n=10^6" = 16000             # 10084
+"join/left 1:n, broadcast build x/n=10^4" = 610                 # 406
+"join/left 1:n, broadcast build x/n=10^6" = 780                 # 519
+"join/left 1:n, broadcast build y/n=10^4" = 380                 # 248
+"join/left 1:n, broadcast build y/n=10^6" = 470                 # 311
+"join/left 1:n, partitioned build x/n=10^4" = 1400              # 884
+"join/left 1:n, partitioned build x/n=10^6" = 13000             # 8554
+"join/left 1:n, partitioned build y/n=10^4" = 1500              # 947
+"join/left 1:n, partitioned build y/n=10^6" = 13000             # 8554
+"join/left, auto/n=10" = 290                                    # 191
+"join/nest 1:1, auto/n=10^4" = 250000                           # 160204
+"join/nest 1:1, auto/n=10^6" = 25000000                         # 16010027
+"join/nest, auto/n=10" = 450                                    # 297
+"join/right, auto/n=10" = 370                                   # 241
+"join/semi, auto/n=10" = 180                                    # 119
+"lazy/filter, mutate, select, interpreter/n=10^6" = 3800000     # 2490662
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = false/n=10^6" = 6400  # 4215
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 2500  # 1610
+"lazy/inner join 1:n, broadcast build x/n=10^6" = 1600000       # 1003752
+"lazy/inner join 1:n, broadcast build y/n=10^6" = 2600          # 1701
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 16000       # 10027
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 15000       # 9827
+"lazy/inner join small x (10^3), auto/n=10^6" = 160000          # 102995
+"lazy/inner join, non-key mutate after/n=10^6" = 4500000        # 2996573
+"lazy/inner join, non-key mutate before/n=10^6" = 8500          # 5616
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 5900     # 3887
+"lazy/mutate, filter, select stage, interpreted/n=10^6" = 6000000  # 3990269
 
 [allocs."1.10"]
 "arrange/Float64/n=10" = 240                                    # 156
@@ -210,8 +472,8 @@ precompile_ms = 60000
 "arrange/String/n=10^4" = 870000                                # 575121
 "arrange/String/n=10^6" = 130000000                             # 82862196
 "count_by/String few/n=10" = 340                                # 222
-"count_by/String few/n=10^4" = 44000                            # 29061
-"count_by/String few/n=10^6" = 6000000                          # 3989061
+"count_by/String few/n=10^4" = 470                              # 309 at 23881b4 (rule 5; was 44000, baseline 29061)
+"count_by/String few/n=10^6" = 470                              # 309 at 23881b4 (rule 5; was 6000000, baseline 3989061)
 "distinct/Int, String/n=10" = 270                               # 174
 "distinct/Int, String/n=10^4" = 290                             # 191
 "distinct/Int, String/n=10^6" = 290                             # 191
@@ -225,8 +487,8 @@ precompile_ms = 60000
 "lazy/filter, head 10/n=10^4" = 30000                           # 19801
 "lazy/filter, head 10/n=10^6" = 400000                          # 262060
 "lazy/filter, mutate, select/n=10" = 880                        # 586
-"lazy/filter, mutate, select/n=10^4" = 37000                    # 24440
-"lazy/filter, mutate, select/n=10^6" = 3800000                  # 2489491
+"lazy/filter, mutate, select/n=10^4" = 16000                    # 10250 at 23881b4 (rule 5; was 37000, baseline 24440)
+"lazy/filter, mutate, select/n=10^6" = 1500000                  # 996516 at 23881b4 (rule 5; was 3800000, baseline 2489491)
 "mutate/z = 2x + y/n=10" = 260                                  # 172
 "mutate/z = 2x + y/n=10^4" = 45000                              # 29657
 "mutate/z = 2x + y/n=10^6" = 4500000                            # 2999657
@@ -240,18 +502,105 @@ precompile_ms = 60000
 "slice_head/n = 10/n=10^4" = 140                                # 91
 "slice_head/n = 10/n=10^6" = 140                                # 91
 "summarise/Int few/n=10" = 450                                  # 295
-"summarise/Int few/n=10^4" = 44000                              # 29196
-"summarise/Int few/n=10^6" = 6000000                            # 3989196
-"summarise/Int many/n=10^4" = 83000                             # 55197
-"summarise/Int many/n=10^6" = 11000000                          # 6786996
+"summarise/Int few/n=10^4" = 660                                # 439 at 23881b4 (rule 5; was 44000, baseline 29196)
+"summarise/Int few/n=10^6" = 660                                # 439 at 23881b4 (rule 5; was 6000000, baseline 3989196)
+"summarise/Int many/n=10^4" = 41000                             # 26670 at 23881b4 (rule 5; was 83000, baseline 55197)
+"summarise/Int many/n=10^6" = 4200000                           # 2798586 at 23881b4 (rule 5; was 11000000, baseline 6786996)
 "summarise/String few/n=10" = 480                               # 319
-"summarise/String few/n=10^4" = 44000                           # 29230
-"summarise/String few/n=10^6" = 6000000                         # 3989230
+"summarise/String few/n=10^4" = 710                             # 473 at 23881b4 (rule 5; was 44000, baseline 29230)
+"summarise/String few/n=10^6" = 710                             # 473 at 23881b4 (rule 5; was 6000000, baseline 3989230)
 "summarise/String many/n=10^4" = 86000                          # 57208
-"summarise/String many/n=10^6" = 11000000                       # 6986919
+"summarise/String many/n=10^6" = 4500000                        # 2998592 at 23881b4 (rule 5; was 11000000, baseline 6986919)
 "window/row_number, cumsum by Int few/n=10" = 380               # 249
 "window/row_number, cumsum by Int few/n=10^4" = 140000          # 92013
 "window/row_number, cumsum by Int few/n=10^6" = 20000000        # 12962033
+# phase-4 rows (p4-bench): baseline 23881b4 (.lanes/evidence/bench-110-23881b4.txt)
+"group_by/Dict String/n=10" = 120                               # 75
+"group_by/Int, String/n=10" = 150                               # 94
+"group_by/Int/n=10" = 110                                       # 67
+"group_by/String/n=10" = 120                                    # 79
+"groupby/Dict String few, eager/n=10" = 450                     # 296
+"groupby/Dict String few, eager/n=10^4" = 680                   # 452
+"groupby/Dict String few, eager/n=10^6" = 680                   # 452
+"groupby/Dict String few, lazy/n=10^4" = 1300                   # 820
+"groupby/Dict String few, lazy/n=10^6" = 4400                   # 2878
+"groupby/Dict String many, eager/n=10^4" = 41000                # 26702
+"groupby/Dict String many, eager/n=10^6" = 4200000              # 2798641
+"groupby/Dict String many, lazy/n=10^4" = 12000                 # 7779
+"groupby/Dict String many, lazy/n=10^6" = 1600000               # 1000092
+"groupby/Int few, lazy/n=10^4" = 1200                           # 763
+"groupby/Int few, lazy/n=10^6" = 4100                           # 2713
+"groupby/Int many, lazy/n=10^4" = 8600                          # 5714
+"groupby/Int many, lazy/n=10^6" = 1200000                       # 799860
+"groupby/Int, String few, eager/n=10" = 560                     # 373
+"groupby/Int, String few, eager/n=10^4" = 820                   # 545
+"groupby/Int, String few, eager/n=10^6" = 820                   # 545
+"groupby/Int, String few, lazy/n=10^4" = 1500                   # 996
+"groupby/Int, String few, lazy/n=10^6" = 1600000                # 1003899
+"groupby/Int, String many, eager/n=10^4" = 44000                # 28773
+"groupby/Int, String many, eager/n=10^6" = 4500000              # 2998724
+"groupby/Int, String many, lazy/n=10^4" = 18000                 # 11910
+"groupby/Int, String many, lazy/n=10^6" = 4600000               # 3000472
+"groupby/String few, lazy/n=10^4" = 1400                        # 869
+"groupby/String few, lazy/n=10^6" = 1600000                     # 1003236
+"groupby/String many, lazy/n=10^4" = 18000                      # 11760
+"groupby/String many, lazy/n=10^6" = 4500000                    # 2999718
+"join/anti, auto/n=10" = 170                                    # 108
+"join/cross, auto/n=10" = 170                                   # 110
+"join/cross, auto/n=10^3" = 210                                 # 140
+"join/full, auto/n=10" = 340                                    # 221
+"join/inner 1:1, broadcast build x/n=10^4" = 480                # 320
+"join/inner 1:1, broadcast build x/n=10^6" = 540                # 358
+"join/inner 1:1, broadcast build y/n=10^4" = 320                # 208
+"join/inner 1:1, broadcast build y/n=10^6" = 350                # 228
+"join/inner 1:1, partitioned build x/n=10^4" = 1000             # 662
+"join/inner 1:1, partitioned build x/n=10^6" = 8800             # 5820
+"join/inner 1:1, partitioned build y/n=10^4" = 1000             # 662
+"join/inner 1:1, partitioned build y/n=10^6" = 8800             # 5820
+"join/inner 1:n, broadcast build x/n=10^4" = 470                # 309
+"join/inner 1:n, broadcast build x/n=10^6" = 530                # 352
+"join/inner 1:n, broadcast build y/n=10^4" = 310                # 201
+"join/inner 1:n, broadcast build y/n=10^6" = 340                # 222
+"join/inner 1:n, partitioned build x/n=10^4" = 950              # 628
+"join/inner 1:n, partitioned build x/n=10^6" = 7600             # 5052
+"join/inner 1:n, partitioned build y/n=10^4" = 950              # 628
+"join/inner 1:n, partitioned build y/n=10^6" = 8000             # 5308
+"join/inner small x (10^3), auto/n=10^6" = 480                  # 316
+"join/inner, auto/n=10" = 250                                   # 163
+"join/left 1:1, broadcast build x/n=10^4" = 490                 # 323
+"join/left 1:1, broadcast build x/n=10^6" = 550                 # 362
+"join/left 1:1, broadcast build y/n=10^4" = 320                 # 211
+"join/left 1:1, broadcast build y/n=10^6" = 350                 # 232
+"join/left 1:1, partitioned build x/n=10^4" = 1000              # 665
+"join/left 1:1, partitioned build x/n=10^6" = 8800              # 5824
+"join/left 1:1, partitioned build y/n=10^4" = 1000              # 665
+"join/left 1:1, partitioned build y/n=10^6" = 8800              # 5824
+"join/left 1:n, broadcast build x/n=10^4" = 480                 # 314
+"join/left 1:n, broadcast build x/n=10^6" = 540                 # 358
+"join/left 1:n, broadcast build y/n=10^4" = 310                 # 206
+"join/left 1:n, broadcast build y/n=10^6" = 350                 # 228
+"join/left 1:n, partitioned build x/n=10^4" = 950               # 633
+"join/left 1:n, partitioned build x/n=10^6" = 7600              # 5058
+"join/left 1:n, partitioned build y/n=10^4" = 950               # 633
+"join/left 1:n, partitioned build y/n=10^6" = 8000              # 5314
+"join/left, auto/n=10" = 250                                    # 166
+"join/nest 1:1, auto/n=10^4" = 220000                           # 140173
+"join/nest 1:1, auto/n=10^6" = 22000000                         # 14005785
+"join/nest, auto/n=10" = 410                                    # 268
+"join/right, auto/n=10" = 330                                   # 218
+"join/semi, auto/n=10" = 170                                    # 108
+"lazy/filter, mutate, select, interpreter/n=10^6" = 3800000     # 2489504
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = false/n=10^6" = 4800  # 3197
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 2300  # 1491
+"lazy/inner join 1:n, broadcast build x/n=10^6" = 1600000       # 1002582
+"lazy/inner join 1:n, broadcast build y/n=10^6" = 2200          # 1429
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 9600        # 6351
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 9700        # 6428
+"lazy/inner join small x (10^3), auto/n=10^6" = 160000          # 102157
+"lazy/inner join, non-key mutate after/n=10^6" = 4500000        # 2995825
+"lazy/inner join, non-key mutate before/n=10^6" = 7500          # 4940
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 5500     # 3630
+"lazy/mutate, filter, select stage, interpreted/n=10^6" = 6000000  # 3989672
 
 [memory."1.13"]
 "arrange/Float64/n=10" = 16384                                  # 5008
@@ -306,6 +655,93 @@ precompile_ms = 60000
 "window/row_number, cumsum by Int few/n=10" = 22000             # 14064
 "window/row_number, cumsum by Int few/n=10^4" = 3400000         # 2241760
 "window/row_number, cumsum by Int few/n=10^6" = 420000000       # 279640288
+# phase-4 rows (p4-bench): baseline 23881b4 (.lanes/evidence/bench-113-23881b4.txt)
+"group_by/Dict String/n=10" = 16384                             # 6208
+"group_by/Int, String/n=10" = 16384                             # 7456
+"group_by/Int/n=10" = 16384                                     # 4560
+"group_by/String/n=10" = 16384                                  # 5808
+"groupby/Dict String few, eager/n=10" = 32000                   # 20784
+"groupby/Dict String few, eager/n=10^4" = 660000                # 437600
+"groupby/Dict String few, eager/n=10^6" = 55000000              # 36121952
+"groupby/Dict String few, lazy/n=10^4" = 560000                 # 367600
+"groupby/Dict String few, lazy/n=10^6" = 73000000               # 48243824
+"groupby/Dict String many, eager/n=10^4" = 4400000              # 2910576
+"groupby/Dict String many, eager/n=10^6" = 430000000            # 283567104
+"groupby/Dict String many, lazy/n=10^4" = 2300000               # 1523376
+"groupby/Dict String many, lazy/n=10^6" = 290000000             # 189255360
+"groupby/Int few, lazy/n=10^4" = 600000                         # 399040
+"groupby/Int few, lazy/n=10^6" = 85000000                       # 56233968
+"groupby/Int many, lazy/n=10^4" = 1600000                       # 1062912
+"groupby/Int many, lazy/n=10^6" = 240000000                     # 157013792
+"groupby/Int, String few, eager/n=10" = 39000                   # 25664
+"groupby/Int, String few, eager/n=10^4" = 2200000               # 1422000
+"groupby/Int, String few, eager/n=10^6" = 200000000             # 128185008
+"groupby/Int, String few, lazy/n=10^4" = 2000000                # 1323648
+"groupby/Int, String few, lazy/n=10^6" = 300000000              # 198826512
+"groupby/Int, String many, eager/n=10^4" = 5900000              # 3922096
+"groupby/Int, String many, eager/n=10^6" = 610000000            # 404379552
+"groupby/Int, String many, lazy/n=10^4" = 4100000               # 2731136
+"groupby/Int, String many, lazy/n=10^6" = 640000000             # 420282160
+"groupby/String few, lazy/n=10^4" = 1100000                     # 731936
+"groupby/String few, lazy/n=10^6" = 210000000                   # 134756256
+"groupby/String many, lazy/n=10^4" = 2800000                    # 1802832
+"groupby/String many, lazy/n=10^6" = 460000000                  # 302036608
+"join/anti, auto/n=10" = 16384                                  # 6384
+"join/cross, auto/n=10" = 19000                                 # 12576
+"join/cross, auto/n=10^3" = 140000000                           # 91590464
+"join/full, auto/n=10" = 20000                                  # 12960
+"join/inner 1:1, broadcast build x/n=10^4" = 5500000            # 3653168
+"join/inner 1:1, broadcast build x/n=10^6" = 600000000          # 394789584
+"join/inner 1:1, broadcast build y/n=10^4" = 3200000            # 2083328
+"join/inner 1:1, broadcast build y/n=10^6" = 340000000          # 223989248
+"join/inner 1:1, partitioned build x/n=10^4" = 6800000          # 4513136
+"join/inner 1:1, partitioned build x/n=10^6" = 2300000000       # 1503547504
+"join/inner 1:1, partitioned build y/n=10^4" = 6800000          # 4513136
+"join/inner 1:1, partitioned build y/n=10^6" = 2400000000       # 1542525040
+"join/inner 1:n, broadcast build x/n=10^4" = 3900000            # 2547056
+"join/inner 1:n, broadcast build x/n=10^6" = 420000000          # 278888848
+"join/inner 1:n, broadcast build y/n=10^4" = 2400000            # 1591616
+"join/inner 1:n, broadcast build y/n=10^6" = 250000000          # 160877760
+"join/inner 1:n, partitioned build x/n=10^4" = 4800000          # 3193680
+"join/inner 1:n, partitioned build x/n=10^6" = 2100000000       # 1374974064
+"join/inner 1:n, partitioned build y/n=10^4" = 5600000          # 3674480
+"join/inner 1:n, partitioned build y/n=10^6" = 2200000000       # 1450160240
+"join/inner small x (10^3), auto/n=10^6" = 45000000             # 29428768
+"join/inner, auto/n=10" = 16384                                 # 10320
+"join/left 1:1, broadcast build x/n=10^4" = 5500000             # 3654624
+"join/left 1:1, broadcast build x/n=10^6" = 600000000           # 399065936
+"join/left 1:1, broadcast build y/n=10^4" = 3200000             # 2084784
+"join/left 1:1, broadcast build y/n=10^6" = 340000000           # 224120448
+"join/left 1:1, partitioned build x/n=10^4" = 6800000           # 4514592
+"join/left 1:1, partitioned build x/n=10^6" = 2300000000        # 1531400432
+"join/left 1:1, partitioned build y/n=10^4" = 6800000           # 4514592
+"join/left 1:1, partitioned build y/n=10^6" = 2100000000        # 1366806768
+"join/left 1:n, broadcast build x/n=10^4" = 3900000             # 2548512
+"join/left 1:n, broadcast build x/n=10^6" = 460000000           # 303452800
+"join/left 1:n, broadcast build y/n=10^4" = 2400000             # 1593072
+"join/left 1:n, broadcast build y/n=10^6" = 280000000           # 185327024
+"join/left 1:n, partitioned build x/n=10^4" = 4800000           # 3195136
+"join/left 1:n, partitioned build x/n=10^6" = 2100000000        # 1387364704
+"join/left 1:n, partitioned build y/n=10^4" = 5600000           # 3675936
+"join/left 1:n, partitioned build y/n=10^6" = 2200000000        # 1461272928
+"join/left, auto/n=10" = 16384                                  # 10448
+"join/nest 1:1, auto/n=10^4" = 16000000                         # 10490736
+"join/nest 1:1, auto/n=10^6" = 3500000000                       # 2277789664
+"join/nest, auto/n=10" = 26000                                  # 16720
+"join/right, auto/n=10" = 20000                                 # 12832
+"join/semi, auto/n=10" = 16384                                  # 6720
+"lazy/filter, mutate, select, interpreter/n=10^6" = 270000000   # 173907168
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = false/n=10^6" = 30000000  # 19983376
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 30000000  # 19868048
+"lazy/inner join 1:n, broadcast build x/n=10^6" = 820000000     # 541015360
+"lazy/inner join 1:n, broadcast build y/n=10^6" = 600000000     # 397720656
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 2500000000  # 1629357344
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 2500000000  # 1606426528
+"lazy/inner join small x (10^3), auto/n=10^6" = 130000000       # 82026912
+"lazy/inner join, non-key mutate after/n=10^6" = 740000000      # 491789488
+"lazy/inner join, non-key mutate before/n=10^6" = 1100000000    # 681516992
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 230000000  # 148359232
+"lazy/mutate, filter, select stage, interpreted/n=10^6" = 360000000  # 239461696
 
 [memory."1.10"]
 "arrange/Float64/n=10" = 16384                                  # 6016
@@ -349,7 +785,7 @@ precompile_ms = 60000
 "slice_head/n = 10/n=10^6" = 13000000                           # 8005120
 "summarise/Int few/n=10" = 33000                                # 21536
 "summarise/Int few/n=10^4" = 1300000                            # 814160
-"summarise/Int few/n=10^6" = 150000000                          # 95854160
+"summarise/Int few/n=10^6" = 61000000                           # 40065760 at 23881b4 (rule 5; was 150000000, baseline 95854160)
 "summarise/Int many/n=10^4" = 5000000                           # 3296928
 "summarise/Int many/n=10^6" = 520000000                         # 340460240
 "summarise/String few/n=10" = 36000                             # 23872
@@ -360,3 +796,90 @@ precompile_ms = 60000
 "window/row_number, cumsum by Int few/n=10" = 26000             # 16816
 "window/row_number, cumsum by Int few/n=10^4" = 3600000         # 2370752
 "window/row_number, cumsum by Int few/n=10^6" = 450000000       # 295407872
+# phase-4 rows (p4-bench): baseline 23881b4 (.lanes/evidence/bench-110-23881b4.txt)
+"group_by/Dict String/n=10" = 16384                             # 6560
+"group_by/Int, String/n=10" = 16384                             # 7680
+"group_by/Int/n=10" = 16384                                     # 4768
+"group_by/String/n=10" = 16384                                  # 6176
+"groupby/Dict String few, eager/n=10" = 35000                   # 22720
+"groupby/Dict String few, eager/n=10^4" = 640000                # 423888
+"groupby/Dict String few, eager/n=10^6" = 55000000              # 36063824
+"groupby/Dict String few, lazy/n=10^4" = 550000                 # 360208
+"groupby/Dict String few, lazy/n=10^6" = 73000000               # 48179040
+"groupby/Dict String many, eager/n=10^4" = 4600000              # 3014432
+"groupby/Dict String many, eager/n=10^6" = 450000000            # 294713352
+"groupby/Dict String many, lazy/n=10^4" = 2400000               # 1540448
+"groupby/Dict String many, lazy/n=10^6" = 270000000             # 178875424
+"groupby/Int few, lazy/n=10^4" = 600000                         # 398384
+"groupby/Int few, lazy/n=10^6" = 85000000                       # 56170656
+"groupby/Int many, lazy/n=10^4" = 1700000                       # 1094640
+"groupby/Int many, lazy/n=10^6" = 230000000                     # 150541888
+"groupby/Int, String few, eager/n=10" = 42000                   # 27808
+"groupby/Int, String few, eager/n=10^4" = 2100000               # 1394576
+"groupby/Int, String few, eager/n=10^6" = 200000000             # 128114576
+"groupby/Int, String few, lazy/n=10^4" = 2000000                # 1302048
+"groupby/Int, String few, lazy/n=10^6" = 300000000              # 198333440
+"groupby/Int, String many, eager/n=10^4" = 6100000              # 4018016
+"groupby/Int, String many, eager/n=10^6" = 620000000            # 410511520
+"groupby/Int, String many, lazy/n=10^4" = 4100000               # 2721624
+"groupby/Int, String many, lazy/n=10^6" = 610000000             # 404897024
+"groupby/String few, lazy/n=10^4" = 1100000                     # 724464
+"groupby/String few, lazy/n=10^6" = 210000000                   # 134297024
+"groupby/String many, lazy/n=10^4" = 2700000                    # 1792992
+"groupby/String many, lazy/n=10^6" = 440000000                  # 290297648
+"join/anti, auto/n=10" = 16384                                  # 7232
+"join/cross, auto/n=10" = 20000                                 # 13216
+"join/cross, auto/n=10^3" = 79000000                            # 52519840
+"join/full, auto/n=10" = 22000                                  # 14344
+"join/inner 1:1, broadcast build x/n=10^4" = 6500000            # 4266760
+"join/inner 1:1, broadcast build x/n=10^6" = 420000000          # 273873432
+"join/inner 1:1, broadcast build y/n=10^4" = 3800000            # 2490008
+"join/inner 1:1, broadcast build y/n=10^6" = 220000000          # 145813720
+"join/inner 1:1, partitioned build x/n=10^4" = 5400000          # 3590552
+"join/inner 1:1, partitioned build x/n=10^6" = 1900000000       # 1256259800
+"join/inner 1:1, partitioned build y/n=10^4" = 5400000          # 3590552
+"join/inner 1:1, partitioned build y/n=10^6" = 1900000000       # 1256259800
+"join/inner 1:n, broadcast build x/n=10^4" = 4500000            # 2965272
+"join/inner 1:n, broadcast build x/n=10^6" = 300000000          # 199313208
+"join/inner 1:n, broadcast build y/n=10^4" = 2700000            # 1793768
+"join/inner 1:n, broadcast build y/n=10^6" = 190000000          # 121933304
+"join/inner 1:n, partitioned build x/n=10^4" = 4100000          # 2674760
+"join/inner 1:n, partitioned build x/n=10^6" = 1800000000       # 1165571160
+"join/inner 1:n, partitioned build y/n=10^4" = 4800000          # 3139288
+"join/inner 1:n, partitioned build y/n=10^6" = 1900000000       # 1202068184
+"join/inner small x (10^3), auto/n=10^6" = 45000000             # 29752880
+"join/inner, auto/n=10" = 18000                                 # 11408
+"join/left 1:1, broadcast build x/n=10^4" = 6500000             # 4268200
+"join/left 1:1, broadcast build x/n=10^6" = 420000000           # 273998616
+"join/left 1:1, broadcast build y/n=10^4" = 3800000             # 2491448
+"join/left 1:1, broadcast build y/n=10^6" = 220000000           # 145938904
+"join/left 1:1, partitioned build x/n=10^4" = 5400000           # 3591992
+"join/left 1:1, partitioned build x/n=10^6" = 1900000000        # 1256384984
+"join/left 1:1, partitioned build y/n=10^4" = 5400000           # 3591992
+"join/left 1:1, partitioned build y/n=10^6" = 1900000000        # 1256384984
+"join/left 1:n, broadcast build x/n=10^4" = 5200000             # 3413800
+"join/left 1:n, broadcast build x/n=10^6" = 320000000           # 209831848
+"join/left 1:n, broadcast build y/n=10^4" = 3400000             # 2242296
+"join/left 1:n, broadcast build y/n=10^6" = 200000000           # 132451944
+"join/left 1:n, partitioned build x/n=10^4" = 4700000           # 3123288
+"join/left 1:n, partitioned build x/n=10^6" = 1800000000        # 1176089800
+"join/left 1:n, partitioned build y/n=10^4" = 5400000           # 3587816
+"join/left 1:n, partitioned build y/n=10^6" = 1900000000        # 1212586824
+"join/left, auto/n=10" = 18000                                  # 11552
+"join/nest 1:1, auto/n=10^4" = 19000000                         # 12647344
+"join/nest 1:1, auto/n=10^6" = 3500000000                       # 2272257392
+"join/nest, auto/n=10" = 30000                                  # 19584
+"join/right, auto/n=10" = 22000                                 # 14200
+"join/semi, auto/n=10" = 16384                                  # 7472
+"lazy/filter, mutate, select, interpreter/n=10^6" = 260000000   # 171814904
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = false/n=10^6" = 30000000  # 19814512
+"lazy/group_by dict, 12 of 16 partitions pruned, drop = true/n=10^6" = 30000000  # 19705488
+"lazy/inner join 1:n, broadcast build x/n=10^6" = 800000000     # 532451952
+"lazy/inner join 1:n, broadcast build y/n=10^6" = 490000000     # 324144112
+"lazy/inner join 1:n, partitioned build x/n=10^6" = 2100000000  # 1338426840
+"lazy/inner join 1:n, partitioned build y/n=10^6" = 2100000000  # 1370912792
+"lazy/inner join small x (10^3), auto/n=10^6" = 120000000       # 76705208
+"lazy/inner join, non-key mutate after/n=10^6" = 730000000      # 485120312
+"lazy/inner join, non-key mutate before/n=10^6" = 1100000000    # 680479632
+"lazy/mutate, filter, select stage, compiled/n=10^6" = 230000000  # 146712576
+"lazy/mutate, filter, select stage, interpreted/n=10^6" = 360000000  # 237514416
