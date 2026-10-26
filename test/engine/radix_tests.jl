@@ -25,6 +25,8 @@
     end
     @test_throws ArgumentError radix_partition(hs, -1)
     @test_throws ArgumentError radix_partition(hs, 64)
+    @test_throws ArgumentError radix_partition(hs, ChuiFrames.RADIX_MAX_BITS + 1)
+    @test radix_partition(UInt64[], ChuiFrames.RADIX_MAX_BITS)[1][end] == 1
     @test_throws ArgumentError radix_partition(hs, 2; ntasks = 0)
     # any AbstractVector{UInt64}
     @test radix_partition(view(hs, 2:5), 1) == ([1, 3, 5], [1, 3, 2, 4])

@@ -20,6 +20,10 @@ the scatter. The result does not depend on `ntasks`. The partitions take the hig
 [`KeyTable`](@ref)'s home slot the low bits, so a partition's table never degrades to one probe
 chain. Frozen API (phase-4 spec §2.4). `0 <= p <= RADIX_MAX_BITS` and `ntasks >= 1`, else an
 `ArgumentError`.
+
+Memory: besides `perm` (`n` Ints) and `offsets` (`2^p + 1` Ints), the histogram holds
+`2^p × nt` Ints and the scatter positions `pos` as many again, so `2 × 2^p × nt` Ints in all,
+where `nt = min(ntasks, max(n, 1))`. At `p = RADIX_MAX_BITS = 20` that is 16 MiB per task.
 """
 function radix_partition(hashes::AbstractVector{UInt64}, p::Int; ntasks::Int = 1)
     Base.require_one_based_indexing(hashes)

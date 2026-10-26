@@ -28,6 +28,25 @@
     @test k32 isa Vector{Float32}
     @test k32[1] === 0.0f0 && isnan(k32[2])
 
+    # NaN payloads in Float32 and Float16: one canonical NaN of the same type
+    p32 = reinterpret(Float32, reinterpret(UInt32, NaN32) | 0x0001)
+    p16 = reinterpret(Float16, reinterpret(UInt16, NaN16) | 0x0001)
+    k32n = typed_keys([Float32[p32, -NaN32, NaN32]], 3)
+    @test k32n isa Vector{Float32}
+    @test all(x -> reinterpret(UInt32, x) === reinterpret(UInt32, NaN32), k32n)
+    k16n = typed_keys([Float16[p16, -NaN16, NaN16, -0.0]], 4)
+    @test k16n isa Vector{Float16}
+    @test all(x -> reinterpret(UInt16, x) === reinterpret(UInt16, NaN16), k16n[1:3])
+    @test k16n[4] === Float16(0.0)
+    @test keyhash(p32) == keyhash(-NaN32) == keyhash(p16) == keyhash(-NaN16) == keyhash(NaN)
+    # a Float32 DictColumn whose dictionary holds a payload NaN, NaN, -0 and 0: codes unified
+    d32 = ChuiFrames.DictColumn(UInt8[1, 2, 3, 4], ChuiFrames.column(Float32[p32, NaN32, -0.0f0, 0.0f0]))
+    kd = typed_keys([d32], 4)
+    @test kd[1] == kd[2] && kd[3] == kd[4] && kd[1] != kd[3]
+    kdv = typed_keys([d32], 4; codes = false)
+    @test kdv isa Vector{Float32}
+    @test reinterpret(UInt32, kdv[1]) === reinterpret(UInt32, NaN32) && kdv[3] === 0.0f0
+
     # strings and integers pass through
     @test typed_keys([["a", "b", "a"]], 3) == ["a", "b", "a"]
     @test typed_keys([[3, 1, 3]], 3) == [3, 1, 3]
@@ -106,9 +125,7 @@ end
     @test lookup(t, 0.0, keyhash(0.0)) == 3
     @test lookup(t, 7.0, keyhash(7.0)) == 0
     # growth past many resizes keeps ids
-    for i in 1:10_000
-        @test getorinsert!(t, Float64(i + 10), keyhash(Float64(i + 10))) == i + 4
-    end
+    @test all(getorinsert!(t, Float64(i + 10), keyhash(Float64(i + 10))) == i + 4 for i in 1:10_000)
     @test length(t) == 10_004
     @test all(lookup(t, Float64(i + 10), keyhash(Float64(i + 10))) == i + 4 for i in 1:10_000)
     kv = keyvalues(t)
@@ -221,6 +238,12 @@ end
     @test !_keypair_allowed(BigFloat, Float64)
     @test !_keypair_allowed(Float64, BigFloat)
     @test !_keypair_allowed(Char, String)
+    # an all-missing side (nonmissing type Union{}) can only match missing: it pairs with anything
+    @test _keypair_allowed(Union{}, Int64)
+    @test _keypair_allowed(Int64, Union{})
+    @test _keypair_allowed(Union{}, String)
+    @test _keypair_allowed(Union{}, Union{})
+    @test _lossless_key_promotion(Union{}, Int64) && _lossless_key_promotion(Float64, Union{})
     # symmetry
     for a in NUM, b in NUM
         @test _lossless_key_promotion(a, b) == _lossless_key_promotion(b, a)

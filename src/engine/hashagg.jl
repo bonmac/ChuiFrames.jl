@@ -312,9 +312,12 @@ every value of both:
   are rejected;
 - float → wider float.
 
-Identical numeric types are lossless. Anything else is `false`. It is symmetric.
+Identical numeric types are lossless. A side of type `Union{}` (the non-missing type of an
+all-missing key column) is lossless with any type: its keys can only be `missing`. Anything else
+is `false`. It is symmetric.
 """
 function _lossless_key_promotion(Sx::Type, Sy::Type)
+    (Sx === Union{} || Sy === Union{}) && return true   # an all-missing side: nothing to promote
     (Sx <: _NumKey && Sy <: _NumKey) || return false
     Sx === Sy && return true
     T = promote_type(Sx, Sy)
@@ -331,6 +334,17 @@ are `<: AbstractString` (unified to `String`), or when
 `keyhash(a) == keyhash(b)`. Rejected pairs include `Date`/`DateTime` (they can be `isequal` but
 hash differently), `Int64`/`Float64`, `Int64`/`UInt64`, `String`/`Int`, `Rational`, `BigFloat`.
 The caller raises the `ArgumentError` naming the columns.
+
+- A side whose non-missing type is `Union{}` (an all-missing key column) pairs with **any**
+  type: it can only match `missing`. This is checked first, before any subtype test (`Union{}`
+  is a subtype of everything).
+- The string branch relies on each string type's `hash` agreeing with `String`'s for equal
+  contents (Base's `AbstractString` contract). That is tested for `String`, `SubString{String}`
+  and a `StringColumn`'s `StringView` elements. A string type that hashes differently would
+  break `isequal` ⇒ equal `keyhash` and must be converted to `String` first.
 """
-_keypair_allowed(Sx::Type, Sy::Type) =
-    Sx === Sy || (Sx <: AbstractString && Sy <: AbstractString) || _lossless_key_promotion(Sx, Sy)
+function _keypair_allowed(Sx::Type, Sy::Type)
+    # Union{} first: it is a subtype of everything, so the tests below would answer vacuously
+    (Sx === Union{} || Sy === Union{}) && return true
+    return Sx === Sy || (Sx <: AbstractString && Sy <: AbstractString) || _lossless_key_promotion(Sx, Sy)
+end
