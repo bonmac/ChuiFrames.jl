@@ -37,6 +37,60 @@ end
     @test_opt target_modules = (CF,) CF.keyids!(zeros(Int, 4), tu, keys, CF.keyhashes(keys), Int[])
 end
 
+@testset "opt: group index on typed keys (p4-groupby2)" begin
+    CF = ChuiFrames
+    ks = [3, 1, 3, 2, 1]
+    @test_opt target_modules = (CF,) CF._groupids(ks)
+    @test_opt target_modules = (CF,) CF._groupids([(1, 2.0), (1, 2.0)])
+    @test_opt target_modules = (CF,) CF._countsort([1, 2, 1, 3], [2, 1, 3], 3)
+    col = CF.column([0.5, -0.0, NaN, 0.5])
+    @test_opt target_modules = (CF,) CF._canonvals(col, [1, 2, 3])
+    @test_opt target_modules = (CF,) CF._ranks_from_perm([1.0, 2.0, 1.0], [1, 3, 2])
+end
+
+@testset "opt: typed accumulators (p4-groupby2)" begin
+    CF = ChuiFrames
+    UP = CF.Upstream
+    ids = [1, 2, 1, 2]
+    i8 = CF.column(Int8[1, 2, 3, 4])
+    fm = CF.column(Union{Missing, Float64}[1.0, missing, 2.0, 3.0])
+    f32 = Float32[1, 2, 3, 4]
+    b = CF.column([true, false, true, true])
+    s = CF.column(["a", "b", "c", "d"])
+    for (agg, col) in (
+            (UP.Sum(), i8), (UP.Sum(), fm), (UP.Sum(), f32), (UP.Prod(), i8), (UP.Max(), fm), (UP.Min(), s),
+            (UP.Extrema(), f32), (UP.Mean(), i8), (UP.Mean(), fm), (CF.Spread(UP.Moments(false, true)), f32),
+            (UP.First(), s), (UP.Last(), fm), (UP.Count(), s), (UP.CountTrue(), b), (UP.AnyM(), b),
+            (UP.AllM(), b), (CF.SkipMissingAgg(UP.Sum()), fm), (CF.SkipMissingAgg(UP.Mean()), fm),
+        )
+        a = CF._newacc(agg, eltype(col))
+        CF._grow!(a, 2)
+        @test_opt target_modules = (CF,) CF._fold!(a, ids, col)
+        d = CF._newacc(agg, eltype(col))
+        CF._grow!(d, 2)
+        @test_opt target_modules = (CF,) CF._mergeinto!(d, [2, 1], a, [1, 2])
+    end
+    n = CF._newacc(CF._NRowsAgg(), Any)
+    CF._grow!(n, 2)
+    @test_opt target_modules = (CF,) CF._fold!(n, ids, nothing)
+end
+
+@testset "opt: hash-aggregate sink keys and merge (p4-groupby2)" begin
+    CF = ChuiFrames
+    t = CF.KeyTable{String}(4)
+    sv = CF.column(["a", "b", "a"])
+    for i in 1:3
+        CF.getorinsert!(t, sv[i], CF.keyhash(sv[i]))
+    end
+    t2 = CF.KeyTable{String}(4)
+    @test_opt target_modules = (CF,) CF._mergekeys!(t2, t, [1, 2], Int[], [1, 2], 0)
+    @test_opt target_modules = (CF,) CF._rekey(t, Union{Missing, String})
+    dc = CF.DictColumn(UInt8[1, 2, 0, 1], CF.column(["x", "y"]), BitVector([1, 1, 0, 1]))
+    @test_opt target_modules = (CF,) CF._presentcodes(zeros(Bool, 2), dc.codes, dc.validity)
+    @test_opt target_modules = (CF,) CF._applygmap!(Vector{UInt32}(undef, 4), dc.codes, dc.validity, UInt32[7, 9])
+    @test_opt target_modules = (CF,) CF._mapdict!(zeros(UInt32, 2), t, dc.dict, [true, true])
+end
+
 @testset "opt: radix_partition" begin
     CF = ChuiFrames
     hs = rand(UInt64, 100)
