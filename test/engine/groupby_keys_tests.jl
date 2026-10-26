@@ -222,18 +222,28 @@ end
     @test _lossless_key_promotion(Int64, Int64)
     @test !_lossless_key_promotion(Int64, UInt64)
     @test !_lossless_key_promotion(Int8, UInt8)
+    # strictly lossless (review B2): a wide integer with a float is not, even though ★ K4 allows
+    # the pair as a join key (compared as Float64, `_keypair_compare_type`)
     @test !_lossless_key_promotion(Int64, Float64)
     @test !_lossless_key_promotion(Int32, Float32)
     @test !_lossless_key_promotion(UInt16, Float16)
     @test !_lossless_key_promotion(Int128, Float64)
-    # the pair rule: identical, both strings, or lossless numeric
+    @test !_lossless_key_promotion(Float32, UInt64)
+    # the pair rule: identical, both strings, lossless numeric, or integer/Bool with a float
     @test _keypair_allowed(String, SubString{String})
     @test _keypair_allowed(Date, Date)
     @test _keypair_allowed(Int32, Float64)
     @test !_keypair_allowed(Date, DateTime)
     @test !_keypair_allowed(Int64, UInt64)
-    @test !_keypair_allowed(Int64, Float64)
+    @test _keypair_allowed(Int64, Float64)
+    @test _keypair_allowed(Float64, UInt64)
+    @test _keypair_allowed(UInt128, Float16)
+    @test _keypair_allowed(Bool, Float32)
+    @test !_keypair_allowed(Int8, UInt8)
+    @test !_keypair_allowed(Int64, UInt128)
+    @test _keypair_allowed(Int128, UInt64)                 # lossless: UInt64 fits in Int128
     @test !_keypair_allowed(String, Int)
+    @test !_keypair_allowed(String, Float64)
     @test !_keypair_allowed(Rational{Int}, Int)
     @test !_keypair_allowed(BigFloat, Float64)
     @test !_keypair_allowed(Float64, BigFloat)
@@ -249,7 +259,16 @@ end
         @test _lossless_key_promotion(a, b) == _lossless_key_promotion(b, a)
     end
     pairs = [(a, b) for a in NUM for b in NUM if _keypair_allowed(a, b)]
-    @test (Int32, Float64) in pairs && (Bool, Int64) in pairs && !((Int64, Float64) in pairs)
+    @test (Int32, Float64) in pairs && (Bool, Int64) in pairs && (Int64, Float64) in pairs && !((Int64, UInt64) in pairs)
+    # the full numeric matrix: allowed iff identical, lossless integer/integer, any float pair,
+    # or an integer/Bool with a float (★ K4)
+    isint(T) = T === Bool || T <: Integer
+    fits(S, T) = typemin(S) >= typemin(T) && typemax(S) <= typemax(T)
+    for a in NUM, b in NUM
+        P = promote_type(a, b)
+        want = a === b || (a <: AbstractFloat && b <: AbstractFloat) || (isint(a) != isint(b)) || (fits(a, P) && fits(b, P))
+        @test _keypair_allowed(a, b) == want
+    end
     # exact conversion or nothing
     bothnan(r, v) = r isa AbstractFloat && v isa AbstractFloat && isnan(r) && isnan(v)
     conv(::Type{T}, v) where {T} = try
@@ -300,5 +319,85 @@ end
         return isequal(sub, s) && isequal(sv, s) && keyhash(sub) == keyhash(s) == keyhash(sv)
     end
     sr = @check record = false db = false max_examples = 200 shash(strs)
+    @test Supposition.results(sr).ispass
+end
+
+@testitem "join key compare type (★ K4: integer/float pairs compared as Float64)" tags = [:unit, :property] begin
+    using ChuiFrames: keyhash, KeyTable, getorinsert!, lookup, _keypair_allowed, _keypair_compare_type, _canon
+    using Dates
+    using Supposition, Supposition.Data
+    NUM = (
+        Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
+        Float16, Float32, Float64,
+    )
+    # plan task 3a order: Union{} side, identical, strings, lossless promote_type, other
+    # integer/float Float64, else nothing (review B2)
+    @test _keypair_compare_type(Int64, Float64) === Float64
+    @test _keypair_compare_type(Int8, Float32) === Float32
+    @test _keypair_compare_type(Float32, Int8) === Float32
+    @test _keypair_compare_type(Bool, Float16) === Float16
+    @test _keypair_compare_type(UInt8, Float16) === Float16
+    @test _keypair_compare_type(Int32, Float32) === Float64
+    @test _keypair_compare_type(UInt16, Float16) === Float64
+    @test _keypair_compare_type(Int32, Float64) === Float64
+    @test _keypair_compare_type(UInt64, Float64) === Float64
+    @test _keypair_compare_type(Int32, Int64) === Int64
+    @test _keypair_compare_type(Float32, Float64) === Float64
+    @test _keypair_compare_type(Float16, Float32) === Float32
+    @test _keypair_compare_type(Int64, Int64) === Int64
+    @test _keypair_compare_type(Date, Date) === Date
+    @test _keypair_compare_type(String, SubString{String}) === String
+    @test _keypair_compare_type(Union{}, Int32) === Int32
+    @test _keypair_compare_type(Float64, Union{}) === Float64
+    @test _keypair_compare_type(Int64, UInt64) === nothing          # never throws
+    @test _keypair_compare_type(Date, DateTime) === nothing
+    @test _keypair_compare_type(String, Int) === nothing
+    @test _keypair_compare_type(Rational{Int}, Int) === nothing
+    # _keypair_allowed is exactly "has a compare type"
+    for a in (NUM..., Date, DateTime, String, SubString{String}, Union{}), b in (NUM..., Date, DateTime, String, SubString{String}, Union{})
+        @test _keypair_allowed(a, b) == (_keypair_compare_type(a, b) !== nothing)
+    end
+    # symmetric, and defined exactly on the allowed pairs
+    for a in NUM, b in NUM
+        _keypair_allowed(a, b) || continue
+        @test _keypair_compare_type(a, b) === _keypair_compare_type(b, a)
+    end
+    # the 2^53 boundary after conversion: two different Ints can match one Float64 (as dplyr)
+    T = _keypair_compare_type(Int64, Float64)
+    @test keyhash(T(2^53 + 1)) == keyhash(2.0^53)
+    @test isequal(T(2^53), 2.0^53) && keyhash(T(2^53)) == keyhash(2.0^53)
+    t = KeyTable{Float64}(4)
+    id = getorinsert!(t, 2.0^53, keyhash(2.0^53))
+    @test lookup(t, T(2^53), keyhash(T(2^53))) == id
+    @test lookup(t, T(2^53 + 1), keyhash(T(2^53 + 1))) == id
+    @test lookup(t, T(2^53 + 2), keyhash(T(2^53 + 2))) == 0
+    # isequal ⇒ equal keyhash, kept for the converted keys of every allowed numeric pair
+    pairs = [(a, b) for a in NUM for b in NUM if _keypair_allowed(a, b)]
+    bothnan(r, v) = r isa AbstractFloat && v isa AbstractFloat && isnan(r) && isnan(v)
+    conv(::Type{S}, v) where {S} = try
+        r = S(v)
+        (r == v || bothnan(r, v)) ? r : nothing
+    catch err
+        err isa InexactError || rethrow()
+        nothing
+    end
+    function holds(v)
+        for (A, B) in pairs
+            a, b = conv(A, v), conv(B, v)
+            (a === nothing || b === nothing) && continue
+            C = _keypair_compare_type(A, B)
+            ca, cb = C(a), C(b)
+            !isequal(_canon(ca), _canon(cb)) || keyhash(ca) == keyhash(cb) || return false
+            isequal(_canon(ca), _canon(cb)) || return false   # equal values stay equal after conversion
+        end
+        return true
+    end
+    nan2 = reinterpret(Float64, reinterpret(UInt64, NaN) | 0x01)
+    for v in (0, 1, -1, 0.0, -0.0, NaN, nan2, Inf, -Inf, 0.5, 2.0^53, 2^53 + 1, typemax(Int64), typemin(Int64), true)
+        @test holds(v)
+    end
+    sr = @check record = false db = false max_examples = 200 holds(Data.Integers{Int64}())
+    @test Supposition.results(sr).ispass
+    sr = @check record = false db = false max_examples = 200 holds(Data.Floats{Float64}())
     @test Supposition.results(sr).ispass
 end
