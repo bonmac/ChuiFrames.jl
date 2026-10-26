@@ -13,10 +13,11 @@
   - the JET job runs each `test/jet/opt_*.jl` file, and a `withforce` test helper sets the forcing switches.
 
 ### Known limitations
-- Phase 4's timings are not verified. Every `benchmark/run.jl --check` and
-  `benchmark/ttfx.jl --check` run at the merged head d410a46 ran at a 1-minute load of 7–12, so
-  its time rows are INCONCLUSIVE (ADR-0022). Its allocation and memory rows passed on 1.13 and
-  1.10 (`bench-check-113-d410a46.txt`, `bench-check-110-d410a46.txt`). The user deferred the
+- Phase 4's timings are not verified. The `benchmark/run.jl --check` runs at the merged head
+  d410a46 ran at a 1-minute load of 6.5–9.4 (`bench-check-113-d410a46.txt`,
+  `bench-check-110-d410a46.txt`), so their time rows are INCONCLUSIVE (ADR-0022). Their
+  allocation and memory rows passed on 1.13 and 1.10. `benchmark/ttfx.jl --check` was not run
+  at d410a46; earlier TTFX runs were also under load. The user deferred the
   timing run. A quiet-machine run (load < 2) of `ttfx.jl --check` and `run.jl --check` on 1.13
   and the LTS, plus `julia scripts/ci.jl bench` against main, is a gate before ChuiFrames'
   first release.

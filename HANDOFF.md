@@ -51,9 +51,8 @@ None. Every phase-4 lane is merged and its worktree removed.
   | `docs-3bc2be9.txt` | OK |
 
   The commits after `3bc2be9` are documentation only.
-- **Allocation budgets:** `run.jl --check` allocations and memory are within budget on 1.13 and
-  1.10 at p4-codegen's `f946f0d` (`bench-check-11{3,0}-f946f0d.txt`, archived). The n=10 breach
-  at `54a1b20` was fixed in code; no budget was changed.
+- **Allocation budgets (historical):** p4-codegen's n=10 breach at `54a1b20` was fixed in code
+  (`f946f0d`); no budget was raised. The current result is the `d410a46` table above.
 - **Final head `d410a46`** (every file `dirty: false`, exit 0):
 
   | File | Result |
