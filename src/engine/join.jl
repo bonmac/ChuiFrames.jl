@@ -479,7 +479,7 @@ side is missing), in `names`' order. X's columns come from `X`, y's from `Y` (by
 columns absent from `X`/`Y` (projected away) are skipped. Element types are static by kind
 (spec §1.1).
 """
-function _assemble(s::JoinStep, names::JoinNames, X::Frame, xconv, Y::Frame, yconv, xr::Vector{Int}, yr::Vector{Int})
+function _assemble(s::JoinStep, names::JoinNames, X::Frame, xconv::Vector{AbstractVector}, Y::Frame, yconv::Union{Nothing, Vector{AbstractVector}}, xr::Vector{Int}, yr::Vector{Int})
     xnull = s.kind === :right || s.kind === :full
     ynull = s.kind === :left || s.kind === :full
     xkeys = _xkeys(names)
@@ -635,8 +635,9 @@ Base.show(io::IO, s::PartitionedJoinStep) =
     print(io, "partitioned_join(", s.spec.kind, "; 2^", s.p, " partitions, build ", s.build, ", by = ", _bystr(s.names), ", order-restoring sort)")
 
 function apply(p::ProbeStep, f::Frame)
-    p.spec.kind === :cross && return _cross(p.spec, p.names, f, p.build::Frame)
-    b = p.build::JoinBuild
+    b = p.build
+    b isa Frame && return _cross(p.spec, p.names, f, b)
+    b isa JoinBuild || throw(ArgumentError("a join probe without a built side (explain's plan) cannot run"))
     return p.side === :y ? _probe_streams_x(p, b, f) : _probe_streams_y(p, b, f)
 end
 
@@ -957,7 +958,7 @@ function _cross(s::JoinStep, names::JoinNames, X::Frame, Y::Frame)
     nx, ny = X.nrow, Y.nrow
     xr = Int[i for i in 1:nx for _ in 1:ny]
     yr = Int[j for _ in 1:nx for j in 1:ny]
-    outn, cols = _assemble(s, names, X, nothing, Y, nothing, xr, yr)
+    outn, cols = _assemble(s, names, X, AbstractVector[], Y, nothing, xr, yr)      # no keys
     return _regroup_out(Frame(outn, cols, Symbol[], nothing, nx * ny), names, X.groups, X.drop)
 end
 

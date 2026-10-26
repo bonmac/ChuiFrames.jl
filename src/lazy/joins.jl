@@ -103,8 +103,8 @@ function _lower_joins(n::JoinNode; morsel::Int = DEFAULT_MORSEL, threads::Bool =
         ys = yf === nothing ? node_schema(right) : nothing
         (xf === nothing && xs === nothing) && (xf = run(left))
         (yf === nothing && ys === nothing) && (yf = _ungrouped(run(right)))
-        xt = xf === nothing ? _keytypes(xs, _xkeys(names)) : _keytypes(xf, _xkeys(names))
-        yt = yf === nothing ? _keytypes(ys, _ykeys(names)) : _keytypes(yf, _ykeys(names))
+        xt = xf === nothing ? _keytypes(something(xs), _xkeys(names)) : _keytypes(xf, _xkeys(names))
+        yt = yf === nothing ? _keytypes(something(ys), _ykeys(names)) : _keytypes(yf, _ykeys(names))
         T = _join_compare_types(names, xt, yt)
         names = _withcompare(names, T)
     end
