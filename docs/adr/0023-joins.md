@@ -158,8 +158,8 @@ src/lazy/joins.jl.
   eager at parity, 1.0×) and attributes it to P4-02's gather, fixed in b30cea3 and not re-timed.
   Disposition: the revisit decision is taken at the pre-release quiet timing run, after b30cea3
   (ADR-0025's open condition). Since P4-10 puts the cause in the gather, not in the shapes,
-  "reconsider (b)/(c)" applies only if the re-timed join is still more than 2× slower. The revisit decision is taken at the pre-release
-  quiet-machine timing run (user deferral, 2026-10-26).
+  "reconsider (b)/(c)" applies only if the re-timed join is still more than 2× slower (user
+  deferral, 2026-10-26).
 - A join behind an upstream non-key `mutate` is more than 1.5× slower than without it (spec §7;
   rows `lazy/inner join, non-key mutate before` and `after`; P4-10: 0.85–0.93×, not met) →
   static types per key column.
