@@ -283,16 +283,19 @@ end
 # ---------------------------------------------------------------------------------------------
 # The join key-pair rule (critic N1; phase-4 spec §1.1)
 
-const _NumKey = Union{Bool, Base.BitInteger, Base.IEEEFloat}
+# Base.BitInteger and Base.IEEEFloat spelled out (they are not public in Base).
+const _KeyInt = Union{Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128}
+const _KeyFloat = Union{Float16, Float32, Float64}
+const _NumKey = Union{Bool, _KeyInt, _KeyFloat}
 
 _keybits(::Type{Bool}) = 1
-_keybits(::Type{S}) where {S <: Base.BitInteger} = 8 * sizeof(S)
+_keybits(::Type{S}) where {S <: _KeyInt} = 8 * sizeof(S)
 
 # Does every value of S survive conversion to T = promote_type(S, …)?
-_keyfits(::Type{S}, ::Type{T}) where {S <: Base.IEEEFloat, T} = T <: Base.IEEEFloat && precision(S) <= precision(T)
-_keyfits(::Type{S}, ::Type{T}) where {S <: Union{Bool, Base.BitInteger}, T <: Union{Bool, Base.BitInteger}} =
+_keyfits(::Type{S}, ::Type{T}) where {S <: _KeyFloat, T} = T <: _KeyFloat && precision(S) <= precision(T)
+_keyfits(::Type{S}, ::Type{T}) where {S <: Union{Bool, _KeyInt}, T <: Union{Bool, _KeyInt}} =
     typemin(S) >= typemin(T) && typemax(S) <= typemax(T)
-_keyfits(::Type{S}, ::Type{T}) where {S <: Union{Bool, Base.BitInteger}, T <: Base.IEEEFloat} = _keybits(S) <= precision(T)
+_keyfits(::Type{S}, ::Type{T}) where {S <: Union{Bool, _KeyInt}, T <: _KeyFloat} = _keybits(S) <= precision(T)
 _keyfits(::Type, ::Type) = false
 
 """
