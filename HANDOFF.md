@@ -22,6 +22,9 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
   | p4-groupby2 | fast `group_by`, hash-aggregate and grouped-window sinks, the K4 key helpers | `eb1cb5c` |
   | p4-join | joins: `by =`, nest/cross/`join_by`, DataAPI, three hash-join shapes, lazy join trees | `0db65f4` |
   | p4-gbfix | limit-path dictionary kinds, sinks behind compiled kernels, a whitelist-first kernel decision | `50dbf18` |
+  | p4-joinfix | DataAPI join methods reject `by`; `crossjoin` rejects keys | `a06a090` |
+  | p4-bench | SUITE and budget rows, `RADIX_SWITCH` = 2²⁰, compare and calibrate | `5956626` |
+  | p4-perf | linear concatenations; no per-row allocation in `take(::StringColumn)`; budgets re-tightened | `b30cea3` |
 
   The worktrees are removed; the branches are kept. Reviewer reports are in
   `ChuiFrames.jl/.lanes/reports/`, and lane evidence is archived under `.lanes/reports/lanes/`.
@@ -29,9 +32,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## Open lanes
 
-| Lane | Agent | File scope | Status |
-|---|---|---|---|
-| p4-perf | implementer | `src/columns.jl`, `src/engine/{join_shapes,hashagg_sink,verbs_bind,verbs_groups}.jl`, `benchmark/budgets.toml`, named test files | starting |
+None. Every phase-4 lane is merged and its worktree removed.
 
 ## Evidence (`.lanes/evidence/`)
 
@@ -83,17 +84,13 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 3. ~~p4-bench lands~~: done, merged in `5956626` (reviewer APPROVE WITH CONDITIONS FINAL).
    - It added 86 SUITE rows and 516 budget rows, tightened 21 rows, and set `RADIX_SWITCH` to 2²⁰.
    - The DoD `tests` check was waived in the merge commit: the only src change is that constant.
-4. **p4-perf lands** (approved by the ecosystem lead). It fixes:
-   - the quadratic concatenations in `vcat_columns` and `_partitioned_join`, plus the same
-     `init` pattern in `verbs_bind.jl` and `verbs_groups.jl`;
-   - the per-row allocation of String keys in the sink.
-
-   Then it re-tightens the memory and time rows of the join, lazy-join and lazy-gather budgets
-   (p4-bench review MINOR-5).
+4. ~~p4-perf lands~~: done, merged in `b30cea3` (reviewer APPROVE WITH CONDITIONS FINAL; the
+   doc conditions were met in `12ea449`). Outputs are unchanged. 43 allocation/memory rows were
+   tightened; no time row fell below half its baseline.
 5. **`julia scripts/ci.jl bench` against `main`**, in the quiet window (p4-bench review MINOR-4).
 6. **ADR-0022 rule 1's "public API only":** the SUITE now uses the internal switches
-   `_FORCE_JOIN`/`_FORCE_KERNEL` (p4-bench review MINOR-3). A dated note needs the
-   user/lead decision.
+   `_FORCE_JOIN`/`_FORCE_KERNEL` (p4-bench review MINOR-3). The DRAFT dated note is on rule 1
+   (`f87784e`); the user decides it at the phase-4 ★.
 7. **Reviewer APPROVE (FINAL)** on the full `main...feat/phase4` diff, and `dod.jl`.
 8. **The user accepts ADRs 0023–0025** at the phase-4 merge ★.
 
@@ -117,6 +114,15 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
     recommends);
   - no compiled prefix kernel before a join probe.
 - **Codegen:** the research note's caveats (proxy compile times, measured at `-t 1` only).
+- **Performance (p4-bench, p4-perf):**
+  - `vcat_columns` has no fast path for string columns: a lazy gather of strings still allocates
+    about two objects and one copy per row;
+  - the broadcast limits could move to 2¹⁸ rows / 16 MiB (unverified on a quiet machine);
+  - partition bits `p` from the build side (`p = 4` up to 2²⁰ build rows);
+  - parallel eager probes above 65,536 rows (1.5–1.9× measured);
+  - several eager time rows (`summarise`, `count_by`, `filter`, `pipeline`, `window`) fell
+    below half their baselines in earlier lanes; tighten them on a quiet machine;
+  - `cross_join` raises Julia's generic `MethodError` for unknown keywords.
 - **Sinks:** for `drop = false` queries, pruned partitions are still read in full; reading only
   their dictionaries would be cheaper. `explain`'s "pruned" count then overstates the saving.
 - **Carried from phase 3:** filters past provably total `mutate`s; sort skipping from
@@ -124,7 +130,6 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## Next action
 
-1. Run lane p4-perf, then merge it after its reviewer FINAL.
-2. Run `dod.jl` and the full gates at the final head.
-3. Ask the ecosystem lead for the quiet window.
-4. Run the final reviewer on `main...feat/phase4`.
+1. Run `dod.jl` and the full gates at the final head.
+2. Ask the ecosystem lead for the quiet window.
+3. Run the final reviewer on `main...feat/phase4`.
