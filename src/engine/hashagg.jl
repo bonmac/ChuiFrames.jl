@@ -964,22 +964,33 @@ end
 One task's partial state: its finished runs (flushed in `seq` order) and the current one, the
 key columns of each new group's first row (`keychunks`, one chunk per non-empty morsel and key,
 taken from the morsel, so their concatenation has the column kinds the gathered frame would
-have), zero-row chunks of each output's input column (for the gathered element types), whether
-it switched to radix mode, and morsel 1's empty output (the gather's result when no morsel has
-rows).
+have), zero-row chunks of each output's input column (for the gathered element types), zero-row
+chunks of the key columns of every morsel that was not pruned, empty ones included (`keykinds`,
+for `_gathered_kind`), whether it switched to radix mode, and morsel 1's empty output (the
+gather's result when no morsel has rows).
 """
 mutable struct _AggTask
     runs::Vector{_Run}
     cur::Union{Nothing, _Run}
     keychunks::Vector{Vector{AbstractColumn}}
     colchunks::Vector{Vector{AbstractColumn}}
+    keykinds::Vector{Vector{AbstractColumn}}
     nkeyrows::Int
     switched::Bool
     first::Union{Nothing, Frame}
 end
 _AggTask(spec::HashAggSpec) = _AggTask(
-    _Run[], nothing, [AbstractColumn[] for _ in spec.keys], [AbstractColumn[] for _ in spec.cols], 0, false, nothing,
+    _Run[], nothing, [AbstractColumn[] for _ in spec.keys], [AbstractColumn[] for _ in spec.cols],
+    [AbstractColumn[] for _ in spec.keys], 0, false, nothing,
 )
+
+"Note the key columns' kinds of a morsel that was not pruned (see `_gathered_kind`)."
+function _notekinds!(st::_AggTask, spec::HashAggSpec, f::Frame)
+    for (j, k) in enumerate(spec.keys)
+        push!(st.keykinds[j], take(getcol(f, k), Int[]))
+    end
+    return st
+end
 
 _ineltype(f::Frame, c::Union{Nothing, Symbol}) = c === nothing ? Any : eltype(getcol(f, c))
 
@@ -1111,6 +1122,29 @@ function _mergepart(j::Int, runs::Vector{_Run}, offs::Vector{Int}, parts, K::Typ
 end
 
 """
+    _gathered_kind(col, parts) -> AbstractColumn
+
+The gathered column `col` with the kind the eager read gives it: `read_source` concatenates the
+raw partitions with `vcat_columns`, which keeps a dictionary column only when every partition's
+column shares its dictionary (`===`) and otherwise decodes to the values (element type the
+`Union` of the parts'). `parts` are the morsels' columns (empty morsels included, pruned ones
+not), so a lone non-empty morsel of a source with per-partition dictionaries is decoded too, and
+`group_by(drop = false)` shows the levels eager shows. Used by the lazy gather and the
+hash-aggregate sink.
+"""
+function _gathered_kind(col::AbstractColumn, parts::Vector{AbstractColumn})
+    (col isa DictColumn && !isempty(parts)) || return col
+    p1 = parts[1]
+    p1 isa DictColumn && all(p -> p isa typeof(p1) && p.dict === p1.dict, parts) && return col
+    E = Union{map(eltype, parts)...}
+    v = Vector{E}(undef, length(col))
+    for i in eachindex(col)
+        v[i] = col[i]
+    end
+    return column(v)
+end
+
+"""
     _hashagg_finish(results, tasks, spec, fallback) -> Frame
 
 The summary frame, as eager `summarise` builds it on the gathered frame: the distinct keys (each
@@ -1137,7 +1171,8 @@ function _hashagg_finish(results, tasks::Vector{_AggTask}, spec::HashAggSpec, fa
     keycat = AbstractColumn[]
     for j in eachindex(spec.keys)
         chunks = AbstractColumn[c for st in tasks for c in st.keychunks[j]]
-        push!(keycat, isempty(chunks) ? getcol(getfb(), spec.keys[j]) : vcat_columns(chunks))
+        col = isempty(chunks) ? getcol(getfb(), spec.keys[j]) : vcat_columns(chunks)
+        push!(keycat, _gathered_kind(col, AbstractColumn[c for st in tasks for c in st.keykinds[j]]))
     end
     kf = Frame(copy(spec.keys), AbstractColumn[take(c, pos[order]) for c in keycat])
     gi = build_gindex(kf, spec.keys; drop = spec.drop)

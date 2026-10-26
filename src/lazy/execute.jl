@@ -221,11 +221,28 @@ function _parallel_map(g, n::Int, ntasks::Int)
     return out
 end
 
-function _gather(frames::Vector{Frame}, empty::Function)
+function _gather(frames::Vector{Frame}, empty::Function, kinds::Vector{Frame} = frames)
     nonempty = Frame[f for f in frames if f.nrow > 0]
-    isempty(nonempty) && return isempty(frames) ? empty() : first(frames)
-    length(nonempty) == 1 && return only(nonempty)
-    return _concat(nonempty)      # keeps the row count of zero-column frames (review B1)
+    out = if isempty(nonempty)
+        isempty(frames) ? empty() : first(frames)
+    elseif length(nonempty) == 1
+        only(nonempty)
+    else
+        _concat(nonempty)         # keeps the row count of zero-column frames (review B1)
+    end
+    return _gathered_kinds(out, kinds)
+end
+
+# The gathered frame's dictionary columns with the kinds the eager read gives them
+# (`_gathered_kind`, src/engine/hashagg.jl), from the non-pruned morsels' outputs `kinds`.
+function _gathered_kinds(out::Frame, kinds::Vector{Frame})
+    (isempty(out.groups) && any(c -> c isa DictColumn, out.columns)) || return out
+    cols = copy(out.columns)
+    for (j, nm) in enumerate(out.names)
+        cols[j] isa DictColumn || continue
+        cols[j] = _gathered_kind(cols[j], AbstractColumn[getcol(f, nm) for f in kinds if nm in f.names])
+    end
+    return Frame(copy(out.names), cols, Symbol[], nothing, out.nrow)
 end
 
 """
@@ -265,16 +282,17 @@ function execute(ph::Physical; morsel::Int = DEFAULT_MORSEL, threads::Bool = tru
         end
         return _runstage(ph, _readpart(ph, residual, handles[i]), kernel)
     end
+    ispruned(f::Frame) = f === emptyout[]       # a pruned morsel's shared empty output
     sink = _hashagg_plan(ph)
     if sink isa Tuple
         spec, nsteps = sink
-        agg = _run_hashagg(ph, spec, part, handles, threads, stats)
+        agg = _run_hashagg(ph, spec, part, handles, threads, stats, ispruned)
         stats.pruned = pruned[]
         return run_rest(ph, agg; morsel, threads, from = nsteps + 1)
     end
     frames = _run(ph, part, length(handles), threads, stats)
     stats.pruned = pruned[]
-    out = _gather(frames, () -> _process_empty(ph))
+    out = _gather(frames, () -> _process_empty(ph), Frame[f for f in frames if !ispruned(f)])
     ph.limit === nothing || (out = apply(HeadStep(ph.limit), out))
     return run_rest(ph, out; morsel, threads)
 end

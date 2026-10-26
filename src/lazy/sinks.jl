@@ -98,7 +98,7 @@ and `_runstage(ph, f, kernel)`): `ntasks` contiguous morsel ranges (ADR-0003 rul
 by one task (`_consume!`); the first failing morsel in morsel order is reported as a
 `MorselError` (ADR-0003 rule 7); then the ordered merge and the final frame (src/engine/hashagg.jl).
 """
-function _run_hashagg(ph, spec::HashAggSpec, part, handles, threads::Bool, stats)
+function _run_hashagg(ph, spec::HashAggSpec, part, handles, threads::Bool, stats, ispruned = f -> false)
     n = length(handles)
     limit = _radix_limit()                      # read once per collect (spec §0.3)
     ntasks = threads && Threads.nthreads() > 1 && n > 1 ? min(Threads.nthreads(), n) : 1
@@ -116,6 +116,7 @@ function _run_hashagg(ph, spec::HashAggSpec, part, handles, threads::Bool, stats
             try
                 f = part(i)
                 i == 1 && (st.first = take(f, Int[]))
+                ispruned(f) || _notekinds!(st, spec, f)
                 _consume!(st, spec, f, gds, limit)
             catch err
                 errs[i] = err

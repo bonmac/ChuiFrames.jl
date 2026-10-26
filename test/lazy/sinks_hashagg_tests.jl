@@ -187,4 +187,14 @@ end
         @test agrees(p, src; morsels = 1:2)
         @test collect(p(lazy(src))).columns[1] == ["a", "b", "c", "zz"]
     end
+    # regression (found by the grouped-sinks property): partitions with different dictionaries
+    # are decoded by the eager read (`read_source` → `vcat_columns`), so a lone non-empty morsel
+    # must not bring its own dictionary's levels to `drop = false`; nor may the empty gather.
+    # Both the sink and the gathered path (a holistic summary) follow the eager read.
+    for drop in (true, false), red in (summarise(n = n_rows()), summarise(m = median(c.y)))
+        for pre in (filter(c.y .< 5), filter(c.y .> 100))
+            p = pre ⨟ group_by(:g; drop) ⨟ red
+            @test agrees(p, src; morsels = 1:2, sink = red.outs[1].first === :n)
+        end
+    end
 end
