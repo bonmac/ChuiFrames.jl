@@ -1,6 +1,10 @@
 # ADR-0024: Group-by runs on typed keys in an open-addressing table; lazy summaries of simple aggregates run in a two-phase, order-preserving hash-aggregate sink with an adaptive radix switch
 
-- **Status:** Proposed (2026-10-26)
+- **Status:** Proposed (2026-10-26). **As-built note (2026-10-26):** refreshed to the code after
+  lanes p4-bench (merged in 5956626: `RADIX_SWITCH` = 2²⁰, `SUITE` and budget rows), p4-perf
+  (b30cea3: linear concatenations, P4-02; `take` without a per-row allocation, P4-05; 43
+  allocation and memory rows tightened) and p4-levels (9ef025e, fix 3ff0e2f: rule 11 for a
+  join's collected sides). No decision changed.
 - **Date:** 2026-10-26
 - **Deciders:** the lead (design, spec §2, critic-reviewed); the user (the ADR-0003 rule 3 and
   rule 5 notes, 2026-10-26, at the ChuiFrames phase-4 ★); acceptance of this record: the user,
@@ -13,8 +17,8 @@ Phase 4 makes group-by fast (DESIGN §7 item 2). Before it, eager `group_by` cod
 column through a `Dict` and combined columns through `Dict{Tuple{Int,Int}}` codes, and lazy
 grouped summaries ran on the gathered frame. The design is spec
 `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md` §2; this ADR records
-it as built on `feat/phase4` at 50dbf18 (lanes p4-groupby 3ef418f, p4-groupby2 eb1cb5c, p4-gbfix
-50dbf18). It implements ADR-0003 rules 6, 8, 9 and 10. Two departures are covered by the user's
+it as built on `feat/phase4` (lanes p4-groupby 3ef418f, p4-groupby2 eb1cb5c, p4-gbfix 50dbf18;
+later lanes in the Status note). It implements ADR-0003 rules 6, 8, 9 and 10. Two departures are covered by the user's
 dated notes on ADR-0003 (2026-10-26, phase-4 ★): the rule 3 note (only simple aggregates over
 plain keys stream as hash-aggregate sinks; rule 4 below) and the rule 5 note (`Vector{Any}`
 task state for `MapM`, `ReduceM` and other untyped aggregators; rule 5 below). Code:
@@ -59,8 +63,8 @@ src/engine/{hashagg,hashagg_acc,hashagg_sink,radix,groups}.jl, src/lazy/{sinks,e
    state (ADR-0003 rule 5 note).
 6. Each task owns a contiguous morsel range and its own `KeyTable`. Dictionary keys **must** be
    remapped per morsel to one global value-keyed dictionary (once per distinct local code).
-7. **Adaptive switch.** A task table past `RADIX_SWITCH = 2¹⁶` groups (pending p4-bench
-   calibration; `_FORCE_RADIX_SWITCH` in tests) **must** flush its accumulators as a run stamped
+7. **Adaptive switch.** A task table past `RADIX_SWITCH = 2²⁰` groups (src/engine/hashagg.jl;
+   2¹⁶ until p4-bench, 5956626, P4-03; `_FORCE_RADIX_SWITCH` in tests) **must** flush its accumulators as a run stamped
    `(range, seq)` ahead of later rows; the merge combines each group's accumulators in
    `(range, seq)` order per radix partition. As built, `_starts_radix` reads only partition 1's
    `ndistinct` before the partial phase and only makes the merge partitioned from the start;
@@ -81,7 +85,10 @@ src/engine/{hashagg,hashagg_acc,hashagg_sink,radix,groups}.jl, src/lazy/{sinks,e
 11. **Dictionary levels (CF-008).** When a later step shows levels (`group_by(drop = false)` or a
     `drop = false` scan; `_needs_levels`), partitions pruned by statistics and partitions an
     early-stopped limit never reached **must** be read for their column kinds (an empty slice
-    through the stage), as eager `read_source` reads every partition.
+    through the stage), as eager `read_source` reads every partition. A join's collected sides
+    **must** be read the same way when any step of the whole plan shows levels
+    (`_plan_shows_levels`, src/lazy/joins.jl; ADR-0023 Consequences): lane p4-levels (9ef025e,
+    fix 3ff0e2f; final review B1).
 
 ## Alternatives rejected
 
@@ -98,16 +105,18 @@ src/engine/{hashagg,hashagg_acc,hashagg_sink,radix,groups}.jl, src/lazy/{sinks,e
 
 - Joins use the same keys and radix primitive (ADR-0023), so key semantics agree.
 - `drop = false` queries read pruned and unreached partitions in full (dictionary-only reads are
-  a follow-up); `explain`'s "pruned" count then overstates the saving.
-- **Owed before main (ADR-0022 rules 1, 3, 5 and 6; p4-bench):** p4-groupby2 changed the engine
-  but ran no `run.jl --check`, only a scratch benchmark; `benchmark/budgets.toml` is unchanged
-  on the branch, so allocation rows that fell by more than half (e.g. eager `group_by` at 10⁶
-  rows) are not yet tightened, and whether the `summarise` rows fell that far is UNVERIFIED.
-  Memory rose for the String and two-key `group_by` inputs in the scratch benchmark, so
-  `run.jl --check` may flag memory rows (UNVERIFIED; p4-bench checks). `SUITE` rows for the lazy
-  group-by and the `group_by` `n=10` row (spec §5) are also owed.
-- Open: the sink's output element types come from a zero-row `vcat_columns`; `RADIX_SWITCH` and
-  2ᵖ are uncalibrated until p4-bench.
+  a follow-up); `explain`'s "pruned" count then overstates the saving. Since p4-levels this also
+  holds for a join's collected sides, and the flag is plan-wide: a `drop = false` on another
+  branch turns it on too.
+- **Delivered (ADR-0022 rules 1, 3, 5 and 6):** p4-bench (5956626) ran `benchmark/run.jl` on 1.13 and 1.10 and added
+  `SUITE` and budget rows for the eager group-by on dictionary and two-column keys, the lazy
+  sink per key kind, the `group_by` `n=10` rows and a `drop = false` row over pruned partitions;
+  it tightened the `summarise`, `count_by` and lazy pipeline allocation rows that fell below half
+  (P4-05) and found no existing row over budget, so the memory rise feared for the String and
+  two-key inputs breaches nothing. p4-perf (b30cea3) removed the String-key sink's per-row
+  allocation (`take`, P4-05) and the quadratic gather (P4-02), and tightened 43 more rows.
+- Open: the sink's output element types come from a zero-row `vcat_columns`; 2ᵖ from the build
+  side is a phase-5 follow-up (ADR-0023).
 - `hashagg.jl` was split three ways to stay under the 600-line `src/*.jl` ratchet.
 
 ## Verification
@@ -120,16 +129,23 @@ src/engine/{hashagg,hashagg_acc,hashagg_sink,radix,groups}.jl, src/lazy/{sinks,e
   canonicalisation and `KeyTable` growth probes), `reviewer-p4-groupby2-pass2.md` (APPROVE WITH
   CONDITIONS, FINAL at 36d79f9), `reviewer-p4-gbfix-pass2.md` (APPROVE FINAL at 12bf9fc: the
   limit-path dictionary kinds, sinks behind a forced compiled kernel); `critic-p4-adrs.md`.
-- UNVERIFIED: `RADIX_SWITCH = 2¹⁶` as the right limit on this hardware (p4-bench).
+- `RADIX_SWITCH = 2²⁰`: docs/research/performance-phase4.md P4-03 (benchmark/calibrate/radix_switch.jl;
+  between 10⁵ and 5·10⁵ groups 2¹⁶ allocated 1.2–4.6× the bytes of 2²⁰ in all 16 cells). Bytes
+  are binding; its times ran on a loaded machine and are inconclusive.
+- Later lanes (main checkout `.lanes/reports/`): `reviewer-p4-bench.md`, `reviewer-p4-perf.md`,
+  `reviewer-p4-levels.md`, `reviewer-p4-final.md`.
 
 ## Revisit when
 
-- p4-bench's lazy group-by rows (spec §5; owed) calibrate `RADIX_SWITCH`, or show the sink slower
-  than the gathered eager path at any measured size → change the constant line (p4-bench's
-  scope) or the routing.
+- The lazy group-by rows (`groupby/<keys> <few|many>, lazy`) show the sink slower than the gathered
+  eager path at any measured size, or a quiet-machine re-run of benchmark/calibrate/radix_switch.jl
+  moves the best limit → change the constant line or the routing. P4-10 reports the first met
+  (few groups at 10⁴ rows; String and two-column keys at 10⁶ rows; times inconclusive); the
+  String-key per-row allocation it named was fixed in b30cea3, and the rows were not re-timed.
 - A source reports `ndistinct` for every partition → let `_starts_radix` start tasks in radix mode.
 - A `drop = false` query with pruned partitions is more than 2× slower than the same query with
-  `drop = true` (no row yet; p4-bench owes one) → read dictionaries only.
+  `drop = true` (rows `lazy/group_by dict, 12 of 16 partitions pruned, drop = false` and `true`;
+  P4-10: about 1.0×, not met) → read dictionaries only.
 - A frozen signature (rules 1, 2) must change → spec amendment, then this ADR.
 - **Phase-5 follow-ups (listed with the user's phase-4 ★ answer that accepted the narrowing of
   ADR-0003 rules 3 and 5 for phase 4; they lift those notes):** stream the eager fallbacks of rule 4 (holistic

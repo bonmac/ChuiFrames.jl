@@ -1,7 +1,10 @@
 # ADR-0023: Joins follow dplyr 1.2.0 through one hash-join operator in three physical shapes, chosen by the cost stage; keys are `by =`, and integer/float key pairs compare as `Float64`
 
 - **Status:** Proposed (2026-10-26). Rule 3's `on`/`by` `ArgumentError` landed with lane
-  p4-joinfix (a06a090).
+  p4-joinfix (a06a090). **As-built note (2026-10-26):** refreshed to the code after lanes
+  p4-bench (merged in 5956626: `SUITE` and budget rows, broadcast limits kept), p4-perf (b30cea3:
+  linear concatenations, P4-02; 43 allocation and memory rows tightened) and p4-levels (9ef025e,
+  fix 3ff0e2f: collected sides and `drop = false`, Consequences). No decision changed.
 - **Date:** 2026-10-26
 - **Deciders:** the user (★ K1–K4 and the `nest_join` name-clash ruling, 2026-10-26, at the
   ChuiFrames phase-4 ★); acceptance of this record: the user, at the phase-4 merge ★
@@ -11,7 +14,8 @@
 
 Phase 4 adds joins (DESIGN §7 item 1). The design is spec
 `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md` §0.4 and §1; this
-ADR records it as built on `feat/phase4` at 50dbf18 (joins merged in 0db65f4). It **refines and
+ADR records it as built on `feat/phase4` (joins merged in 0db65f4; later lanes in the Status
+note). It **refines and
 implements** ADR-0003 rules 4 (the cost stage picks the build side and strategy), 8 (key
 equality), 10 (one radix primitive) and 11 (broadcast, else both sides radix-partitioned).
 Under ★ K2 ADR-0003 is kept as written; the user's dated note on ADR-0003 rule 11 (2026-10-26)
@@ -53,8 +57,8 @@ src/lazy/joins.jl.
 7. `join_decision(spec, x::SideEstimate, y::SideEstimate)` is the cost stage for eager apply,
    the lowering at `collect` and `explain`. Build side: fewer estimated bytes (rows × nominal
    width); a tie or both unknown → y; one unknown side counts as larger. Broadcast **must** be
-   used below `BROADCAST_MAX_ROWS = 131_072` rows and `BROADCAST_MAX_BYTES = 4 MiB` (pending
-   p4-bench calibration, spec §5); otherwise both sides go through `radix_partition` into 2ᵖ
+   used below `BROADCAST_MAX_ROWS = 131_072` rows and `BROADCAST_MAX_BYTES = 4 MiB` (kept by
+   p4-bench, 5956626: docs/research/performance-phase4.md P4-04); otherwise both sides go through `radix_partition` into 2ᵖ
    partitions, `p = clamp(⌈log2 rows⌉ − 13, 4, 8)` of the larger side (4 when unknown).
    `collect` confirms the strategy on the collected build side.
 8. **Three shapes.** (a) broadcast, build y: `ProbeStep` streams x; pairs come out in (xrow,
@@ -107,14 +111,27 @@ src/lazy/joins.jl.
   two inputs each under one morsel can spawn, which reads against ADR-0003 rule 2's
   per-verb "below 65 536 rows, no task spawn" if that means per input. In practice an eager
   join is partitioned only when its build side passes the broadcast limits (≥ 131 072 rows or
-  ≥ 4 MiB), or when forced. p4-bench decides whether the trigger becomes per side.
-- **Owed before main (ADR-0022 rules 1 and 3; p4-bench):** `SUITE` entries and budget rows for
-  the joins (inner, left; 1:1, 1:n; broadcast and partitioned; build x and y; small x/large y),
-  `nest_join` and `cross_join`, plus an `n=10` row per join verb (spec §5).
-- **Open follow-ups:** the broadcast limits, partition bits p and nominal widths are
-  uncalibrated (p4-bench, spec §5); an x key held as `ObjectColumn{SubString}` keeps that kind on
-  inner/left/nest instead of `String` (reviewer p4-join pass 2; lazy == eager); parallel eager
-  broadcast probes (p4-bench); static types per key column.
+  ≥ 4 MiB), or when forced. p4-bench (P4-07) recommends keeping the sum, plus a floor per task;
+  any change to the trigger is a phase-5 follow-up.
+- **Collected sides and dictionary levels (p4-levels, 9ef025e, fix 3ff0e2f; CF-008, final
+  review B1).** When `_plan_shows_levels` finds a `group_by(...; drop = false)` or a
+  `drop = false` scan anywhere in the plan, `_lower_joins` passes `levels` to every side it
+  collects, so pruned or unreached partitions decide each dictionary column's kind (ADR-0024
+  rule 11). In shape (c) with x as the build side, y is then collected first instead of running
+  inside `PartitionedJoinStep`. No row changes. The flag is plan-wide (a `drop = false` on another
+  branch turns it on too).
+- **Delivered (ADR-0022 rules 1 and 3):** p4-bench (5956626) added `SUITE` entries and budget rows
+  for the joins (inner, left; 1:1, 1:n; each forced strategy and build side; small x/large y; the
+  lazy join per shape), `nest_join` and `cross_join`, plus an `n=10` row per join verb
+  (benchmark/benchmarks.jl). p4-perf (b30cea3) made the partitioned join's per-partition
+  concatenation linear and tightened the rows of the partitioned joins (eager and lazy) and the
+  lazy joins behind a `mutate` (ADR-0022 rule 5).
+- **Phase-5 follow-ups:** p4-bench measured the broadcast limits, partition bits p and the
+  parallel eager probe on a loaded machine and changed none (P4-04, P4-07): the limits might move
+  to 2¹⁸ rows / 16 MiB (UNVERIFIED), p might come from the build side, and the eager broadcast
+  probe stays on one task; the nominal widths were not measured. Also: an x key held as
+  `ObjectColumn{SubString}` keeps that kind on inner/left/nest instead of `String` (reviewer
+  p4-join pass 2; lazy == eager); static types per key column.
 
 ## Verification
 
@@ -125,14 +142,22 @@ src/lazy/joins.jl.
 - Gates: `.lanes/reports/lanes/p4-join/evidence/` files `tests-8e63b5e.txt`,
   `tests-t4-8e63b5e.txt`, `tests-lts-8e63b5e.txt`, `tests-diff-8e63b5e.txt`,
   `tests-slow-t4-8e63b5e.txt`. Differentials: evidence `tests-diff-b13e506.txt`.
-- UNVERIFIED: DataFusion's limits as input bytes; the nominal 16-byte width (p4-bench).
+- Later lanes (main checkout `.lanes/reports/`): `reviewer-p4-bench.md`, `reviewer-p4-perf.md`,
+  `reviewer-p4-levels.md`, `reviewer-p4-final.md`. Measurements: docs/research/performance-phase4.md
+  (every timing on a loaded machine, inconclusive).
+- DataFusion's 4 MiB limit is one input side's estimated bytes (P4-04, read from its
+  `config.rs`). UNVERIFIED: whether that estimate is Arrow's in-memory size; the nominal 16-byte
+  width (not measured by p4-bench).
 
 ## Revisit when
 
-- p4-bench's order-restoring-sort rows (spec §5; owed) show the sort above 25 % of a
-  shape-(b)/(c) join, or its join q1–q3 in the future directory benchmark/compare/ show a small-x/large-y join more
-  than 2× slower than DuckDB → reconsider shapes (b)/(c).
+- The order-restoring sort's share (benchmark/calibrate/sort_share.jl, P4-06: 4.7–20.4 % at 10⁶
+  rows; one 10⁴-row case 27.7 %, sub-millisecond, inconclusive) passes 25 % of a shape-(b)/(c)
+  join, or join q1–q3 in `benchmark/compare/` show a small-x/large-y join more than 2× slower
+  than DuckDB → reconsider shapes (b)/(c). P4-10 reports the latter met for the lazy join (5.3×;
+  eager at parity, 1.0×) and attributes it to P4-02's gather, fixed in b30cea3 and not re-timed.
 - A join behind an upstream non-key `mutate` is more than 1.5× slower than without it (spec §7;
-  p4-bench owes the row) → static types per key column.
+  rows `lazy/inner join, non-key mutate before` and `after`; P4-10: 0.85–0.93×, not met) →
+  static types per key column.
 - A user reports the 2⁵³ loss as a problem → an opt-in strict mode rejecting lossy pairs.
 - The inequality/rolling `join_by` design starts → reopen rule 2.

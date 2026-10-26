@@ -4,6 +4,11 @@
   `run.jl --check` timings, 1.13 and 1.10. The user deferred them (2026-10-26) from the phase-4
   merge to a gate before ChuiFrames' first release, because the timings at `d410a46` ran under
   load and are INCONCLUSIVE.
+  **As-built note (2026-10-26):** refreshed to the code after lanes p4-bench (merged in 5956626:
+  the compiled-stage and interpreter `SUITE` and budget rows), p4-perf (b30cea3: linear
+  concatenations, P4-02; 43 allocation and memory rows tightened) and p4-levels (9ef025e, fix
+  3ff0e2f: pruned or unreached morsels read for their kinds run through the kernel; docstring
+  only in src/lazy/kernels.jl). No decision changed.
 - **Date:** 2026-10-26
 - **Deciders:** the lead (design, spec §3; the threshold from lane p4-codegen's measurements);
   the user (the ADR-0003 rule 12 note, 2026-10-26, at the ChuiFrames phase-4 ★); acceptance of
@@ -18,7 +23,8 @@ than 50, asking phase 4 to recalibrate 10⁵. Its basis: 3–9 ms per two-operat
 (EN-07), 18 ms at depth 20 (EN-08). The user's dated note on ADR-0003 rule 12 (2026-10-26,
 phase-4 ★) records the three phase-4 changes this ADR implements. The design is spec
 `docs/superpowers/specs/2026-10-26-phase4-joins-groupby-codegen-design.md` §3; this ADR records
-it as built on `feat/phase4` at 50dbf18 (p4-codegen 3a61c69, p4-gbfix 50dbf18). The full kernel,
+it as built on `feat/phase4` (p4-codegen 3a61c69, p4-gbfix 50dbf18; later lanes in the Status
+note). The full kernel,
 with critic B2/N3's exactness checks, costs 18–45 ms per new 1–10-step shape
 (docs/research/codegen-phase4.md). Code: src/lazy/{kernels,kernels_build,execute}.jl.
 
@@ -86,8 +92,10 @@ with critic B2/N3's exactness checks, costs 18–45 ms per new 1–10-step shape
 - **The n=10 allocation breach:** the small-input lookup first hashed through dynamically
   dispatched helpers and pushed `lazy/filter, mutate, select/n=10` over its ADR-0022 allocation
   and memory budgets on 1.13 and 1.10; f946f0d mixes into one accumulator, within budget on both.
-- **Owed before main (ADR-0022 rules 1 and 3; p4-bench):** a `SUITE` entry and budget rows for a
-  compiled streamed stage at 10⁶ rows (spec §5), alongside the join rows of ADR-0023.
+- **Delivered (ADR-0022 rules 1 and 3):** p4-bench (5956626) added `SUITE` entries and budget
+  rows `lazy/mutate, filter, select stage, compiled` and `… interpreted` at 10⁶ rows (spec §5),
+  and the interpreter gauge `lazy/filter, mutate, select, interpreter` (benchmark/benchmarks.jl),
+  alongside the join rows of ADR-0023.
 - Follow-ups: no kernel for a prefix before a join probe; the renderer ignores `before`/`after`;
   the research note still lacks the proxy-compile-time caveat (reviewer pass 2 n2).
 
@@ -108,6 +116,9 @@ with critic B2/N3's exactness checks, costs 18–45 ms per new 1–10-step shape
   `reviewer-p4-codegen-pass2.md` (APPROVE FINAL at f946f0d), `reviewer-p4-gbfix-pass2.md`
   (whitelist-first and the schema-aware small hash; the `ProbeStep` path read, not run);
   `critic-p4-adrs.md`.
+- Later lanes (main checkout `.lanes/reports/`): `reviewer-p4-bench.md`, `reviewer-p4-perf.md`,
+  `reviewer-p4-levels.md`, `reviewer-p4-final.md`; the new rows' numbers are in
+  docs/research/performance-phase4.md P4-05 and P4-10 (loaded machine).
 - UNVERIFIED until the open condition: TTFX and `run.jl` timings on a quiet machine at the
   integrated head.
 
@@ -115,9 +126,11 @@ with critic B2/N3's exactness checks, costs 18–45 ms per new 1–10-step shape
 
 - `_KERNEL_DISAGREE` is ever non-zero in CI → interpreter by default until fixed.
 - The median per-shape compile time of 1–10-step stages halves or doubles, the interpreter's
-  per-step cost moves by more than 2× (an interpreter row: the same pipeline forced with `_FORCE_KERNEL => :interpreter`, owed by
-  p4-bench; `lazy/filter, mutate, select/n=10^6` times the compiled kernel), or p4-bench's
-  compiled-stage row (owed, spec §5) disagrees with the research table by more than 2× →
+  per-step cost moves by more than 2× (the gauge row `lazy/filter, mutate, select, interpreter`,
+  the same pipeline forced with `_FORCE_KERNEL => :interpreter`; P4-10 takes its 53.7 ms at 10⁶
+  rows as the baseline; `lazy/filter, mutate, select/n=10^6` times the compiled kernel), or the
+  compiled-stage row `lazy/mutate, filter, select stage, compiled` (spec §5; P4-10: about 15 ns/row
+  against the table's 15.7, not met) disagrees with the research table by more than 2× →
   recompute `INTERP_THRESHOLD` and amend the ADR-0003 rule 12 note.
 - A multi-threaded measurement moves the median break-even outside 2.5–10×10⁵ rows.
 - The quiet-machine TTFX run breaches ADR-0022 rule 4 → shrink the workload or the machinery.
