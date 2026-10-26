@@ -20,7 +20,11 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
   blocked there. Do not work in scratch copies. The parent lane still owns the merge.
 - The brief says: change files with Edit/Write only, never `sed -i`, redirects or heredocs.
 - Each lane records its change in `changelog.d/<name>.md`, never in `CHANGELOG.md`.
-- The cap is `[lanes] max_open` (default 4). `dispatch_limit.sh` refuses the next spawn.
+- The cap is `[lanes] max_open` (default 4). `dispatch_limit.sh` refuses the next spawn. A lane
+  is an Agent dispatch, open until its call returns (foreground), its background agent stops, or
+  you `TaskStop <name>` it (a teammate). Give every teammate a `name`. A lane whose agent is gone
+  (TaskStop says no task found; a dispatch that never ran) is released with
+  `scripts/lane release <name>`. A spawned teammate or background agent is never dropped by time.
 
 **Monitor**
 - Wait for completion notifications; do not poll output files.

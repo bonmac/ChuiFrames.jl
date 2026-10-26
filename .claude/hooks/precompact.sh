@@ -15,9 +15,9 @@ mkdir -p "$ROOT/.lanes" 2>/dev/null || exit 0
     git -C "$ROOT" status --short 2>/dev/null | head -15 | sed 's/^/    /'
     echo "- worktrees:"
     git -C "$ROOT" worktree list 2>/dev/null | head -10 | sed 's/^/    /'
-    if have_jq && [ -f "$LEDGER_FILE" ]; then
-        echo "- open lanes (started, not stopped, this session):"
-        jq -Rrn --arg s "$(session)" "[inputs | fromjson? // empty | objects] | $OPEN_LANES_JQ | (.ids[] | \"    \" + .), \"    (count: \\(.count))\"" "$LEDGER_FILE" 2>/dev/null
+    if have_jq && [ -f "$LEDGER_FILE" ] && [ -f "$HOOKS_DIR/_lanes.sh" ] && . "$HOOKS_DIR/_lanes.sh"; then
+        echo "- open lanes (dispatched, not closed, this session):"
+        jq -Rrn --arg s "$(session)" --argjson ttl "$LANE_TTL_SECS" "[inputs | fromjson? // empty | objects] | $OPEN_LANES_JQ | (.ids[] | \"    \" + .), \"    (count: \\(.count))\"" "$LEDGER_FILE" 2>/dev/null
     fi
     echo
     echo "Preserve: the task and its brief, file scopes in flight, decisions made, commands run"

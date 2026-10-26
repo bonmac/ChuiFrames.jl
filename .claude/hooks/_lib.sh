@@ -69,21 +69,13 @@ ledger() {
         args="$args --arg $1 ${_v:--}"
         shift 2
     done
+    # 0.2.8: after a truncated last line (a crash mid-write) start a new line, or this record is lost
+    [ ! -s "$LEDGER_FILE" ] || [ -z "$(tail -c 1 "$LEDGER_FILE" 2>/dev/null)" ] || printf '\n' >>"$LEDGER_FILE" 2>/dev/null
     # shellcheck disable=SC2086
     jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ev "$ev" \
         --arg session "$(session)" $args '$ARGS.named' >>"$LEDGER_FILE" 2>/dev/null || true
 }
-
-# OPEN_LANES_JQ: agents whose last start/stop event in this session ($s) is a start.
-# Events without an agent_id count as starts minus stops (never below zero).
-# shellcheck disable=SC2034 # used by the hooks that source this file
-OPEN_LANES_JQ='[.[] | select(.session == $s and (.ev == "start" or .ev == "stop"))] as $e
-  | ([$e[] | select(.agent_id != "-" and .agent_id != null)] | group_by(.agent_id)
-     | map(select(last.ev == "start") | .[0].agent_id)) as $ids
-  | ([$e[] | select(.agent_id == "-" or .agent_id == null)]
-     | ([.[] | select(.ev == "start")] | length) - ([.[] | select(.ev == "stop")] | length)
-     | if . < 0 then 0 else . end) as $anon
-  | {ids: $ids, count: (($ids | length) + $anon)}'
+# Lane counting (lane_key, OPEN_LANES_JQ, LANE_TTL_SECS) lives in _lanes.sh (0.2.8).
 
 # normpath ABS: collapse //, /./ and /../ textually (symlinks are not resolved).
 normpath() {

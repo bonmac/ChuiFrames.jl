@@ -234,6 +234,10 @@ const TEST_HOOKS = hooks_with_roots(String[])   # no roots, not required; a test
                 @test rc == 2 && occursin("missing", err)
             end
         end
+        h = joinpath(mktempdir(), "hooks"); cp(TEST_HOOKS, h); rm(joinpath(h, "_lanes.sh"))   # 0.2.8
+        rc, _, err = hook("dispatch_limit.sh", "{\"tool_input\":{\"name\":\"a\"}}", root; hooks = h)
+        @test rc == 2 && occursin("_lanes.sh is missing", err)
+        @test hook("lane_ledger.sh", "{\"hook_event_name\":\"SubagentStop\"}", root; hooks = h)[1] == 0   # advisory: fails open
     end
 
     @testset "write_guard" begin
