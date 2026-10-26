@@ -256,13 +256,21 @@ KCase{E}(@nospecialize(c::Tuple), @nospecialize(v::Tuple), @nospecialize(d)) whe
 @inline (::KReg{K})(c, i) where {K} = @inbounds c[2][K][i]
 @inline (::KSc{K})(c, i) where {K} = c[3][K]
 @inline (k::KLit)(c, i) = k.v
-@inline (k::KCall)(c, i) = k.f(map(a -> a(c, i), k.args)...)
+@inline (k::KCall)(c, i) = k.f(_evall(k.args, c, i)...)
 @inline function (k::KCase{E})(c, i) where {E}
-    cv = map(a -> a(c, i), k.conds)
-    vv = map(a -> a(c, i), k.vals)
+    cv = _evall(k.conds, c, i)
+    vv = _evall(k.vals, c, i)
     d = k.default(c, i)
     return _cwpick(E, cv, vv, d)
 end
+
+# Every block of `t` on row `i`, in order (no closure: Julia 1.10's inference keeps these
+# nested calls concrete, where `map` with a closure capturing `c` and `i` did not).
+@inline _evall(::Tuple{}, c, i) = ()
+@inline _evall(t::Tuple{Any}, c, i) = (t[1](c, i),)
+@inline _evall(t::Tuple{Any, Any}, c, i) = (t[1](c, i), t[2](c, i))
+@inline _evall(t::Tuple{Any, Any, Any}, c, i) = (t[1](c, i), t[2](c, i), t[3](c, i))
+@inline _evall(t::Tuple, c, i) = (t[1](c, i), _evall(_tail(t), c, i)...)
 
 # The kernel's own errors carry a fixed message: the morsel then re-runs through the
 # interpreter, whose exception (with the full message) is the one raised.
@@ -318,7 +326,7 @@ KFilt{OUT}(@nospecialize(p::Tuple)) where {OUT} = KFilt{OUT, typeof(p)}(p)
 end
 # `apply(::FilterStep)`'s three-valued AND over every condition (1 true, 0 false, -1 missing).
 @inline function _runop(op::KFilt{OUT}, c, i) where {OUT}
-    st = _fstate(map(p -> p(c, i), op.preds), Int8(1))
+    st = _fstate(_evall(op.preds, c, i), Int8(1))
     return OUT ? st != Int8(1) : st == Int8(1)
 end
 @inline _fstate(::Tuple{}, st::Int8) = st
