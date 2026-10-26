@@ -67,7 +67,23 @@ function _printphysical(io::IO, ph::Physical; kernel::Bool = false)
         println(io, "  execution: parallel over contiguous morsel ranges when threads > 1 (the stage is stateless); else sequential")
     end
     _explain_kernel(io, ph; kernel)
+    _unbuilt_probe(ph) && return _explain_rest_atcollect(io, ph)
     return _explain_rest(io, ph)
+end
+
+# The stage holds a join probe whose build side is still a plan (explain's symbolic lowering,
+# `_explain_lower`): `explain` runs nothing, so the stage's output schema, and with it the
+# hash-aggregate sink decision (`_hashagg_plan`), is known only at `collect`, which collects the
+# build side first (review minor: explain said "no hash-aggregate sink" where collect uses it).
+_unbuilt_probe(ph::Physical) = any(s -> s isa ProbeStep && s.build isa PlanNode, ph.stage)
+function _explain_rest_atcollect(io::IO, ph::Physical)
+    # only the reason that needs the stage's output: a reason found from the steps alone stands
+    _hashagg_plan(ph) == "the stage's output schema is not known" || return _explain_rest(io, ph)
+    println(io, "  then materialize (concatenate in morsel order)")
+    println(io, "  then eagerly: ", join(string.(ph.rest), " ⨟ "))
+    println(io, "    hash-aggregate sink for the summary: decided at collect, once the join's build side is collected (explain collects nothing)")
+    _explain_windows(io, ph.rest, 1)
+    return nothing
 end
 
 function _printpruning(io::IO, ph::Physical, morsel::Int)

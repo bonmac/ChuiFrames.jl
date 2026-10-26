@@ -29,7 +29,7 @@ end
     @test a[] === :auto
 end
 
-@testitem "explain(; kernel) keyword (seam: no kernel line yet)" tags = [:unit] begin
+@testitem "explain(; kernel) keyword: the default output has no kernel line" tags = [:unit] begin
     q = filter(c.x .> 1)(lazy((x = [1, 2, 3],)))
     plain = sprint(io -> explain(io, q))
     @test sprint(io -> explain(io, q; kernel = false)) == plain

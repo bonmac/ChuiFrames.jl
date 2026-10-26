@@ -258,3 +258,74 @@ end
         @test joutcomes_agree(e, r)
     end
 end
+
+@testitem "join property: group_by(drop = false) above a join on a dictionary-key source (CF-008, B1)" tags = [:property] setup = [LazyProp, Force, JoinProp] begin
+    # A two-partition source whose key `g` is a `DictColumn`: the same dictionary in both
+    # partitions (eager keeps it, so `drop = false` shows the unobserved level "zz") or different
+    # ones (eager decodes, no extra level). A row limit or a filter on `v` (statistics prune the
+    # partitions) before the join; the source on the x or the y side; a `group_by(drop = false)`
+    # with a count after the join.
+    const CF = ChuiFrames
+    struct JPDictSource <: CF.Source
+        parts::Vector{Frame}
+    end
+    CF.source_schema(s::JPDictSource) = Tables.Schema((:g, :v), (eltype(s.parts[1].columns[1]), Int))
+    CF.source_label(::JPDictSource) = "dictionary-key join property source"
+    CF.plan_partitions(s::JPDictSource, scan::Tables.Scan; morsel::Int = 1) = (collect(eachindex(s.parts)), scan)
+    CF.read_partition(s::JPDictSource, p::Int) = s.parts[p]
+    CF.row_count(s::JPDictSource) = (sum(p -> p.nrow, s.parts), true)
+    function CF.partition_stats(s::JPDictSource, p::Int, col::Symbol)
+        col === :v || return nothing
+        v = s.parts[p].columns[2]
+        return (; lo = minimum(v), hi = maximum(v), nnull = 0, nnan = 0, ndistinct = nothing)
+    end
+    dpart(lv, g, v) = Frame(g = CF.DictColumn(UInt8[findfirst(==(x), lv) for x in g], CF.column(lv)), v = v)
+    const LV1 = ["a", "b", "c", "zz"]
+    gidx = Data.Vectors(Data.Integers(1, 3); min_size = 1, max_size = 4)
+    const DPRE = Any[nothing, head(1), head(2), head(0), filter(c.v .< 10), filter(c.v .> 5)]
+    const DKINDS = (:inner, :left, :right, :full, :semi, :anti)
+    function dict_eq(g1, g2, samedict, pi, ki, yside, ylarge, m, th)
+        checktime()
+        lv2 = samedict ? LV1 : ["c", "a", "b"]
+        parts = [dpart(LV1, LV1[g1], collect(1:length(g1))), dpart(lv2, LV1[g2], collect(10:(9 + length(g2))))]
+        src = JPDictSource(parts)
+        pre = DPRE[pi]
+        n = ylarge ? 30 : 2
+        other = Frame(g = repeat(["a", "d", "b"], n), w = collect(1:(3n)))
+        kind = DKINDS[ki]
+        side = t -> pre === nothing ? t : pre(t)
+        if yside
+            # the source as y: keep its key (`g_y`) so the count groups by the y side's column
+            kind in (:semi, :anti) && (kind = :inner)
+            post = group_by(:g_y; drop = false) ⨟ summarise(n = n_rows())
+            e = quiet(() -> outcome(() -> post(mkjoin(kind, :g, true, :all, :drop, :na, side(CF.read_source(src)))(other))))
+            q = () -> post(mkjoin(kind, :g, true, :all, :drop, :na, side(lazy(src)))(lazy(other)))
+        else
+            js = mkjoin(kind, :g, false, :all, :drop, :na, other)
+            p = (pre === nothing ? js : pre ⨟ js) ⨟ group_by(:g; drop = false) ⨟ summarise(n = n_rows())
+            e = quiet(() -> outcome(() -> p(CF.read_source(src))))
+            q = () -> p(lazy(src))
+        end
+        for v in JFORCES
+            l = quiet(() -> withforce(() -> outcome(() -> collect(q(); morsel = m, threads = th)), forcepairs(v)...))
+            r = quiet(() -> withforce(() -> outcome_raw(() -> run_raw_join(q(); morsel = m, threads = th)), forcepairs(v)...))
+            if !(outcomes_agree(e, l) && outcomes_agree(e, r))
+                event!("force", v)
+                event!("eager", e[1] === :err ? e : (:ok, Tables.columntable(e[2])))
+                event!("lazy", l[1] === :err ? l : (:ok, Tables.columntable(l[2])))
+                event!("raw engine", r[1] === :err ? r : (:ok, Tables.columntable(r[2])))
+                return false
+            end
+        end
+        return true
+    end
+    deadline!(300)
+    t0 = time()
+    sr = @check record = false db = false max_examples = 400 dict_eq(
+        gidx, gidx, Data.Booleans(), Data.Integers(1, length(DPRE)), Data.Integers(1, length(DKINDS)),
+        Data.Booleans(), Data.Booleans(), Data.Integers(1, 3), threadgen,
+    )
+    show_failure(sr)
+    @test Supposition.results(sr).ispass
+    @test time() - t0 < 600
+end

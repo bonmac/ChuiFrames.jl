@@ -45,14 +45,36 @@ end
 # Lowering for execution (spec §1.4)
 
 """
-    _run_subplan(plan; morsel, threads) -> Frame
+    _plan_shows_levels(plan) -> Bool
+
+Does any step of the (unlowered) plan show dictionary levels: a `group_by(...; drop = false)`
+or a `drop = false` scan, anywhere in the tree? Conservative: such a step on another branch
+also counts. `_lower_joins` passes it to every collected side (CF-008, final review B1).
+"""
+_plan_shows_levels(n::ScanNode) = !n.drop
+_plan_shows_levels(n::StepNode) = (n.step isa GroupByStep && n.step.drop === false) || _plan_shows_levels(n.child)
+_plan_shows_levels(n::JoinNode) = _plan_shows_levels(n.left) || _plan_shows_levels(n.right)
+
+"""
+    _run_subplan(plan; morsel, threads, levels = false) -> Frame
 
 Run an inner subplan, `execute(physical(_lower_joins(plan)))`, without the CF-008 replay
 guard: only the top-level `collect` guards, so a failure anywhere replays the whole plan once
 (critic pass 3 m6).
+
+`levels = true` (a step of the outer plan shows dictionary levels, `_plan_shows_levels`) runs
+the subplan as if a step of its own showed them (`execute`'s `levels`): a partition pruned by
+its statistics, or not reached by an early-stopped row limit, still decides the kind of each
+gathered dictionary column, as eager `read_source` does (CF-008, final review B1). Without it a
+collected side could keep one partition's dictionary, and a `group_by(...; drop = false)` above
+the join would show its unobserved levels. It changes no row: those partitions contribute only
+their empty slices. `PartitionedJoinStep` runs its y plan with the default `false`:
+`_lower_joins` collects that y side first when `levels` holds.
 """
-_run_subplan(plan; morsel::Int = DEFAULT_MORSEL, threads::Bool = true) =
-    execute(physical(_lower_joins(plan; morsel, threads)); morsel, threads)
+function _run_subplan(plan; morsel::Int = DEFAULT_MORSEL, threads::Bool = true, levels::Bool = false)
+    ph = physical(_lower_joins(plan; morsel, threads, levels))
+    return execute(ph; morsel, threads, levels = levels || _needs_levels(ph))
+end
 
 """
     _lower_joins(plan; morsel, threads) -> linear plan
@@ -72,19 +94,24 @@ Lower every `JoinNode` (innermost first) to one of the three physical shapes (sp
 
 Subplans run through [`_run_subplan`](@ref) (unguarded). The join property tests call this
 function, never a copy of it.
+
+`levels` (default: `_plan_shows_levels` of the plan the call starts from, so the top-level call
+computes it once and passes it down) is passed to every collected side (CF-008, final review
+B1); when it holds, shape (c) with build x collects y too, so no y plan runs inside the step
+without it.
 """
 _lower_joins(n::ScanNode; kw...) = n
-function _lower_joins(n::StepNode; kw...)
-    c = _lower_joins(n.child; kw...)
+function _lower_joins(n::StepNode; levels::Bool = _plan_shows_levels(n), kw...)
+    c = _lower_joins(n.child; levels, kw...)
     return c === n.child ? n : StepNode(n.step, c)
 end
-function _lower_joins(n::JoinNode; morsel::Int = DEFAULT_MORSEL, threads::Bool = true)
+function _lower_joins(n::JoinNode; morsel::Int = DEFAULT_MORSEL, threads::Bool = true, levels::Bool = _plan_shows_levels(n))
     s = n.spec
     left, right = n.left, n.right
     names = n.names
     xf = nothing
     yf = nothing
-    run(p) = _run_subplan(p; morsel, threads)
+    run(p) = _run_subplan(p; morsel, threads, levels)
     if names === nothing
         xn = _plan_names(left)
         xn === nothing && (xf = run(left); xn = xf.names)
@@ -92,7 +119,7 @@ function _lower_joins(n::JoinNode; morsel::Int = DEFAULT_MORSEL, threads::Bool =
         yn === nothing && (yf = _ungrouped(run(right)); yn = yf.names)
         names = _resolve_names(s, xn, yn; log = true)
     end
-    lowered(p) = _lower_joins(p; morsel, threads)
+    lowered(p) = _lower_joins(p; morsel, threads, levels)
     if s.kind === :cross
         yf === nothing && (yf = _ungrouped(run(right)))
         return StepNode(ProbeStep(:y, yf, s, names, false), xf === nothing ? lowered(left) : lazy(xf).plan)
@@ -130,6 +157,8 @@ function _lower_joins(n::JoinNode; morsel::Int = DEFAULT_MORSEL, threads::Bool =
         b = JoinBuild(xf, _xkeys(names), T, never)
         return StepNode(JoinTailStep(:x, b, s, names), StepNode(ProbeStep(:x, b, s, names, true), lowered(right)))
     end
+    # the step would run y's plan without `levels` (`_run_subplan`'s default): collect it here
+    (levels && yf === nothing) && (yf = run(right))
     return StepNode(PartitionedJoinStep(yf === nothing ? right : yf, s, names, :x, p, T, morsel, threads), lazy(xf).plan)
 end
 
