@@ -86,6 +86,57 @@
     @test elapsed < 600
 end
 
+@testitem "lazy property: grouped sinks == eager behind a forced compiled stage kernel (spec §0.3, §3)" tags = [:property] setup = [LazyProp, Force, CompiledRan] begin
+    # A focused variant of the property above: inputs the table or a `DictColumn` key with an
+    # unused level, a streamed prefix of up to three steps, the grouped step, a random tail; run
+    # under `_FORCE_KERNEL => :compiled`, so the sinks consume morsels from a compiled kernel.
+    const CF = ChuiFrames
+    const LV = ["a", "b", "c", "zz"]
+    input_of(t, kind) = kind == 0 ? t :
+        Frame(g = CF.DictColumn(UInt8[findfirst(==(v), LV) for v in t.g], CF.column(LV)), x = t.x, y = t.y, s = t.s)
+    nsink = Ref(0)
+    ncomp = Ref(0)
+    nok = Ref(0)
+    nerr = Ref(0)
+    prefixgen = Data.Vectors(Data.SampledFrom(STREAMED); min_size = 1, max_size = 3)
+    tailgen = Data.Vectors(Data.SampledFrom(REST); max_size = 1)
+    function compiled_eq(t, kind, pre, gs, tail, m, th)
+        checktime()
+        input = input_of(t, kind)
+        steps = Any[pre; gs; tail]
+        p = foldl(⨟, steps)
+        e = outcome(() -> p(input))
+        l, r, st = withforce(CF._FORCE_KERNEL => :compiled) do
+            l = outcome(() -> collect(p(lazy(input)); morsel = m, threads = th))
+            st = CF.ExecStats()
+            r = outcome(() -> CF.execute(CF.physical(CF.optimize(p(lazy(input))).plan); morsel = m, threads = th, stats = st))
+            l, r, st
+        end
+        st.sink === :hashagg && (nsink[] += 1)
+        compiled_ran(p(lazy(input)); morsel = m) && (ncomp[] += 1)
+        e[1] === :err ? (nerr[] += 1) : (nok[] += 1)
+        ok = outcomes_agree(e, l; approx = true) && raw_ok(e, r; approx = true)
+        ok && e[1] === :ok && (ok = eltypes_agree(e[2], l[2]) && (r[1] === :err || eltypes_agree(e[2], r[2])))
+        ok && return true
+        event!("input kind", kind)
+        event!("raw engine", r[1] === :err ? r : (:ok, Tables.columntable(r[2])))
+        return explain_failure(steps, e, l)
+    end
+    deadline!(300)
+    d0 = CF._KERNEL_DISAGREE[]
+    t0 = time()
+    sr = @check record = false db = false max_examples = 600 compiled_eq(
+        tablegen, Data.Integers(0, 1), prefixgen, gsinkgen, tailgen, morselgen, threadgen,
+    )
+    elapsed = time() - t0
+    show_failure(sr)
+    @test Supposition.results(sr).ispass
+    @test CF._KERNEL_DISAGREE[] - d0 == 0                  # critic n7
+    @info "grouped sinks lazy == eager, compiled kernel" examples_ok = nok[] examples_err = nerr[] hashagg = nsink[] compiled_programs_ran = ncomp[] seconds = round(elapsed; digits = 1) nthreads = Threads.nthreads()
+    @test nok[] > 0 && nerr[] > 0 && nsink[] > 0 && ncomp[] > 0
+    @test elapsed < 600
+end
+
 @testitem "lazy property: grouped sinks on larger tables (many groups, radix switch, all morsel sizes)" tags = [:property, :unit] setup = [LazyProp, Force] begin
     const CF = ChuiFrames
     deadline!(300)

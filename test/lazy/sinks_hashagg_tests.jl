@@ -60,6 +60,38 @@
     )
 end
 
+@testsnippet CompiledRan begin
+    """
+        compiled_ran(q; morsel = 3) -> Bool
+
+    Does the stage kernel `execute` builds for `q` under `_FORCE_KERNEL => :compiled` run a
+    compiled program on `q`'s morsels (built, passed its probe check, not declined; as
+    kernels_property_tests.jl's `compiled_programs_ran`)? The kernel runs here on each morsel
+    the way `execute` runs it (`_readpart`, `_runstage`).
+    """
+    function compiled_ran(q; morsel::Int = 3)
+        ph = ChuiFrames.physical(ChuiFrames.optimize(q).plan)
+        isempty(ph.stage) && return false
+        old = ChuiFrames._FORCE_KERNEL[]
+        k = try
+            ChuiFrames._FORCE_KERNEL[] = :compiled
+            ChuiFrames.stage_kernel(ph, 0)
+        finally
+            ChuiFrames._FORCE_KERNEL[] = old
+        end
+        k isa ChuiFrames.CompiledStage || return false
+        handles, residual = ChuiFrames.plan_partitions(ph.scan.source, ChuiFrames.pushed_scan(ph.scan); morsel)
+        for h in handles
+            try
+                ChuiFrames._runstage(ph, ChuiFrames._readpart(ph, residual, h), k)
+            catch err
+                err isa InterruptException && rethrow()   # a stage that raises (as eager does)
+            end
+        end
+        return any(!isnothing, values(k.progs))
+    end
+end
+
 @testitem "hash-aggregate sink: explain says when it runs and why not" tags = [:unit] setup = [SK] begin
     ex(p) = sprint(explain, p(lazy(t)))
     s = ex(group_by(:g) ⨟ summarise(n = n_rows(), m = mean(c.y)))
@@ -106,6 +138,33 @@ end
     # empty input, and a source with no rows at all
     e = (g = String[], y = Int[])
     @test agrees(group_by(:g) ⨟ summarise(n = n_rows(), s = sum(c.y)), e; morsels = 1:2)
+end
+
+@testitem "hash-aggregate sink behind a forced compiled stage kernel (spec §0.3, §3)" tags = [:unit] setup = [SK, Force, CompiledRan] begin
+    # filters and mutates before the summary form the streamed stage; forced compiled, every
+    # morsel runs through the compiled kernel before the sink folds it
+    lv = CF.column(["b", "a", "zz", "c"])
+    fr = Frame(g = CF.DictColumn(UInt8[1, 2, 1, 4, 2, 1, 4, 2], lv), k = t.k, x = t.x, y = t.y, s = t.s)
+    cases = Any[
+        (filter(c.y .> 0) ⨟ mutate(z = c.y .* 2) ⨟ group_by(:g) ⨟ summarise(sz = sum(c.z), fz = first(c.z)), t, true),
+        (mutate(z = c.y .* 2) ⨟ filter(c.z .> 0) ⨟ group_by(:g) ⨟ summarise(sz = sum(c.z), n = n_rows()), t, true),
+        (mutate(z = c.y .+ 1, w = c.x .* 2.0) ⨟ group_by(:g, :k) ⨟ summarise(m = mean(c.w), s = sum(c.z), v = var(c.z)), t, true),
+        (mutate(z = c.y .* 2) ⨟ summarise(n = n_rows(), mz = maximum(c.z); by = :k), t, true),
+        (mutate(z = c.y .- 1) ⨟ filter(c.z .> 100) ⨟ group_by(:g) ⨟ summarise(n = n_rows(), s = sum(c.z)), t, true),
+        (mutate(z = c.y .* 2) ⨟ group_by(:g) ⨟ summarise(m = median(c.z)), t, false),     # not simple: gathered
+        (mutate(z = c.y .* 2) ⨟ group_by(:g) ⨟ summarise(s = sum(c.s)), t, true),          # raises as eager
+        (mutate(r = sqrt.(c.y .* 1.0)) ⨟ group_by(:g) ⨟ summarise(s = sum(c.r)), t, true), # the stage raises
+        (mutate(z = c.y .* 2) ⨟ group_by(:g; drop = false) ⨟ summarise(n = n_rows(), s = sum(c.z)), fr, true),
+        (mutate(z = c.y .* 2) ⨟ filter(c.z .> 100) ⨟ group_by(:g; drop = false) ⨟ summarise(n = n_rows()), fr, true),
+    ]
+    d0 = CF._KERNEL_DISAGREE[]
+    for (p, input, sink) in cases
+        withforce(CF._FORCE_KERNEL => :compiled) do
+            @test agrees(p, input; sink)
+        end
+        @test compiled_ran(p(lazy(input)))                 # a compiled program ran on the morsels
+    end
+    @test CF._KERNEL_DISAGREE[] - d0 == 0                  # critic n7
 end
 
 @testitem "hash-aggregate sink: exceptions as eager (CC-007, non-numeric sums)" tags = [:unit] setup = [SK] begin
