@@ -6,6 +6,7 @@
 /test/jet/Manifest*.toml
 /test/contracts/Manifest*.toml
 /benchmark/Manifest*.toml
+/scripts/test/fixtures/tdd/scratchpkg/Manifest*.toml
 # Supposition's counterexample database: one written by Julia 1.13 crashes 1.10 ("Cannot read stream
 # serialized with a newer version"). Properties pass db=false; keep a counterexample as a unit test (ADR-0007 §2).
 /test/SuppositionDB/
