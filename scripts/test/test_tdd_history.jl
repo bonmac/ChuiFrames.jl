@@ -45,7 +45,8 @@
 # - `evidence_rules(root, commits; ledger)` returns failure Strings starting "E1".."E5", like H.
 #   `audit(root; base, io)` prints every H and E failure on `io` (one per line, rule id first) and
 #   returns 0 when there are none, 1 otherwise, 2 when it cannot evaluate. Without `--ledger`
-#   it uses the outermost ancestor-or-self of `root` holding `.lanes/ledger.jsonl`.
+#   it uses the owning repo's main ledger, `Tdd.owning_ledger(root)` (0.3.1 F2): the
+#   `.lanes/ledger.jsonl` of the main checkout of the repo `root` belongs to.
 
 const TW = "test-writer <test-writer@factory.invalid>"
 const IMPL = "implementer <implementer@factory.invalid>"

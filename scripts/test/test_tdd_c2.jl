@@ -47,8 +47,12 @@ function c2_post(t, d, files, msg; agent = "test-writer", who = (agent == "imple
     form = "git -C $d commit -q -m \"c2\" --author \"$who\" --trailer \"TDD: $ph\""
     pre = tb_run(t, tb_bash(form; agent, cwd = d, tu))
     sha = c2_commit!(d, who, msg)
-    post = tb_run(t, tb_bash(form; agent, cwd = d, tu, event = "PostToolUse",
-        extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => "", "interrupted" => false))); name = "tdd_commit_post.sh")
+    post = tb_run(
+        t, tb_bash(
+            form; agent, cwd = d, tu, event = "PostToolUse",
+            extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => "", "interrupted" => false))
+        ); name = "tdd_commit_post.sh"
+    )
     viol = [r for r in tb_recs(t, "tdd-commit-violation") if get(r, "sha", "") == sha]
     return (; pre, post, sha, viol)
 end
@@ -78,8 +82,10 @@ end
     end
     @testset "heredoc-shaped message msg/TDD: green/Co-Authored-By by the implementer is a post violation" begin
         t = tb_topo(); L = t.lane
-        r = c2_post(t, L, Dict("src/P.jl" => "module P\nf(x) = 2x\nend\n"), "feat: f\n\nTDD: green\n\n$C2_CO\n";
-            agent = "implementer", ph = "green")
+        r = c2_post(
+            t, L, Dict("src/P.jl" => "module P\nf(x) = 2x\nend\n"), "feat: f\n\nTDD: green\n\n$C2_CO\n";
+            agent = "implementer", ph = "green"
+        )
         @test r.pre.rc == 0
         @test r.post.rc == 2
         @test "no-phase" in c2_rules(r)
@@ -158,8 +164,10 @@ end
         P1 = "module P\nexport f, g\nf(x) = x + 1\nfunction g end\nend\n"
         P2 = "module P\nexport f, g\nf(x) = x + 1\ng(x) = 2x\nend\n"
         TT = "@testitem \"g doubles\" begin\n    using P\n    @test P.g(2) == 4\nend\n"
-        mk(d, who, files, args...) = (tb_write!(d, files); sh(`git -C $d add -A -- .`);
-            m = match(r"^(.*) <(.*)>$", who); sh(`git -C $d -c user.name=$(m[1]) -c user.email=$(m[2]) commit -q $args`); tb_head(d))
+        mk(d, who, files, args...) = (
+            tb_write!(d, files); sh(`git -C $d add -A -- .`);
+            m = match(r"^(.*) <(.*)>$", who); sh(`git -C $d -c user.name=$(m[1]) -c user.email=$(m[2]) commit -q $args`); tb_head(d)
+        )
         function lane(form)
             d = tmp_repo(Dict(".gitignore" => ".lanes/\n", "src/P.jl" => P0, "Project.toml" => "name = \"P\"\n"))
             sh(`git -C $d checkout -q -b lane`)
@@ -195,8 +203,10 @@ end
             @test any(f -> occursin("--trailer \"Co-Authored-By:", f), fs)   # the same final paragraph
             @test !occursin(r"-m \"TDD:", read(p, String))                   # never the -m "TDD: …" form
         end
-        for (p, agent, who, ph, files) in ((tw, "test-writer", TB_TW, "red", Dict("test/c2f.jl" => "x\n")),
-                (im, "implementer", TB_IMPL, "green", Dict("src/P.jl" => "module P\nf(x) = 5\nend\n")))
+        for (p, agent, who, ph, files) in (
+                (tw, "test-writer", TB_TW, "red", Dict("test/c2f.jl" => "x\n")),
+                (im, "implementer", TB_IMPL, "green", Dict("src/P.jl" => "module P\nf(x) = 5\nend\n")),
+            )
             fs = c2_forms(p)
             isempty(fs) && continue
             t = tb_topo(); L = t.lane

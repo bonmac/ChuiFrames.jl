@@ -76,6 +76,7 @@ const TEST_FILES = [
     "test_check_docs.jl",
     "test_contract_usage.jl",
     "test_ci.jl",
+    "test_ci_format.jl",   # 0.3.1 finding 1: format job selects files, fixtures excluded, Runic-clean
     "test_lane.jl",
     "test_changelog.jl",
     "test_check_claims.jl",
@@ -92,6 +93,9 @@ const TEST_FILES = [
     "test_tdd_c3.jl",   # critic C3/C6: skip separators, lead-only modes, per-merge segments
     "test_tdd_c4.jl",   # critic C4/C7/C8: commit in its own call, E5 lead waiver, blind spots
     "test_tdd_c5.jl",   # review of the critic fixes: sub-lane merged twice, trailer forms
+    "test_tdd_testfix_delete.jl",   # 0.3.1 finding 4: a deletion-only test-fix records what it removed
+    "test_tdd_ledger.jl",   # 0.3.1 finding 2: tdd-commit records and audit use the owning repo's main ledger
+    "test_docs_031.jl",   # 0.3.1 findings 3, 5, 6: unnamed TDD dispatches, stale claims, blind spots
     "test_profile_coordinator.jl",   # tw-032: the dod and tdd tests pass in a coordinator-profile sync
 ]
 # FACTORY_TEST_ONLY=a.jl,b.jl runs only those of TEST_FILES (test_profile_coordinator.jl uses it).

@@ -8,12 +8,16 @@
 # against the role; phase and mode as git's %(trailers) reads them, as H1/H9 and tdd.jl do (critic C2). A commit
 # of the call (review 1 B2, B3) is on `git log --first-parent <before>..HEAD` (an amend yields the amended
 # commit; a merge's second parent is main's history, never re-checked) with its COMMITTER time within
-# [entry mtime - 5 s, entry mtime + 600 s] (600 s: the Bash tool's maximum). Each is appended to the session
+# [entry mtime - 5 s, entry mtime + 600 s] (600 s: the Bash tool's maximum). Each is appended to the owning
 # ledger as tdd-commit {agent_id, agent_type, checkout, sha}; a broken rule also as tdd-commit-violation
 # {..., rule, reason} and printed (exit 2: PostToolUse cannot undo a commit; audit E5 fails the lane). First,
 # entries of other calls older than TDD_STALE_MIN minutes (a cancelled call fires neither event) are swept:
 # each in-window commit gets only tdd-commit-late {agent_id, agent_type, checkout, sha}, which E5 does not
 # accept (no tdd-commit, no violation, nothing printed), and the entry is deleted. `... sweep` only sweeps.
+# The owning ledger (0.3.1 F2) is the one TDD ledger of a checkout: `owning_ledger` (_lib.sh), the main checkout of
+# the repo owning it, whatever the session root (a subagent's is the coordinator, a teammate's the package); tdd.jl
+# audit reads it by default. All three records go through `ledger()` with LEDGER_FILE set per checkout (own_ledger);
+# a checkout git cannot read falls back to the session ledger.
 # Advisory: it fails open (exit 1) without jq or a library; E5 then fails the unrecorded commits.
 case $0 in */*) d=${0%/*} ;; *) d=. ;; esac
 for _l in _lib.sh _bash_guard_lib.sh _tdd_commit_guard.sh; do
@@ -27,8 +31,12 @@ have_jq || { printf '[factory] jq not found: tdd_commit_post cannot record commi
 tu=$(field '.tool_use_id | strings')
 case $tu in *[!A-Za-z0-9_-]*) tu="" ;; esac
 VIOL="" NOPH=""
+SESSION_LEDGER=$LEDGER_FILE
+# own_ledger CHECKOUT: point ledger() at CHECKOUT's owning ledger (the session ledger if git cannot say)
+own_ledger() { LEDGER_FILE=$(owning_ledger "$1") || LEDGER_FILE=$SESSION_LEDGER; }
 
-# check_commit CHECKOUT SHA AGENT_TYPE AGENT_ID: record one commit, and any rule it breaks
+# check_commit CHECKOUT SHA AGENT_TYPE AGENT_ID: record one commit, and any rule it breaks (in LEDGER_FILE, which
+# record has pointed at CHECKOUT's owning ledger)
 check_commit() {
     _id=$(git -C "$1" log -1 --format='%an <%ae>' "$2" 2>/dev/null)
     id_rule "$3" "$_id"
@@ -63,6 +71,7 @@ record() {
     while read -r _h _co; do
         case $_h in @) _at=${_co%% *} _aid=${_co#* }; continue ;; esac
         [ -d "$_co" ] || continue
+        own_ledger "$_co"
         case $_h in none) _r=HEAD ;; *) _r="$_h..HEAD" ;; esac
         # shellcheck disable=SC2046 # "<sha> <committer time>" pairs, split on purpose
         set -- $(git -C "$_co" log --first-parent --max-count=100 --format='%H %ct' "$_r" 2>/dev/null)

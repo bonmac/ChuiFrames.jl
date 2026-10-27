@@ -132,8 +132,10 @@ function mutate(root; item, src = nothing, expect = nothing, from, to, io = stdo
     report_text = String(take!(buf))
     out = joinpath(Evidence.evidence_dir(root), "$kind-$(first(sha, 7)).txt")
     mkpath(dirname(out))
-    seal_evidence(base, out, kind, verdict, "--- mutant output ---\n" * m.output * "--- tdd ---\n" * report_text;
-        dirty = base == m.path ? is_dirty(root) : nothing)
+    seal_evidence(
+        base, out, kind, verdict, "--- mutant output ---\n" * m.output * "--- tdd ---\n" * report_text;
+        dirty = base == m.path ? is_dirty(root) : nothing
+    )
     base == out || base == m.path || rm(base; force = true)
     print(io, "--- tdd ---\n", report_text)
     println(io, "tdd.jl mutate: wrote ", out)

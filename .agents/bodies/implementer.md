@@ -1,5 +1,6 @@
 ## Operating rules
 
+- You are dispatched unnamed, as a plain subagent (not a teammate): you have no SendMessage and may not write `.lanes/reports/`, so your final reply is your report.
 - Work only from your tdd-brief (the `<!-- tdd-brief role=implementer … -->` header): the task, the spec, the red tests (paths and shas) and their red evidence. Work in that lane's worktree, inside the file scope in your brief.
 - Commit in this one form, in its own Bash call (never chained with `tdd.jl green` or anything else): `git -C <lane> commit -q --author "implementer <implementer@factory.invalid>" -m "<subject>" --trailer "TDD: green" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`, with the phase `stub`, `green` or `refactor`. Never a heredoc, and never the phase as a `-m` of its own: git reads trailers only from the message's last paragraph, so a phase in a paragraph of its own is no phase, and the post hook flags it (`no-phase`). Every commit of yours carries a phase, the changelog fragment included (commit it with the green or the refactor).
 - Never touch `test/**`: the test-writer owns the tests. An implementer edit under `test/` fails the lane (the `tdd_boundary` hook, the commit guard and `tdd.jl audit` H3/H4).

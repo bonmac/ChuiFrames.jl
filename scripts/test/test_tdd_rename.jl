@@ -11,7 +11,7 @@
 # renamed item, still failing until the fix). Authors follow spec §3.1: red/test-fix by
 # test-writer, green by implementer.
 #
-# Cost: about eleven package test runs (red x7, green x6).
+# Cost: about fourteen package test runs (red x8, green x7).
 const TR_IDS = Dict(
     :tw => ("test-writer", "test-writer@factory.invalid"),
     :impl => ("implementer", "implementer@factory.invalid"),
@@ -112,20 +112,37 @@ tr_notrun(out, item) = any(l -> occursin("NOT-RUN", l) && endswith(rstrip(l), it
         end
     end
 
-    # Deletion: the ruling frees a red item only through a rename "under the new name" backed by
-    # fresh red evidence. A test-writer test-fix that deletes A and adds nothing has no new name
-    # and no red evidence can be recorded for it (`tdd.jl red` exits 2 on a commit with no items),
-    # so nothing replaces A's red evidence and green must keep blocking: deleting a red test is not
-    # a way to get a lane to green.
-    tj_testset("an item deleted with no replacement still blocks green") do
-        d = tr_red_lane("rn-deleted")
+    # Deletion (0.3.1 finding 4): a deletion-only `TDD: test-fix` by a test-side role frees the
+    # deleted item: `tdd.jl red` exits 0 and records `REMOVED <name>`, and green reports it
+    # `REMOVED <name> (test-fix <sha7>)`, not NOT-RUN. test_tdd_testfix_delete.jl pins the format and
+    # the implementer-authored test-fix that still blocks; here the lane goes on through the
+    # implementer's green commit, as in the rename scenario above.
+    tj_testset("an item deleted by a test-writer test-fix is REMOVED, not a block on green") do
+        d = tr_red_lane("rn-deleted-fix")
         tr_commit!(d, :tw, Dict{String, String}(), "test: drop h doubles\n\nTDD: test-fix"; rm = ["test/h_tests.jl"])
+        s7 = first(readchomp(`git -C $d rev-parse HEAD`), 7)
         code, _ = tj_call(tj_mod().red, d)
-        @test code == 2                                 # no items: no red evidence
+        @test code == 0
+        @test isfile(tj_ev(d, "red"))
+        tr_fix!(d)
+        code, out = tj_call(tj_mod().green, d)
+        @test code == 0
+        @test !tr_notrun(out, TR_A)
+        @test occursin(Regex("(?m)^\\s*REMOVED\\s+\\Q$TR_A\\E\\s*\\Q(test-fix $s7)\\E\\s*\$"), out)
+    end
+
+    # The other half of "deletion is a test-fix privilege": a test-writer deletion committed as
+    # `TDD: red` (no red evidence: red exits 2 on it) frees nothing, so after the implementer's
+    # green commit A is still NOT-RUN and green fails.
+    tj_testset("an item deleted by a TDD: red commit with no replacement still blocks green") do
+        d = tr_red_lane("rn-deleted")
+        tr_commit!(d, :tw, Dict{String, String}(), "test: drop h doubles\n\nTDD: red"; rm = ["test/h_tests.jl"])
+        tj_call(tj_mod().red, d)                        # exit code pinned in test_tdd_testfix_delete.jl
         @test !isfile(tj_ev(d, "red"))
         tr_fix!(d)
         code, out = tj_call(tj_mod().green, d)
         @test code == 1
         @test tr_notrun(out, TR_A)
+        @test !occursin(Regex("(?m)^\\s*REMOVED\\s+\\Q$TR_A\\E"), out)
     end
 end

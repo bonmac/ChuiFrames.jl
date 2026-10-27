@@ -129,7 +129,7 @@ rule = "Factory updates arrive deliberately: shown as a diff, local edits never 
 prevented_by = "scripts/sync_factory.jl"
 runs_in = ["local"]
 test = "scripts/test/test_sync_factory.jl"
-blind_spots = ["a `local-modified` managed file stops receiving factory updates until the edit is reverted or --force is used", "seeded files (CLAUDE.md, risk.toml, ...) are never updated after the first sync; their diff is only shown"]
+blind_spots = ["a `local-modified` managed file stops receiving factory updates until the edit is reverted or --force is used", "seeded files (CLAUDE.md, risk.toml, ...) are never updated after the first sync; their diff is only shown", "sync_factory's own writes to T3 paths need no T3 (FACTORY_ALLOW_T3): the guard hooks see only agent Edit/Write and Bash commands, so `sync_factory.jl --apply` rewrites protected paths unguarded", "a teammate without T3 cannot discard an applied sync: bash_guard blocks `git clean -f` and `git restore`/`git checkout` of T3 paths, so the lead (with T3) undoes it"]
 
 [[checks]]
 id = "check_claims"
@@ -195,7 +195,7 @@ blind_spots = [
 
 [[checks]]
 id = "tdd_commit_post"
-rule = "Every git commit seen by the hooks is checked after it is made (author vs caller, phase vs role, paths vs role) and recorded as tdd-commit with the resulting sha in the session ledger (only first-parent commits since the call's HEAD whose committer time is within [entry mtime - 5 s, entry mtime + 600 s]); a violation is recorded as tdd-commit-violation, which audit E5 fails. Also blind (beyond the listed blind spots): a commit made in the same checkout while another call is in flight (up to 10 minutes) is attributed to that call's caller, no stronger than a forged ledger line; and the committer time decides the window, so a backdated commit gets no record and E5 fails it (fail-closed)"
+rule = "Every git commit seen by the hooks is checked after it is made (author vs caller, phase vs role, paths vs role) and recorded as tdd-commit with the resulting sha in the owning repo's main ledger (`<main>/.lanes/ledger.jsonl` of the repo that owns the commit's checkout) (only first-parent commits since the call's HEAD whose committer time is within [entry mtime - 5 s, entry mtime + 600 s]); a violation is recorded as tdd-commit-violation, which audit E5 fails. Also blind (beyond the listed blind spots): a commit made in the same checkout while another call is in flight (up to 10 minutes) is attributed to that call's caller, no stronger than a forged ledger line; and the committer time decides the window, so a backdated commit gets no record and E5 fails it (fail-closed)"
 prevented_by = ".claude/hooks/tdd_commit_post.sh"
 runs_in = ["hook PostToolUse(Bash) and PostToolUseFailure(Bash)"]
 test = "scripts/test/test_hooks_tdd.jl"

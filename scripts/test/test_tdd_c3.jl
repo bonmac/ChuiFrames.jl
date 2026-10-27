@@ -92,8 +92,12 @@ function c3_commit!(d, author, files::Dict, subject; trailers = String[])
 end
 "A repo whose main has the template risk.toml and src/P.jl, checked out on branch `int`."
 function c3_repo()
-    d = tmp_repo(Dict(".gitignore" => "/.lanes/\n/.worktrees/\n", "src/P.jl" => "module P\nf(x) = x\nend\n",
-        "risk.toml" => seed_fixture("risk.toml"), "Project.toml" => "name = \"P\"\n"))
+    d = tmp_repo(
+        Dict(
+            ".gitignore" => "/.lanes/\n/.worktrees/\n", "src/P.jl" => "module P\nf(x) = x\nend\n",
+            "risk.toml" => seed_fixture("risk.toml"), "Project.toml" => "name = \"P\"\n"
+        )
+    )
     sh(`git -C $d checkout -q -b int`)
     return d
 end
@@ -121,8 +125,10 @@ end
 C3_PSRC(n) = "module P\nf(x) = x\ng$n(x) = $n * x\nend\n"
 c3_mode(v) = ["TDD-Mode: $v"]
 "A refactor-mode sub-lane: lead mode commit, implementer refactor on src."
-c3_refactor_lane(d) = (c3_commit!(d, LEAD, Dict{String, String}(), "chore: mode"; trailers = c3_mode("refactor — rename internals")),
-    c3_commit!(d, IMPL, Dict("src/P.jl" => "module P\nf(y) = y\nend\n"), "refactor: rename"; trailers = ["TDD: refactor"]))
+c3_refactor_lane(d) = (
+    c3_commit!(d, LEAD, Dict{String, String}(), "chore: mode"; trailers = c3_mode("refactor — rename internals")),
+    c3_commit!(d, IMPL, Dict("src/P.jl" => "module P\nf(y) = y\nend\n"), "refactor: rename"; trailers = ["TDD: refactor"]),
+)
 "A required-mode sub-lane: test-writer red, implementer green."
 function c3_required_lane(d)
     r = c3_commit!(d, TW, Dict("test/g_tests.jl" => "@testitem \"g\" begin\n    @test true\nend\n"), "test: g"; trailers = ["TDD: red"])
@@ -186,8 +192,10 @@ end
         items = c3_items(mig)
         @testset "the migration list names the exact lead skip commit command on one line" begin
             @test !isempty(mig)
-            @test any(l -> occursin("--author \"lead <lead@factory.invalid>\"", l) &&
-                occursin("--trailer \"TDD-Mode: skip — ", l), mig) || (println("C3: no one-line skip command in\n", join(mig, '\n')); false)
+            @test any(
+                l -> occursin("--author \"lead <lead@factory.invalid>\"", l) &&
+                    occursin("--trailer \"TDD-Mode: skip — ", l), mig
+            ) || (println("C3: no one-line skip command in\n", join(mig, '\n')); false)
         end
         @testset "the migration list: non-TDD code lanes need the skip commit once tdd is in a tier" begin
             hit = filter(it -> occursin(r"non-TDD"i, it) && occursin(r"skip"i, it), items)
@@ -209,8 +217,10 @@ end
     @testset "lane-lifecycle: a sub-lead asks the lead for the TDD dispatch and the mode commit" begin
         sk = read(joinpath(ROOT, ".claude", "skills", "lane-lifecycle", "SKILL.md"), String)
         items = c3_items(split(sk, '\n'))
-        @test any(it -> occursin(r"sub-lead"i, it) && occursin(r"\bask\w*\b.{0,20}\bthe lead\b"i, it) &&
-            occursin(r"dispatch"i, it) && occursin(r"mode commit"i, it), items) || (println("C3: no sub-lead line in the skill"); false)
+        @test any(
+            it -> occursin(r"sub-lead"i, it) && occursin(r"\bask\w*\b.{0,20}\bthe lead\b"i, it) &&
+                occursin(r"dispatch"i, it) && occursin(r"mode commit"i, it), items
+        ) || (println("C3: no sub-lead line in the skill"); false)
     end
 end
 

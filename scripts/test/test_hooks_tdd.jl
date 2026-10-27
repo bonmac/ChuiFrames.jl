@@ -1,6 +1,7 @@
 # Tests for the tdd_boundary hook and the commit guard (factory 0.3.0, plan Task 8; spec §0.3-§0.7,
 # §4.6). Written before the hooks exist (step 1, red); the implementer does not edit them.
-# Part 2 (commit guard, dispatch) is test_hooks_tdd2.jl, which uses the helpers defined here.
+# Part 2 (commit guard, dispatch) is test_hooks_tdd2.jl, which uses the helpers defined here
+# (the topology helpers tb_topo etc. are in test_hooks_tdd_topo.jl, included below).
 #
 # Representation choices the implementer follows (decided from the plan and spec by the test writer):
 #
@@ -21,7 +22,10 @@
 #   agent_id): the test-writer's payloads here carry NO agent_id. The lead is the caller with no
 #   agent_type at all; a payload with agent_id but no agent_type is the lead. Post payloads carry
 #   hook_event_name "PostToolUse" (+ tool_response) or "PostToolUseFailure" (+ error).
-# - The ledger is <session root>/.lanes/ledger.jsonl (_lib.sh's `ledger`; string fields). Events:
+# - Ledgers (_lib.sh's `ledger`; string fields). tdd-boundary-denied goes to the session ledger,
+#   <session root>/.lanes/ledger.jsonl. tdd-commit, tdd-commit-violation and tdd-commit-late go to the
+#   OWNING repo's main ledger (0.3.1 F2, `owning_ledger`): <main checkout of the commit's repo>/.lanes/
+#   ledger.jsonl, so S/Pkg.jl's for its lane1, S/Fx1's for a fixture. Events:
 #   tdd-boundary-denied {agent_type, tool, rule}; tdd-commit {agent_id ("-" when absent),
 #   agent_type, checkout, sha} with sha the FULL resulting sha and checkout the checkout's path with
 #   symlinks resolved (pwd -P), plus late = "true" when written by the sweep (a JSON true is also
@@ -59,8 +63,10 @@ const TB_GIT = joinpath(@__DIR__, "fixtures", "tdd", "git")
 const TB_TW = "test-writer <test-writer@factory.invalid>"
 const TB_IMPL = "implementer <implementer@factory.invalid>"
 const TB_LEAD = "lead <lead@factory.invalid>"
-const TB_UNSET = ("FACTORY_ALLOW_T3", "FACTORY_ALLOW_PUSH", "FACTORY_ALLOW_OUTWARD", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
-    "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
+const TB_UNSET = (
+    "FACTORY_ALLOW_T3", "FACTORY_ALLOW_PUSH", "FACTORY_ALLOW_OUTWARD", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+    "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+)
 const TB_SEQ = Ref(0)
 tb_tu() = (TB_SEQ[] += 1; "toolu_tb$(TB_SEQ[])")
 
@@ -72,8 +78,10 @@ tb_j(x::Integer) = string(x)
 tb_j(d::AbstractDict) = "{" * join(["$(tb_j(string(k))):$(tb_j(v))" for (k, v) in d], ",") * "}"
 "A hook payload; `agent` is the agent_type (nothing: the lead)."
 function tb_pay(tool, input; agent = nothing, agent_id = nothing, tu = tb_tu(), cwd = "", event = "PreToolUse", extra = Dict())
-    d = Dict{String, Any}("session_id" => "s1", "hook_event_name" => event, "tool_name" => tool,
-        "tool_input" => input, "tool_use_id" => tu, "cwd" => cwd)
+    d = Dict{String, Any}(
+        "session_id" => "s1", "hook_event_name" => event, "tool_name" => tool,
+        "tool_input" => input, "tool_use_id" => tu, "cwd" => cwd
+    )
     agent === nothing || (d["agent_type"] = agent)
     agent_id === nothing || (d["agent_id"] = agent_id)
     return tb_j(merge!(d, extra))
@@ -110,68 +118,23 @@ function tb_flow(t, c; agent = "test-writer", cwd = t.lane)
 end
 
 # ---- the ledger ----
-tb_ledger_lines(t) = (f = joinpath(t.S, ".lanes", "ledger.jsonl"); isfile(f) ? filter(!isempty, readlines(f)) : String[])
+"The ledger of the repo whose main checkout is `d` (`<d>/.lanes/ledger.jsonl`), as lines."
+tb_lines_at(d) = (f = joinpath(d, ".lanes", "ledger.jsonl"); isfile(f) ? filter(!isempty, readlines(f)) : String[])
+"The main checkouts nested in S whose owning ledgers hold tdd-commit* records (0.3.1 F2)."
+tb_owners(t) = [joinpath(t.S, d) for d in readdir(t.S) if d in ("Pkg.jl", "Pkg2.jl") || startswith(d, "Fx")]
+tb_owning_lines(t) = reduce(vcat, (tb_lines_at(d) for d in tb_owners(t)); init = String[])
+"Every ledger line of the topology: the session ledger (S) and the owning ledgers of the nested repos."
+tb_ledger_lines(t) = vcat(tb_lines_at(t.S), tb_owning_lines(t))
 tb_fields(l) = Dict{String, String}(m.captures[1] => m.captures[2] for m in eachmatch(r"\"([A-Za-z_]+)\"\s*:\s*\"((?:[^\"\\]|\\.)*)\"", l))
-tb_recs(t, ev) = [tb_fields(l) for l in tb_ledger_lines(t) if get(tb_fields(l), "ev", "") == ev]
-tb_late(t, sha) = any(l -> occursin("\"$sha\"", l) && occursin(r"\"late\"\s*:\s*\"?true\"?", l), tb_ledger_lines(t))
+"Records of event `ev`: tdd-commit* from the owning ledgers (or only `at`'s), anything else from the session ledger."
+function tb_recs(t, ev; at = nothing)
+    ls = at !== nothing ? tb_lines_at(at) : startswith(ev, "tdd-commit") ? tb_owning_lines(t) : tb_lines_at(t.S)
+    return [tb_fields(l) for l in ls if get(tb_fields(l), "ev", "") == ev]
+end
+tb_late(t, sha) = any(l -> occursin("\"$sha\"", l) && occursin(r"\"late\"\s*:\s*\"?true\"?", l), tb_owning_lines(t))
 tb_canon(p) = (q = rstrip(p, '/'); ispath(q) ? realpath(q) : q)
 
-# ---- topology (a) ----
-"A git repo at `d` (created) with one commit on main; `links` maps relative path => symlink target."
-function tb_repo(d, files; links = Dict{String, String}())
-    mkpath(d)
-    tb_git(d, "init", "-q", "-b", "main")
-    for (k, v) in ("user.name" => "test", "user.email" => "t@example.com", "commit.gpgsign" => "false")
-        tb_git(d, "config", k, v)
-    end
-    for (rel, c) in files
-        mkpath(dirname(joinpath(d, rel)))
-        write(joinpath(d, rel), c)
-    end
-    for (rel, target) in links
-        symlink(target, joinpath(d, rel))
-    end
-    tb_git(d, "add", "-A")
-    tb_git(d, "commit", "-q", "-m", "init")
-    return d
-end
-tb_pkg_files(name) = Dict(
-    ".gitignore" => ".lanes/\n.worktrees/\n", "Project.toml" => "name = \"$name\"\n",
-    "src/$name.jl" => "module $name\nf(x) = x\nend\n", "ext/$(name)Ext.jl" => "module $(name)Ext end\n",
-    "test/runtests.jl" => "using Test\n", "test/Project.toml" => "[deps]\n",
-    "test/t.jl" => "@testitem \"f\" begin\n    @test true\nend\n", "docs/src/index.md" => "# $name\n",
-    "changelog.d/x.md" => "- x\n",
-)
-function tb_write!(d, files)
-    for (rel, c) in files
-        mkpath(dirname(joinpath(d, rel)))
-        write(joinpath(d, rel), c)
-    end
-end
-"Session root S (coordinator stand-in) with S/Pkg.jl + lane worktree lane1, S/Pkg2.jl + lane1, a scratch HOME."
-function tb_topo()
-    S = tb_repo(joinpath(realpath(mktempdir()), "coord"), Dict(".gitignore" => "Pkg.jl/\nPkg2.jl/\nFx*/\n.lanes/\n",
-        "docs/superpowers/specs/s.md" => "# spec\n", "contracts/c.md" => "c\n", "adr/0001-x.md" => "adr\n", "HANDOFF.md" => "h\n"))
-    pkg = tb_repo(joinpath(S, "Pkg.jl"), tb_pkg_files("P"); links = Dict("test/lnk" => "../src"))
-    pkg2 = tb_repo(joinpath(S, "Pkg2.jl"), tb_pkg_files("Q"))
-    tb_git(pkg, "worktree", "add", "-q", "-b", "lane1", ".worktrees/lane1")
-    tb_git(pkg2, "worktree", "add", "-q", "-b", "lane1", ".worktrees/lane1")
-    lane, lane2 = joinpath(pkg, ".worktrees", "lane1"), joinpath(pkg2, ".worktrees", "lane1")
-    tb_write!(lane, Dict(".lanes/evidence/red-abc1234.txt" => "red\n", ".lanes/evidence/green-abc1234.txt" => "green\n",
-        ".lanes/evidence/mutate-f-0a1b2c3d-abc1234.txt" => "m\n", ".lanes/evidence/mutexp-f-0a1b2c3d-abc1234.txt" => "m\n",
-        ".lanes/scratch/mutate/src/P.jl" => "module P end\n", ".lanes/reports/r.md" => "report\n"))
-    home = realpath(mktempdir())
-    tb_write!(home, Dict(".claude/projects/-coord/abc.jsonl" => "{}\n", ".julia/packages/P/xyz/src/P.jl" => "module P end\n"))
-    return (; S, pkg, lane, pkg2, lane2, home)
-end
-"Build fixture `name` (fixtures/tdd/git/<name>.sh) at S/<dir>, give it a non-role user, return its path."
-function tb_fixture(t, name, dir)
-    d = joinpath(t.S, dir)
-    sh(Cmd(addenv(`sh $(joinpath(TB_GIT, name)) $d`, tb_env(t)...)))
-    tb_git(d, "config", "user.name", "test")
-    tb_git(d, "config", "user.email", "t@example.com")
-    return d
-end
+include("test_hooks_tdd_topo.jl")   # topology (a): tb_repo, tb_pkg_files, tb_write!, tb_topo, tb_fixture
 
 @testset "tdd_boundary hook and commit guard (0.3.0)" begin
     t = tb_topo()
@@ -179,8 +142,10 @@ end
 
     # ---- reads (spec §0.6, test-writer allowlist) ----
     @testset "test-writer Read lane test/ allowed" begin
-        for p in ("$L/test/t.jl", "$L/docs/src/index.md", "$L/Project.toml", "$(t.S)/docs/superpowers/specs/s.md",
-                "$(t.S)/contracts/c.md", "$(t.S)/adr/0001-x.md")
+        for p in (
+                "$L/test/t.jl", "$L/docs/src/index.md", "$L/Project.toml", "$(t.S)/docs/superpowers/specs/s.md",
+                "$(t.S)/contracts/c.md", "$(t.S)/adr/0001-x.md",
+            )
             @test tb_ok(t, tb_read(p))
         end
         @test tb_ok(t, tb_pay("Grep", Dict{String, Any}("pattern" => "f", "path" => "$L/test"); agent = "test-writer"))
@@ -259,8 +224,10 @@ end
     end
     @testset "implementer Bash redirect into test/ denied" begin
         im(c) = tb_bash(c; agent = "implementer", cwd = L)
-        for c in ("echo x > test/t.jl", "cd $L && echo x >> test/u.jl", "printf x | tee $L/test/t.jl", "cp src/P.jl test/t.jl",
-                "cat > test/v.jl <<'EOF'\nx\nEOF")
+        for c in (
+                "echo x > test/t.jl", "cd $L && echo x >> test/u.jl", "printf x | tee $L/test/t.jl", "cp src/P.jl test/t.jl",
+                "cat > test/v.jl <<'EOF'\nx\nEOF",
+            )
             @test tb_no(t, im(c))
         end
         for c in ("echo x > src/gen.jl", "ls test", "cat test/t.jl", "julia --project -e 'using P'")
@@ -272,28 +239,36 @@ end
     twb(c) = tb_bash(c; cwd = L)
     @testset "cd <lane> && julia tdd.jl red allowed" begin
         @test tb_ok(t, twb("cd $L && julia scripts/" * "tdd.jl red"))
-        for c in ("julia $L/scripts/tdd.jl green", "julia scripts/tdd.jl api", "cd $L && julia scripts/ci.jl test",
+        for c in (
+                "julia $L/scripts/tdd.jl green", "julia scripts/tdd.jl api", "cd $L && julia scripts/ci.jl test",
                 "git status", "git -C $L status", "git add test/t.jl", "ls test", "cat test/t.jl", "wc -l test/t.jl",
-                "grep -n f test/t.jl", "head -5 docs/src/index.md")
+                "grep -n f test/t.jl", "head -5 docs/src/index.md",
+            )
             @test tb_ok(t, twb(c))
         end
     end
     @testset "julia -e denied; sh -c denied" begin
-        for c in ("julia -e 'print(read(\"src/P.jl\", String))'", "cd $L && julia --project -e 1", "sh -c 'cat src/P.jl'",
-                "bash -c 'cat src/P.jl'", "julia scripts/tdd.jl red && sh -c 'cat src/P.jl'")
+        for c in (
+                "julia -e 'print(read(\"src/P.jl\", String))'", "cd $L && julia --project -e 1", "sh -c 'cat src/P.jl'",
+                "bash -c 'cat src/P.jl'", "julia scripts/tdd.jl red && sh -c 'cat src/P.jl'",
+            )
             @test tb_no(t, twb(c))
         end
     end
     @testset "evidence.jl direct denied; tdd.jl mutate denied" begin
-        for c in ("julia scripts/evidence.jl red -- cat src/P.jl", "cd $L && julia $L/scripts/evidence.jl x",
-                "julia scripts/tdd.jl mutate --item f --src src/P.jl", "cd $L && julia scripts/tdd.jl mutate")
+        for c in (
+                "julia scripts/evidence.jl red -- cat src/P.jl", "cd $L && julia $L/scripts/evidence.jl x",
+                "julia scripts/tdd.jl mutate --item f --src src/P.jl", "cd $L && julia scripts/tdd.jl mutate",
+            )
             @test tb_no(t, twb(c))
         end
     end
     @testset "git log denied; git show denied; git show HEAD:src/a.jl -- test/ denied" begin
-        for c in ("git log", "git -C $L log -1", "git log -- test/", "git show", "git show HEAD -- test/",
+        for c in (
+                "git log", "git -C $L log -1", "git log -- test/", "git show", "git show HEAD -- test/",
                 "git show HEAD:src/a.jl -- test/", "git blame test/t.jl", "git diff HEAD:src/P.jl -- test/",
-                "git cat-file -p HEAD:src/P.jl", "git -C $L --no-pager log")
+                "git cat-file -p HEAD:src/P.jl", "git -C $L --no-pager log",
+            )
             @test tb_no(t, twb(c))
         end
     end
@@ -343,14 +318,19 @@ end
         c = get(rows, "tdd_commit_post", Dict())
         @test get(a, "prevented_by", "") == "scripts/tdd.jl" && get(a, "test", "") == "scripts/test/test_tdd.jl"
         # critic C7 (2026-10-27): merges and git aliases are named blind spots (tdd +2, tdd_boundary +1)
-        c7tdd = ["merge commits are invisible to H1/H3/H4: lane_commits reads base..head with --no-merges, so code or test edits made in a merge resolution are seen only by the reviewer's git show --cc",
-            "an alias commit (git ci) gets no commit guard, post check or record: tdd.jl audit's E5 fails it when a role identity authored it, but dod, which has no E rules, does not"]
+        c7tdd = [
+            "merge commits are invisible to H1/H3/H4: lane_commits reads base..head with --no-merges, so code or test edits made in a merge resolution are seen only by the reviewer's git show --cc",
+            "an alias commit (git ci) gets no commit guard, post check or record: tdd.jl audit's E5 fails it when a role identity authored it, but dod, which has no E rules, does not",
+        ]
         c7b = "a git alias for commit (e.g. git ci, from git config) bypasses the commit guard for every caller: the guard sees no commit subcommand"
         @test length(get(a, "blind_spots", [])) == 11 && last(get(a, "blind_spots", String[]), 2) == c7tdd && length(get(a, "runs_in", [])) == 2
         @test startswith(get(a, "rule", ""), "In a lane that changes src/ext: mode required has a RED")
-        post = ["PostToolUse cannot undo a commit: a violating commit exists until audit E5 fails the lane",
-            "a cancelled Bash call fires no post event: its commit gets only a tdd-commit-late record from a later call's sweep of .lanes/tdd-pending after 11 minutes, which does not satisfy E5: re-make or amend the commit through the hooks"]
-        spec10 = ["the role comes from agent_type, documented for subagents only; teammates and a missing agent_type leave reads unguarded (TDD lanes are subagent-only)",
+        post = [
+            "PostToolUse cannot undo a commit: a violating commit exists until audit E5 fails the lane",
+            "a cancelled Bash call fires no post event: its commit gets only a tdd-commit-late record from a later call's sweep of .lanes/tdd-pending after 11 minutes, which does not satisfy E5: re-make or amend the commit through the hooks",
+        ]
+        spec10 = [
+            "the role comes from agent_type, documented for subagents only; teammates and a missing agent_type leave reads unguarded (TDD lanes are subagent-only)",
             "the Bash allowlist relies on bash_guard's parser; unparsed forms are denied, not modelled; a git alias for commit (git -c alias.ci=commit ci) is not seen as a commit, and E5 fails it: no tdd-commit record",
             "test code that reads src at run time is detected after the fact by review, never prevented; an uncommitted read leaves no trace",
             "run output names src files and lines, and show() can expose fields",
@@ -358,12 +338,15 @@ end
             post[1], post[2],
             "E5 needs the local ledger: a fresh clone or CI sees H9 only, and a forged ledger line passes",
             "fails closed on every Read/Grep/Glob/Bash call, the lead's included, when jq or a library is missing (availability cost)",
-            "two instances of one model share priors; other harnesses (.codex) run no hooks"]
+            "two instances of one model share priors; other harnesses (.codex) run no hooks",
+        ]
         # tdd_boundary: the PreToolUse hook
         @test get(b, "prevented_by", "") == ".claude/hooks/tdd_boundary.sh"
         @test startswith(get(b, "rule", ""), "A test-writer reads and writes only allowlisted paths")
-        @test get(b, "runs_in", []) == ["hook PreToolUse(Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit|Bash)",
-            "hook PreToolUse(Agent|Task)"]
+        @test get(b, "runs_in", []) == [
+            "hook PreToolUse(Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit|Bash)",
+            "hook PreToolUse(Agent|Task)",
+        ]
         @test get(b, "test", "") == "scripts/test/test_hooks_tdd.jl"
         @test length(get(b, "blind_spots", [])) == 9
         @test sort(get(b, "blind_spots", String[])) == sort(vcat(setdiff(spec10, post), c7b))

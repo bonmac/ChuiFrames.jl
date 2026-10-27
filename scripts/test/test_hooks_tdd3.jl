@@ -31,8 +31,13 @@ function tb_commit_at!(d, who, files, epoch, msg...)
     return tb_head(d)
 end
 "The PostToolUse half of call `tu` (command `c`, caller `agent`), run alone."
-tb_post(t, c, tu; agent = "test-writer", cwd = t.lane) = tb_run(t, tb_bash(c; agent, cwd, tu, event = "PostToolUse",
-    extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => ""))); name = "tdd_commit_post.sh")
+tb_post(t, c, tu; agent = "test-writer", cwd = t.lane) = tb_run(
+    t, tb_bash(
+        c; agent, cwd, tu, event = "PostToolUse",
+        extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => ""))
+    ); name = "tdd_commit_post.sh"
+)
+"Does any ledger (the session's or an owning repo's) mention `sha`?"
 tb_mentions(t, sha) = any(l -> occursin(sha, l), tb_ledger_lines(t))
 "Open lanes of session s1 as dispatch_limit.sh counts them."
 function tb_open_lanes(t)
@@ -49,8 +54,10 @@ end
     @testset "B1 test-writer brace expansion into src denied" begin
         t = tb_topo(); L = t.lane
         @test isfile("$L/src/P.jl") && isfile("$L/test/t.jl")   # precondition
-        for c in ("cat test/{..,.}/src/P.jl", "cat $L/test/{../src/P.jl,t.jl}", "head -n 5 test/{../src/P.jl,x}",
-                "grep -n secret test/{../src,.}", "ls test/{..,.}/src", "cat test/t.jl}", "cat test/{t.jl}")
+        for c in (
+                "cat test/{..,.}/src/P.jl", "cat $L/test/{../src/P.jl,t.jl}", "head -n 5 test/{../src/P.jl,x}",
+                "grep -n secret test/{../src,.}", "ls test/{..,.}/src", "cat test/t.jl}", "cat test/{t.jl}",
+            )
             @test tb_no(t, twb(t, c))
         end
         @test tb_no(t, twb(t, "cat ~/.claude/projects/-coord/abc.jsonl"))
@@ -81,10 +88,10 @@ end
         @test tb_age!(t, tl, T) && tb_age!(t, ti, T + 25)
         post = tb_post(t, ic, ti; agent = "implementer")
         @test tb_ok(t, tb_bash("ls"; agent = nothing, cwd = L))   # a later call sweeps the lead's entry
-        @test isempty(tb_recs(t, "tdd-commit-violation"))
+        @test isempty(tb_recs(t, "tdd-commit-violation"; at = t.pkg))
         @test !occursin("violation", post.err)
-        @test any(r -> get(r, "sha", "") == sha && get(r, "agent_type", "") == "implementer", tb_recs(t, "tdd-commit"))
-        @test !any(r -> get(r, "sha", "") == sha && get(r, "agent_type", "") != "implementer", tb_recs(t, "tdd-commit"))
+        @test any(r -> get(r, "sha", "") == sha && get(r, "agent_type", "") == "implementer", tb_recs(t, "tdd-commit"; at = t.pkg))
+        @test !any(r -> get(r, "sha", "") == sha && get(r, "agent_type", "") != "implementer", tb_recs(t, "tdd-commit"; at = t.pkg))
         @test !ispath(joinpath(t.S, ".lanes", "tdd-pending", tl))
     end
     @testset "B2 cancelled test-writer entry then a lead commit: no violation" begin
@@ -100,8 +107,9 @@ end
         @test tb_age!(t, tw, T) && tb_age!(t, tl, T + 118)
         tb_post(t, lc, tl; agent = nothing)
         @test tb_ok(t, tb_bash("ls"; agent = nothing, cwd = L))
-        @test isempty(tb_recs(t, "tdd-commit-violation"))
-        @test !any(r -> get(r, "sha", "") == sha && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"))
+        @test isempty(tb_recs(t, "tdd-commit-violation"; at = t.pkg))
+        @test !any(r -> get(r, "sha", "") == sha && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"; at = t.pkg))
+        @test any(r -> get(r, "sha", "") == sha, tb_recs(t, "tdd-commit"; at = t.pkg))   # the lead's commit is recorded there
         @test !ispath(joinpath(t.S, ".lanes", "tdd-pending", tw))
     end
     @testset "B2 forged commit in a stale test-writer window gets no tdd-commit; audit E5 fails it" begin
@@ -112,8 +120,9 @@ end
         @test tb_age!(t, tw, T)
         sha = tb_commit_at!(L, TB_TW, Dict("test/y_tests.jl" => "@testitem \"y\" begin\n    @test false\nend\n"), T + 60, "forged", "TDD: red")
         @test tb_ok(t, tb_bash("ls"; agent = nothing, cwd = L))   # the sweep
-        @test !any(r -> get(r, "sha", "") == sha, tb_recs(t, "tdd-commit"))
-        @test isempty(tb_recs(t, "tdd-commit-violation"))
+        @test !any(r -> get(r, "sha", "") == sha, tb_recs(t, "tdd-commit"; at = t.pkg))
+        @test isempty(tb_recs(t, "tdd-commit-violation"; at = t.pkg))
+        @test any(r -> get(r, "sha", "") == sha, tb_recs(t, "tdd-commit-late"; at = t.pkg))   # the sweep wrote this ledger
         out = read(pipeline(ignorestatus(`$JULIA $(joinpath(SCRIPTS, "tdd.jl")) audit --root $L --base main`); stderr = devnull), String)
         e5 = filter(l -> startswith(l, "E5 $(first(sha, 7))"), split(out, '\n'))
         @test !isempty(e5)
@@ -130,10 +139,12 @@ end
         late = tb_commit_at!(L, TB_TW, Dict("test/c.jl" => "c\n"), T + 700, "test: c", "TDD: red")
         @test tb_ok(t, tb_bash("ls"; agent = nothing, cwd = L))
         @test !tb_mentions(t, early) && !tb_mentions(t, late)
-        lr = tb_recs(t, "tdd-commit-late")
-        @test any(r -> get(r, "sha", "") == inwin && get(r, "agent_type", "") == "test-writer" &&
-            haskey(r, "agent_id") && tb_canon(get(r, "checkout", "")) == tb_canon(L), lr)
-        @test isempty(tb_recs(t, "tdd-commit")) && isempty(tb_recs(t, "tdd-commit-violation"))
+        lr = tb_recs(t, "tdd-commit-late"; at = t.pkg)
+        @test any(
+            r -> get(r, "sha", "") == inwin && get(r, "agent_type", "") == "test-writer" &&
+                haskey(r, "agent_id") && tb_canon(get(r, "checkout", "")) == tb_canon(L), lr
+        )
+        @test isempty(tb_recs(t, "tdd-commit"; at = t.pkg)) && isempty(tb_recs(t, "tdd-commit-violation"; at = t.pkg))
         @test !ispath(joinpath(t.S, ".lanes", "tdd-pending", tw))
     end
     @testset "B2 an entry is stale after 11 minutes" begin
@@ -152,11 +163,11 @@ end
         @test tb_run(t, tb_bash(c; cwd = L, tu)).rc == 0
         old = tb_commit_at!(L, TB_TW, Dict("test/o.jl" => "o\n"), tb_ago(3600), "test: o", "TDD: red")
         tb_post(t, c, tu)
-        @test !any(r -> get(r, "sha", "") == old, tb_recs(t, "tdd-commit"))
+        @test !any(r -> get(r, "sha", "") == old, tb_recs(t, "tdd-commit"; at = t.pkg))
         tb_write!(L, Dict("test/n.jl" => "n\n"))
         f = tb_flow(t, "git -C $L add test/n.jl && " * tb_cm(L))   # control: a commit the call makes now
         @test f.pre.rc == 0 && f.ran
-        @test any(r -> get(r, "sha", "") == tb_head(L) && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"))
+        @test any(r -> get(r, "sha", "") == tb_head(L) && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"; at = t.pkg))
     end
 
     # ---- B3: first parent only ----
@@ -168,14 +179,18 @@ end
         f = tb_flow(t, "git -C $L commit -q -m merge-main"; agent = nothing)
         ms = tb_head(L)
         @test f.pre.rc == 0 && f.ran && ms != gs
-        @test isempty(tb_recs(t, "tdd-commit-violation"))
-        @test all(r -> get(r, "sha", "") == ms, tb_recs(t, "tdd-commit"))
+        @test isempty(tb_recs(t, "tdd-commit-violation"; at = t.pkg))
+        @test !isempty(tb_recs(t, "tdd-commit"; at = t.pkg)) && all(r -> get(r, "sha", "") == ms, tb_recs(t, "tdd-commit"; at = t.pkg))
         @test !tb_mentions(t, rs) && !tb_mentions(t, gs)
     end
 
     # ---- M1: a dispatch tdd_boundary denies is not an open lane ----
-    tb_disp3(L, head; lane = "lane1") = tb_pay("Agent", Dict{String, Any}("subagent_type" => "test-writer", "description" => "tw",
-        "prompt" => "<!-- tdd-brief role=test-writer lane=$lane checkout=$L head=$head -->\n## Task\n$(tb_tu())\n"); cwd = "/")
+    tb_disp3(L, head; lane = "lane1") = tb_pay(
+        "Agent", Dict{String, Any}(
+            "subagent_type" => "test-writer", "description" => "tw",
+            "prompt" => "<!-- tdd-brief role=test-writer lane=$lane checkout=$L head=$head -->\n## Task\n$(tb_tu())\n"
+        ); cwd = "/"
+    )
     both(t, p, order) = [tb_run(t, p; name = n) for n in order]
     for order in (("dispatch_limit.sh", "tdd_boundary.sh"), ("tdd_boundary.sh", "dispatch_limit.sh"))
         @testset "M1 denied tdd dispatch leaves no open lane ($(order[1]) first)" begin
@@ -219,8 +234,10 @@ end
         tb_write!(L, Dict("test/msg.txt" => "test: x\n\nTDD: red\n"))
         tb_stage!(L, Dict("test/t2.jl" => "x\n"))
         cm(o) = "git -C $L commit -q --author \"$TB_TW\" $o"
-        for o in ("-F src/P.jl", "-Fsrc/P.jl", "--file=src/P.jl", "--file src/P.jl", "-t src/P.jl", "--template=src/P.jl",
-                "-F $(t.home)/.claude/projects/-coord/abc.jsonl")
+        for o in (
+                "-F src/P.jl", "-Fsrc/P.jl", "--file=src/P.jl", "--file src/P.jl", "-t src/P.jl", "--template=src/P.jl",
+                "-F $(t.home)/.claude/projects/-coord/abc.jsonl",
+            )
             @test tb_run(t, twb(t, cm(o))).rc == 2   # §0.5 or §0.6: either section may own it
         end
         @test tb_ok(t, twb(t, cm("-F -")))
@@ -240,8 +257,8 @@ end
         @test tb_no(t, twb(t, "git -C $L commit -q -m x -m \"tdd-mode: skip — r\" --author \"$TB_TW\""), "§0.5")
         f = tb_flow(t, "git -C $L commit -q -m \"test: red for the tdd-mode parser\" -m \"TDD: red\" --author \"$TB_TW\"")
         @test f.pre.rc == 0 && f.ran
-        @test any(r -> get(r, "sha", "") == tb_head(L) && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"))
-        @test isempty(tb_recs(t, "tdd-commit-violation"))
+        @test any(r -> get(r, "sha", "") == tb_head(L) && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"; at = t.pkg))
+        @test isempty(tb_recs(t, "tdd-commit-violation"; at = t.pkg))
     end
     @testset "Nit 2 dispatch with lane= not the checkout's lane denied" begin
         t = tb_topo(); L = t.lane
@@ -254,8 +271,10 @@ end
     @testset "B1b implementer brace-expansion write into test/ denied" begin
         t = tb_topo(); L = t.lane
         imb(c) = tb_bash(c; agent = "implementer", cwd = L)
-        for c in ("echo x | tee src/{..,zz}/test/x_tests.jl", "cp src/P.jl src/{../test/x_tests.jl,b.jl}",
-                "echo y > src/{..,.}/test/x_tests.jl")
+        for c in (
+                "echo x | tee src/{..,zz}/test/x_tests.jl", "cp src/P.jl src/{../test/x_tests.jl,b.jl}",
+                "echo y > src/{..,.}/test/x_tests.jl",
+            )
             @test tb_no(t, imb(c))
         end
         @test tb_ok(t, imb("echo x | tee src/b.jl"))
@@ -268,8 +287,10 @@ end
     @testset "R2-B1 ANSI-C or locale quoting denied for role callers" begin
         t = tb_topo(); L = t.lane
         @test isfile("$L/src/P.jl") && isfile("$L/test/t.jl")   # precondition
-        for c in (raw"cat test/$'\x2e\x2e'/src/P.jl", raw"cat test/$'\056\056'/src/P.jl",
-                raw"grep -rn secret test/$'\x2e\x2e'/src", "cat test/\$\"t.jl\"")
+        for c in (
+                raw"cat test/$'\x2e\x2e'/src/P.jl", raw"cat test/$'\056\056'/src/P.jl",
+                raw"grep -rn secret test/$'\x2e\x2e'/src", "cat test/\$\"t.jl\"",
+            )
             @test tb_no(t, twb(t, c))
         end
         @test tb_no(t, tb_bash(raw"cp src/P.jl $'\x74est'/x_tests.jl"; agent = "implementer", cwd = L))
@@ -297,8 +318,10 @@ end
     @testset "R3-B1 test-writer heredoc denied; implementer and lead heredoc commit forms unaffected" begin
         t = tb_topo(); L = t.lane
         @test isfile("$L/src/P.jl") && isfile("$L/test/t.jl")   # precondition
-        for c in ("cat <<EOF\n\$(cat src/P.jl)\nEOF", "cat <<EOF\n`cat src/P.jl`\nEOF",
-                "cat <<'EOF'\nplain\nEOF", "cat <<<plain")
+        for c in (
+                "cat <<EOF\n\$(cat src/P.jl)\nEOF", "cat <<EOF\n`cat src/P.jl`\nEOF",
+                "cat <<'EOF'\nplain\nEOF", "cat <<<plain",
+            )
             @test tb_no(t, twb(t, c))
             r = tb_run(t, twb(t, c))   # the deny says how to commit instead: a message in plain quotes
             @test r.rc == 2 && occursin(r"plain quotes|-m \"", r.err)
@@ -310,8 +333,10 @@ end
     end
     @testset "R3-B1 test-writer normal commands still pass" begin
         t = tb_topo(); L = t.lane
-        for c in ("julia scripts/tdd.jl red", "cd $L && julia scripts/tdd.jl green",
-                "julia scripts/ci.jl test -- \"item=h doubles\"", "git add test/t.jl")
+        for c in (
+                "julia scripts/tdd.jl red", "cd $L && julia scripts/tdd.jl green",
+                "julia scripts/ci.jl test -- \"item=h doubles\"", "git add test/t.jl",
+            )
             @test tb_ok(t, twb(t, c))
         end
         tb_stage!(L, Dict("test/t.jl" => "@testitem \"h doubles\" begin\n    @test false\nend\n"))   # test/ only

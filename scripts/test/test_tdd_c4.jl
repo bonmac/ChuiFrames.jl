@@ -67,8 +67,10 @@ c4_own_call(text) = any(l -> occursin(r"own Bash call"i, l) && occursin(r"chain|
     @testset "lane-lifecycle skill names the lead's recovery for a cancelled commit call" begin
         bs = filter(b -> occursin(r"cancel"i, b) && occursin(r"commit"i, b), c4_blocks(c4_read(C4_SKILL)))
         @test !isempty(bs) || (println("C4: no cancelled-commit paragraph in the skill"); false)
-        hit = filter(b -> occursin(r"amend"i, b) && occursin("HEAD", b) && occursin(r"\breset"i, b) &&
-            occursin(r"re-dispatch"i, b) && occursin("TDD-Waiver: E5", b), bs)
+        hit = filter(
+            b -> occursin(r"amend"i, b) && occursin("HEAD", b) && occursin(r"\breset"i, b) &&
+                occursin(r"re-dispatch"i, b) && occursin("TDD-Waiver: E5", b), bs
+        )
         @test !isempty(hit) || (println("C4: the cancelled-commit paragraph lacks amend/HEAD/reset/re-dispatch/TDD-Waiver: E5"); false)
     end
 end
@@ -200,8 +202,12 @@ end
         end
     end
     @testset "an implementer commit with a TDD-Waiver trailer is denied (waiver-trailer)" begin
-        r = tb_run(t, tb_bash("git -C $L commit -q -m \"feat: x\" --trailer \"TDD: green\" --trailer \"$w\" --author \"$TB_IMPL\"";
-            agent = "implementer", cwd = L))
+        r = tb_run(
+            t, tb_bash(
+                "git -C $L commit -q -m \"feat: x\" --trailer \"TDD: green\" --trailer \"$w\" --author \"$TB_IMPL\"";
+                agent = "implementer", cwd = L
+            )
+        )
         @test deny_rule(r) || (println("C4 impl waiver not denied (rc $(r.rc)): ", r.err); false)
     end
     @testset "the lead's waiver commit as lead <lead@factory.invalid> is allowed and clean" begin
@@ -222,14 +228,18 @@ function c4_md_line(pb)
     return i === nothing ? "" : String(ls[i])
 end
 md_has(line, s) = occursin(replace(s, "|" => "\\|"), line)
-const C4_PB = Dict("tdd" => "scripts/tdd.jl", "tdd_boundary" => ".claude/hooks/tdd_boundary.sh",
-    "tdd_commit_post" => ".claude/hooks/tdd_commit_post.sh")
+const C4_PB = Dict(
+    "tdd" => "scripts/tdd.jl", "tdd_boundary" => ".claude/hooks/tdd_boundary.sh",
+    "tdd_commit_post" => ".claude/hooks/tdd_commit_post.sh"
+)
 
 @testset "critic C7: blind spots named in checks.toml and CHECK_COVERAGE.md" begin
     rows = c4_rows()
     @testset "tdd: merge commits invisible to H1/H3/H4 (--no-merges); only git show --cc sees them" begin
-        hit = filter(s -> occursin(r"merge"i, s) && occursin("--no-merges", s) && occursin("H1", s) && occursin("H3", s) &&
-            occursin("H4", s) && occursin("git show --cc", s), c4_spots(rows, "tdd"))
+        hit = filter(
+            s -> occursin(r"merge"i, s) && occursin("--no-merges", s) && occursin("H1", s) && occursin("H3", s) &&
+                occursin("H4", s) && occursin("git show --cc", s), c4_spots(rows, "tdd")
+        )
         @test !isempty(hit) || (println("C7: no merge blind spot in the tdd row"); false)
         isempty(hit) || @test md_has(c4_md_line(C4_PB["tdd"]), first(hit))
     end
@@ -239,8 +249,10 @@ const C4_PB = Dict("tdd" => "scripts/tdd.jl", "tdd_boundary" => ".claude/hooks/t
         isempty(hit) || @test md_has(c4_md_line(C4_PB["tdd_boundary"]), first(hit))
     end
     @testset "E5 (tdd.jl audit) catches alias commits by role identities; dod does not" begin
-        hits = [(id, s) for id in keys(C4_PB) for s in c4_spots(rows, id) if occursin(r"alias"i, s) && occursin("E5", s) &&
-            occursin(r"\bdod\b", s) && occursin(r"role"i, s)]
+        hits = [
+            (id, s) for id in keys(C4_PB) for s in c4_spots(rows, id) if occursin(r"alias"i, s) && occursin("E5", s) &&
+                occursin(r"\bdod\b", s) && occursin(r"role"i, s)
+        ]
         @test !isempty(hits) || (println("C7: no alias/E5/dod blind spot"); false)
         isempty(hits) || @test md_has(c4_md_line(C4_PB[first(hits)[1]]), first(hits)[2])
     end

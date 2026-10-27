@@ -106,7 +106,7 @@ function strip_lines!(ex)
         x isa Expr || return
         x.head === :macrocall && length(x.args) >= 2 && (x.args[2] = nothing)
         x.head === :toplevel && filter!(a -> !(a isa LineNumberNode), x.args)
-        foreach(walk, x.args)
+        return foreach(walk, x.args)
     end
     walk(ex)
     return ex

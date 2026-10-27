@@ -22,8 +22,10 @@
 
 const C1_ROLES = ("law-tester", "property-tester", "differential-tester")
 c1_id(r) = "$r <$r@factory.invalid>"
-const C1_PATH = Dict("law-tester" => "test/laws/f_laws.jl", "property-tester" => "test/property/f_props.jl",
-    "differential-tester" => "test/differential/f_diff.jl")
+const C1_PATH = Dict(
+    "law-tester" => "test/laws/f_laws.jl", "property-tester" => "test/property/f_props.jl",
+    "differential-tester" => "test/differential/f_diff.jl"
+)
 
 # ---- history rules (pure) ----
 @testset "critic C1 history: test-side roles author test phases" begin
@@ -64,8 +66,10 @@ const C1_PATH = Dict("law-tester" => "test/laws/f_laws.jl", "property-tester" =>
     end
 
     th_testset("lookalike identity authoring red is still H9", H...) do
-        for who in ("law-tester <x@y>", "property-tester <x@y>", "Differential Tester <dt@example.com>",
-                "law-tester <property-tester@factory.invalid>", OTHER)
+        for who in (
+                "law-tester <x@y>", "property-tester <x@y>", "Differential Tester <dt@example.com>",
+                "law-tester <property-tester@factory.invalid>", OTHER,
+            )
             @test th_has(hr(stub(), lc(who, "red", "test/laws/f_laws.jl"), green()), "H9")
         end
     end
@@ -88,8 +92,12 @@ end
 
 # ---- hooks: boundary, commit guard, post hook ----
 "A post-hook payload for call `tu` (command `c`, caller `agent`), run alone."
-c1_post(t, c, tu; agent, cwd = t.lane) = tb_run(t, tb_bash(c; agent, cwd, tu, event = "PostToolUse",
-    extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => ""))); name = "tdd_commit_post.sh")
+c1_post(t, c, tu; agent, cwd = t.lane) = tb_run(
+    t, tb_bash(
+        c; agent, cwd, tu, event = "PostToolUse",
+        extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => ""))
+    ); name = "tdd_commit_post.sh"
+)
 "A commit command with the phase as a --trailer."
 c1_cm(d, who; phase = "red") = "git -C $d commit -q -m \"test: f\" --trailer \"TDD: $phase\" --author \"$who\""
 "Denied with the rule `rule` named in the message?"
@@ -176,8 +184,10 @@ end
             sha = tb_head(L)
             post = c1_post(t, c, tu; agent = r)
             @test post.rc == 2 && occursin("violation", post.err)
-            @test any(x -> get(x, "sha", "") == sha && get(x, "agent_type", "") == r && get(x, "rule", "") == "phase-not-role",
-                tb_recs(t, "tdd-commit-violation"))
+            @test any(
+                x -> get(x, "sha", "") == sha && get(x, "agent_type", "") == r && get(x, "rule", "") == "phase-not-role",
+                tb_recs(t, "tdd-commit-violation")
+            )
 
             c2, tu2 = c1_cm(L, R), tb_tu()
             @test tb_run(t, tb_bash(c2; agent = r, cwd = L, tu = tu2)).rc == 0
@@ -185,8 +195,10 @@ end
             sha2 = tb_head(L)
             post2 = c1_post(t, c2, tu2; agent = r)
             @test post2.rc == 2
-            @test any(x -> get(x, "sha", "") == sha2 && get(x, "agent_type", "") == r && get(x, "rule", "") == "path-not-role",
-                tb_recs(t, "tdd-commit-violation"))
+            @test any(
+                x -> get(x, "sha", "") == sha2 && get(x, "agent_type", "") == r && get(x, "rule", "") == "path-not-role",
+                tb_recs(t, "tdd-commit-violation")
+            )
         end
     end
 end

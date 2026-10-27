@@ -164,13 +164,13 @@ tb_cm(d; author = TB_TW, phase = "red", extra = "") = "git -C $d commit -q -m \"
         f1 = tb_flow(t, "cd $L && git add test/t2.jl && " * tb_cm(L))
         s1 = tb_head(L)
         @test f1.pre.rc == 0 && f1.ran
-        @test any(r -> get(r, "sha", "") == s1 && get(r, "agent_type", "") == "test-writer" && tb_canon(get(r, "checkout", "")) == tb_canon(L), tb_recs(t, "tdd-commit"))
+        @test any(r -> get(r, "sha", "") == s1 && get(r, "agent_type", "") == "test-writer" && tb_canon(get(r, "checkout", "")) == tb_canon(L), tb_recs(t, "tdd-commit"; at = t.pkg))
         tb_write!(L, Dict("test/t3.jl" => "y\n"))
         f2 = tb_flow(t, "git -C $L add test/t3.jl && git -C $L commit -q --amend --no-edit")
         s2 = tb_head(L)
         @test f2.pre.rc == 0 && f2.ran && s2 != s1
-        @test any(r -> get(r, "sha", "") == s2 && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"))
-        @test !any(l -> occursin("late", l), tb_ledger_lines(t))
+        @test any(r -> get(r, "sha", "") == s2 && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"; at = t.pkg))
+        @test !isempty(tb_lines_at(t.pkg)) && !any(l -> occursin("late", l), tb_ledger_lines(t))
         @test !isdir(joinpath(t.S, ".lanes", "tdd-pending")) || isempty(readdir(joinpath(t.S, ".lanes", "tdd-pending")))
     end
     @testset "commit followed by a failing command is recorded" begin
@@ -178,20 +178,21 @@ tb_cm(d; author = TB_TW, phase = "red", extra = "") = "git -C $d commit -q -m \"
         tb_stage!(L, Dict("test/t2.jl" => "x\n"))
         f = tb_flow(t, tb_cm(L) * " && false")
         @test f.pre.rc == 0 && !f.ran && tb_head(L) != tb_head(t.pkg)   # the commit exists, the call failed
-        @test any(r -> get(r, "sha", "") == tb_head(L) && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"))
+        @test any(r -> get(r, "sha", "") == tb_head(L) && get(r, "agent_type", "") == "test-writer", tb_recs(t, "tdd-commit"; at = t.pkg))
     end
     # "stale tdd-pending entry swept and recorded late" moved to test_hooks_tdd3.jl under the B2 ruling
     # ("B2 sweep records only in-window commits, as tdd-commit-late"): the sweep writes no tdd-commit.
-    @testset "session root differs from checkout: record lands in the session ledger and audit finds it" begin
+    @testset "session root differs from checkout: record lands in the owning repo's main ledger and audit finds it" begin
         t = tb_topo(); L = t.lane
         tb_stage!(L, Dict("test/t2.jl" => "x\n"))
         f = tb_flow(t, tb_cm(L))
         sha = tb_head(L)
         @test f.pre.rc == 0 && f.ran
-        @test any(r -> get(r, "sha", "") == sha, tb_recs(t, "tdd-commit"))
-        @test !isfile(joinpath(t.pkg, ".lanes", "ledger.jsonl")) && !isfile(joinpath(L, ".lanes", "ledger.jsonl"))
+        @test any(r -> get(r, "sha", "") == sha, tb_recs(t, "tdd-commit"; at = t.pkg))
+        @test !any(r -> get(r, "sha", "") == sha, tb_recs(t, "tdd-commit"; at = t.S))
+        @test isfile(joinpath(t.pkg, ".lanes", "ledger.jsonl")) && !isfile(joinpath(L, ".lanes", "ledger.jsonl"))
         out = read(pipeline(ignorestatus(`$JULIA $(joinpath(SCRIPTS, "tdd.jl")) audit --root $L --base main`); stderr = devnull), String)
-        @test occursin("ledger $(joinpath(t.S, ".lanes", "ledger.jsonl"))", out)
+        @test occursin("ledger $(joinpath(t.pkg, ".lanes", "ledger.jsonl")))", out)
         @test !any(l -> startswith(l, "E5"), split(out, '\n'))
     end
     @testset "post-commit violation recorded" begin
@@ -203,9 +204,13 @@ tb_cm(d; author = TB_TW, phase = "red", extra = "") = "git -C $d commit -q -m \"
         tb_git(a, "add", "test/t.jl")                    # staged after Pre: the Pre half is bypassed
         @test tb_exec(t, c, a)
         sha = tb_head(a)
-        post = tb_run(t, tb_bash(c; agent = "implementer", cwd = a, tu, event = "PostToolUse",
-            extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => ""))); name = "tdd_commit_post.sh")
-        v = tb_recs(t, "tdd-commit-violation")
+        post = tb_run(
+            t, tb_bash(
+                c; agent = "implementer", cwd = a, tu, event = "PostToolUse",
+                extra = Dict("tool_response" => Dict("stdout" => "", "stderr" => ""))
+            ); name = "tdd_commit_post.sh"
+        )
+        v = tb_recs(t, "tdd-commit-violation"; at = a)
         @test any(r -> get(r, "sha", "") == sha && get(r, "agent_type", "") == "implementer" && !isempty(get(r, "rule", "")), v)
         @test occursin("violation", post.err)
     end

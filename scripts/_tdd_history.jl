@@ -53,8 +53,10 @@ function parse_mode(v)
 end
 
 "The paths commit `sha` changes (`--root`: a root commit's files count as added), as (status, path)."
-changed(root, sha) = [(String(first(l, 1)), String(split(l, '\t')[end])) for l in
-    split(something(git(root, "diff-tree", "--root", "--no-commit-id", "-r", "--no-renames", "--name-status", sha), ""), '\n'; keepempty = false)]
+changed(root, sha) = [
+    (String(first(l, 1)), String(split(l, '\t')[end])) for l in
+        split(something(git(root, "diff-tree", "--root", "--no-commit-id", "-r", "--no-renames", "--name-status", sha), ""), '\n'; keepempty = false)
+]
 
 "The non-merge commits of `base..head` (from the merge base), oldest first; `nothing` without a merge base."
 function lane_commits(root, base, head = "HEAD")

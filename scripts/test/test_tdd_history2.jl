@@ -137,11 +137,15 @@ th_slug(name) = first(replace(lowercase(name), r"[^a-z0-9]+" => "-"), 24) * "-" 
     end
 
     th_testset("is_compat_decl: public with one name, a tuple, and export; rejects @compat with any other payload", :is_compat_decl, :strip_lines!) do
-        ok = ("@compat public a", "@compat public a, h", "@compat public (a, h)", "Compat.@compat public a",
-            "Compat.@compat public a, h", "@compat export g", "@compat export g, h", "Compat.@compat export g")
-        bad = ("@compat f(x) = 1", "@compat public f(x)", "@compat public a, f(x)", "@compat begin end", "@compat 1",
+        ok = (
+            "@compat public a", "@compat public a, h", "@compat public (a, h)", "Compat.@compat public a",
+            "Compat.@compat public a, h", "@compat export g", "@compat export g, h", "Compat.@compat export g",
+        )
+        bad = (
+            "@compat f(x) = 1", "@compat public f(x)", "@compat public a, f(x)", "@compat begin end", "@compat 1",
             "@compat", "@compat public a b", "@compat public \"a\"", "@other public a", "Compat.@other export g",
-            "export g", "@compat import Base: show", "@compat const c = 1")
+            "export g", "@compat import Base: show", "@compat const c = 1",
+        )
         for s in ok
             e = Meta.parse(s)
             @test th(:is_compat_decl)(e)
@@ -329,7 +333,7 @@ th_slug(name) = first(replace(lowercase(name), r"[^a-z0-9]+" => "-"), 24) * "-" 
         @test !any(s -> occursin("late", s), er(d, th_lane_recs(d, c)[1:2]))   # green unrecorded: no hint without a late record
     end
 
-    th_testset("E5 default ledger is the outermost .lanes/ledger.jsonl above the lane", :audit) do
+    th_testset("E5 default ledger is the owning repo's main ledger, not the outermost", :audit) do
         # A coordinator-style root C holds the nested package repo C/Pkg.jl, which has its own .lanes;
         # the lane is the worktree C/Pkg.jl/.worktrees/lane.
         C = realpath(mktempdir())
@@ -349,16 +353,17 @@ th_slug(name) = first(replace(lowercase(name), r"[^a-z0-9]+" => "-"), 24) * "-" 
         outer, inner = joinpath(C, ".lanes", "ledger.jsonl"), joinpath(pkg, ".lanes", "ledger.jsonl")
         aud() = (io = IOBuffer(); code = th(:audit)(lane; base = "main", io); (code, String(take!(io))))
 
-        th_ledger!(outer, th_lane_recs(lane, c))
+        th_ledger!(outer, th_lane_recs(lane, c))   # records only in the outer (coordinator) ledger: not read
         th_ledger!(inner, String[])
-        code, out = aud()
-        @test code == 0
-        @test !occursin(r"^E5"m, out)
-
-        th_ledger!(outer, String[])
-        th_ledger!(inner, th_lane_recs(lane, c))
         code, out = aud()
         @test code == 1
         @test occursin(r"^E5"m, out)
+
+        th_ledger!(outer, String[])
+        th_ledger!(inner, th_lane_recs(lane, c))   # records in the owning repo's main ledger: read
+        code, out = aud()
+        @test code == 0
+        @test !occursin(r"^E5"m, out)
+        @test occursin("ledger $inner)", out)
     end
 end

@@ -6,6 +6,7 @@
 #   julia scripts/tdd.jl api    [--root DIR]                  docstrings of exported/public names (Julia >= 1.11)
 #   julia scripts/tdd.jl brief  --role R [--root DIR] [--base B]   header + api + stub diffs; saves it
 #   julia scripts/tdd.jl audit  [--root DIR] [--base B] [--ledger PATH]   history H1-H9, evidence E1-E5
+#     (--ledger defaults to the owning ledger: <main checkout of the repo owning --root>/.lanes/ledger.jsonl)
 #   julia scripts/tdd.jl mutate [--root DIR] --item NAME (--src F:LINE | --expect F:LINE) --from S --to S
 #   julia scripts/tdd.jl gaps   [--root DIR]                  public names with no test (Julia >= 1.11)
 #   (mutate and gaps: scripts/_tdd_backfill.jl; mutate is run by the mutator agent, spec §5.2)
@@ -117,7 +118,11 @@ module Tdd
         p = phase(root, sha)
         p in RED_PHASES || (println(io, "tdd.jl red: $(first(sha, 7)) has trailer `TDD: $p`, not red or test-fix (exit 2)."); return 2)
         req = requested(root, sha)
-        isempty(req.red) && (println(io, "tdd.jl red: $(first(sha, 7)) adds or changes no @testitem (exit 2)."); return 2)
+        if isempty(req.red)   # 0.3.1 F4: a deletion-only test-fix records what it removed (a test-fix privilege)
+            p == "test-fix" && deletion_only(root, sha) && return red_removed(root, sha, removed_items(root, sha); io)
+            println(io, "tdd.jl red: $(first(sha, 7)) adds or changes no @testitem (exit 2).")
+            return 2
+        end
         have_ci(root, io, "red") || return 2
         names = unique!([s.name for s in vcat(req.red, req.must_pass)])
         r = run_items(root, "red", names; io)
@@ -134,13 +139,14 @@ module Tdd
     # green
 
     """
-        renamed_by(root, commits, name) -> sha or nothing
+        renamed_by(root, commits, name) -> (sha, "RENAMED" | "REMOVED") or nothing
 
     The test-fix that frees red item `name`, gone at HEAD (plan Task 9 ruling): a commit after the
-    last red/test-fix requesting `name`, with trailer `TDD: test-fix`, authored by the test-writer,
-    that removes `name`, has red items of its own (the new name) and passing red evidence (E1's
-    `red_pass` plus `red <sha7>: OK`). Anything else (another author or phase, no evidence, a
-    deletion with no replacement) frees nothing.
+    last red/test-fix requesting `name`, with trailer `TDD: test-fix`, authored by a test-side role,
+    that removes `name`, and either has red items of its own (the new name) and passing red evidence
+    (E1's `red_pass` plus `red <sha7>: OK`): RENAMED; or is deletion-only with its REMOVED red
+    evidence (`removal_pass`, 0.3.1 F4): REMOVED. Anything else (another author or phase, no
+    evidence) frees nothing.
     """
     function renamed_by(root, commits, name)
         i = findlast(c -> c.phase in RED_PHASES && any(s -> s.name == name, requested(root, c.sha).red), commits)
@@ -149,9 +155,12 @@ module Tdd
             (c.phase == "test-fix" && c.author in role_author.(TEST_ROLES)) || continue
             isempty(spans_at(root, "$(c.sha)^", [name])) && continue   # not the commit that removed it
             isempty(spans_at(root, c.sha, [name])) || continue
-            isempty(requested(root, c.sha).red) && continue            # no replacement
             ev = evidence_file(joinpath(Evidence.evidence_dir(root), "red-$(sha7(c.sha)).txt"))
-            red_pass(ev, c.sha) && occursin(Regex("(?m)^red $(sha7(c.sha)): OK\\b"), ev.tdd) && return c.sha
+            if isempty(requested(root, c.sha).red)                    # no replacement: a deletion
+                removal_pass(root, ev, c.sha) && return (c.sha, "REMOVED")
+            elseif red_pass(ev, c.sha) && occursin(Regex("(?m)^red $(sha7(c.sha)): OK\\b"), ev.tdd)
+                return (c.sha, "RENAMED")
+            end
         end
         return nothing
     end
@@ -161,8 +170,8 @@ module Tdd
 
     The items of every `red`/`test-fix` commit in `base..HEAD` must all be selected and pass, with a
     `Test Summary:` total of at least their count; then the default suite must pass. Evidence `green`.
-    An item gone at HEAD is NOT-RUN unless a test-writer test-fix renamed it (`renamed_by`); then
-    it is dropped and reported as `RENAMED`.
+    An item gone at HEAD is NOT-RUN unless a test-side test-fix renamed or (deletion-only) removed it
+    (`renamed_by`); then it is dropped and reported as `RENAMED` or `REMOVED`.
     """
     function green(root; base = "main", io = stdout)
         refuse_dirty(root, io, "green") && return 2
@@ -175,7 +184,7 @@ module Tdd
         for n in filter(!in(present), names)
             fix = renamed_by(root, commits, n)
             fix === nothing && continue
-            println(buf, "RENAMED  $n (test-fix $(sha7(fix)))")
+            println(buf, "$(fix[2])  $n (test-fix $(sha7(fix[1])))")
             filter!(!=(n), names)
         end
         if !isempty(names)
@@ -260,8 +269,10 @@ module Tdd
 
     "The next free `<dir>/<role>-<n>.md`."
     function next_brief(dir, role)
-        taken = [something(tryparse(Int, m.captures[1]), 0) for f in (isdir(dir) ? readdir(dir) : String[])
-                     for m in (match(Regex("^" * role * raw"-(\d+)\.md$"), f),) if m !== nothing]
+        taken = [
+            something(tryparse(Int, m.captures[1]), 0) for f in (isdir(dir) ? readdir(dir) : String[])
+                for m in (match(Regex("^" * role * raw"-(\d+)\.md$"), f),) if m !== nothing
+        ]
         return joinpath(dir, "$role-$(maximum(taken; init = 0) + 1).md")
     end
 
@@ -355,8 +366,10 @@ module Tdd
         root = abspath(get(opts, "--root", normpath(joinpath(@__DIR__, ".."))))
         base = get(opts, "--base", "main")
         cmd = only(pos)
-        allowed = Dict("red" => ("--root", "--rev"), "green" => ("--root", "--base"), "api" => ("--root",), "brief" => ("--root", "--base", "--role"), "audit" => ("--root", "--base", "--ledger"),
-            "mutate" => ("--root", "--item", "--src", "--expect", "--from", "--to"), "gaps" => ("--root",))
+        allowed = Dict(
+            "red" => ("--root", "--rev"), "green" => ("--root", "--base"), "api" => ("--root",), "brief" => ("--root", "--base", "--role"), "audit" => ("--root", "--base", "--ledger"),
+            "mutate" => ("--root", "--item", "--src", "--expect", "--from", "--to"), "gaps" => ("--root",)
+        )
         haskey(allowed, cmd) || (println(io, "tdd.jl: unknown command `$cmd`\n", USAGE); return 2)
         extra = setdiff(keys(opts), allowed[cmd])
         isempty(extra) || (println(io, "tdd.jl $cmd: unexpected option(s) $(join(sort!(collect(extra)), ", "))\n", USAGE); return 2)

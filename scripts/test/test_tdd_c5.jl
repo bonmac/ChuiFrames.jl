@@ -18,8 +18,10 @@
 
 "Commit `sub`'s red (test-writer) and green (implementer) on the current branch; (red, green) shas."
 c5_red_green(d; t = "test/f_tests.jl", n = 2) =
-    (c3_commit!(d, TW, Dict(t => "@testitem \"f\" begin\n    @test true\nend\n"), "test: f"; trailers = ["TDD: red"]),
-        c3_commit!(d, IMPL, Dict("src/P.jl" => C3_PSRC(n)), "feat: f"; trailers = ["TDD: green"]))
+    (
+    c3_commit!(d, TW, Dict(t => "@testitem \"f\" begin\n    @test true\nend\n"), "test: f"; trailers = ["TDD: red"]),
+    c3_commit!(d, IMPL, Dict("src/P.jl" => C3_PSRC(n)), "feat: f"; trailers = ["TDD: green"]),
+)
 c5_merge!(d, into, from, msg) = (sh(`git -C $d checkout -q $into`); sh(`git -C $d merge -q --no-ff -m $msg $from`))
 "segment_rules over lane_segments of base main..`head` (every stub ok)."
 function c5_srules(d, head)
@@ -129,7 +131,7 @@ end
         c = "git -C $L commit -q -m \"x\" --trailer \"$tr2\" --author \"$who\""
         @test deny_rule(tb_run(t, tb_bash(c; agent, cwd = L)), rule)
     end
-    for (tr, rule) in cases,(agent, who, subj, ph) in (("law-tester", LAW, "test: laws", "red"), ("implementer", TB_IMPL, "feat: x", "green"))
+    for (tr, rule) in cases, (agent, who, subj, ph) in (("law-tester", LAW, "test: laws", "red"), ("implementer", TB_IMPL, "feat: x", "green"))
         @testset "$agent --trailer \"$(first(tr, 10))…\" denied ($rule)" begin
             c = "git -C $L commit -q -m \"$subj\" --trailer \"TDD: $ph\" --trailer \"$tr\" --author \"$who\""
             r = tb_run(t, tb_bash(c; agent, cwd = L))

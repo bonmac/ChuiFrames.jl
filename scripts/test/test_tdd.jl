@@ -179,8 +179,10 @@ end
             @test occursin("helper", rep) && occursin("BEHAVIOUR", rep)
             @test occursin("HELPER", rep) && occursin("helpers.jl:1", rep)
             # no other fixture's first frame is another test/ file
-            for slug in ("assert", "stub-in-test", "stub-outside-test", "typo", "typo-outside", "throws-wrong",
-                    "throws-typo", "nested", "parse-error", "setup-module")
+            for slug in (
+                    "assert", "stub-in-test", "stub-outside-test", "typo", "typo-outside", "throws-wrong",
+                    "throws-typo", "nested", "parse-error", "setup-module",
+                )
                 @test all(x -> x.helper === nothing, TC.headers(tdd_out(slug, v)))
             end
             areport = sprint(TC.report, tdd_one("assert", "assert", v), TC.headers(tdd_out("assert", v)))
@@ -200,8 +202,10 @@ end
 
     tdd_testset("Some tests did not pass line ignored") do
         for v in TDD_VERSIONS
-            for slug in ("assert", "stub-in-test", "stub-outside-test", "typo", "typo-outside", "helper",
-                    "throws-wrong", "throws-typo", "new-method-on-existing-g", "nested", "parse-error", "setup-module")
+            for slug in (
+                    "assert", "stub-in-test", "stub-outside-test", "typo", "typo-outside", "helper",
+                    "throws-wrong", "throws-typo", "new-method-on-existing-g", "nested", "parse-error", "setup-module",
+                )
                 out = tdd_out(slug, v)
                 @test occursin("Some tests did not pass", out)            # the fixture has the line ...
                 hdrs = TC.headers(out)
@@ -346,53 +350,7 @@ end
         @test TC.module_names(setup) == ["BrokenSetup"]
     end
 
-    tdd_testset("requested: setup-module change adds must_pass items") do
-        a0 = """
-        @testmodule Shared begin
-            const base = 1
-        end
-
-        @testitem "uses shared" setup = [Shared] begin
-            @test Shared.base == 1
-        end
-
-        @testitem "other" begin
-            @test true
-        end
-
-        @testitem "target" begin
-            @test 1 == 1
-        end
-        """
-        b0 = """
-        @testitem "far user" setup = [Shared] begin
-            @test Shared.base >= 1
-        end
-
-        @testitem "far other" begin
-            @test true
-        end
-        """
-        d = tmp_repo(Dict("test/a_tests.jl" => a0, "test/b_tests.jl" => b0, "src/X.jl" => "module X end\n"))
-        a1 = replace(a0, "const base = 1" => "const base = 2", "@test 1 == 1" => "@test 1 == 2") * """
-
-        @testitem "added" begin
-            @test false
-        end
-        """
-        commit!(d, Dict("test/a_tests.jl" => a1), "test: red for target\n\nTDD: red")
-        r = TC.requested(d, "HEAD")
-        @test keys(r) == (:red, :must_pass)
-        @test sort([s.name for s in r.red]) == ["added", "target"]          # touched and added items
-        @test sort([s.name for s in r.must_pass]) == ["far user", "uses shared"]   # unchanged, setup names Shared
-        t = only(filter(s -> s.name == "target", r.red))
-        @test t.file == "test/a_tests.jl" && t.first == 13
-        @test only(filter(s -> s.name == "far user", r.must_pass)).file == "test/b_tests.jl"
-        # a red commit that changes only an item, no module: nothing must pass
-        commit!(d, Dict("test/b_tests.jl" => replace(b0, "@test true" => "@test 2 > 1")), "test: red\n\nTDD: red")
-        r = TC.requested(d, "HEAD")
-        @test [s.name for s in r.red] == ["far other"] && isempty(r.must_pass)
-    end
+    include("test_tdd_requested.jl")   # requested: setup-module change adds must_pass items
 end
 
 include("test_tdd_cli.jl")   # tdd.jl red, green, api, brief (plan Task 4)

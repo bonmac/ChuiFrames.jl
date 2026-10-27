@@ -30,14 +30,19 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
 - Each task gets two agents, each a fresh `subagent_type` dispatch (Agent call, the brief as
   `prompt`): `test-writer` (RED, test-fix, test-refactor, backfill) then `implementer` (STUB,
   GREEN, REFACTOR). Never a fork, never one agent switching roles, never one resumed with the other's transcript, no
-  `team_name`: subagents only, not teammates. A `name` is allowed (`tw-<lane>-<task>`,
-  `impl-<lane>-<task>`): a named teammate's payloads still carry `agent_type`. Continue an agent
-  only within its own task.
-- The hooks key the role on `agent_type` only, never `agent_id` (a named dispatch has none). The
-  lead is the caller with no `agent_type`. SubagentStart/SubagentStop never fired here; nothing
-  relies on them.
-- A new agent type added mid-session is not dispatchable until the session restarts: after
-  syncing 0.3.0 and adding the registry entries, restart the session before the first TDD dispatch.
+  `team_name`: subagents only, not teammates. Continue an agent only within its own task.
+- **TDD roles are dispatched unnamed (0.3.1).** The TDD roles (`test-writer`, the other test-side
+  roles `law-tester`, `property-tester` and `differential-tester`, and `implementer`) are
+  dispatched UNNAMED, as plain subagents: no `name`. Their final reply is the report. A named
+  dispatch is a teammate, and TeammateIdle then demands a SendMessage or a `.lanes/reports/` file;
+  the TDD roles have no SendMessage, and `tdd_boundary` bars them from writing `.lanes/reports/`,
+  so a named TDD role cannot report. An unnamed subagent fires no TeammateIdle.
+- This applies only to the TDD roles. The other roles (the ones `lane audit --reported` checks:
+  reviewer, critic, sub-leads and other worktree-lane agents) are dispatched named, as above.
+- The hooks key the role on `agent_type` only, never `agent_id`. The lead is the caller with no
+  `agent_type`. SubagentStart/SubagentStop never fired here; nothing relies on them.
+- Agent types load mid-session: a registry entry added and generated (`scripts/gen.jl`) is
+  dispatchable without a restart.
 - Dispatch only on a clean lane. `julia scripts/tdd.jl brief --role <role> --root
   <lane checkout>` prints the header, the public API and the stub diffs, and saves the brief under
   `<main>/.lanes/briefs/<lane>/`; add the rest by hand. `tdd_boundary` checks the header (role,
@@ -89,7 +94,13 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
   The reason separator is ` — `, ` - ` or ` -- `. On an integration branch the mode is per merged
   sub-lane (critic C6): each `--no-ff` merge's `M^1..M^2` follows its own mode commit, and the commits
   made directly on the branch follow the branch's own.
-- Before the merge: `/change-review` runs `tdd.jl audit --ledger` and `dod.jl`.
+- **The TDD ledger.** The post hook writes every `tdd-commit`, `tdd-commit-violation` and `tdd-commit-late`
+  record to the ledger of the MAIN checkout of the repo that owns the commit's checkout
+  (`<main>/.lanes/ledger.jsonl`, `owning_ledger` in `_lib.sh` and `_tdd_evidence.jl`), whether the role ran
+  as a subagent (session root: the coordinator) or a teammate (session root: the package); `tdd.jl audit`
+  reads that ledger when `--ledger` is not given. Lane dispatch records stay in the session ledger.
+- Before the merge: `/change-review` runs `tdd.jl audit --base main` (its default ledger is the
+  owning repo's main ledger) and `dod.jl`.
   **Merge, never rebase:** evidence is keyed by sha; after a rebase run `tdd.jl green` at the tip, and audit
   lists the missing reds for the lead to decide.
 

@@ -57,7 +57,14 @@ root_hint() {
 if [ -f "$HOOKS_DIR/limits.env" ]; then . "$HOOKS_DIR/limits.env"; fi
 LEDGER_FILE="$ROOT/${LEDGER:-.lanes/ledger.jsonl}"
 
-# ledger EVENT [KEY VALUE]...: append one JSON line; never fails the hook.
+# owning_ledger CHECKOUT (0.3.1 F2; Julia's Tdd.owning_ledger is the same rule): prints the TDD ledger of the main
+# checkout owning CHECKOUT, <dirname of git's absolute common dir>/.lanes/ledger.jsonl; exit 1, nothing, outside a repo.
+owning_ledger() {
+    _gcd=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && [ -n "$_gcd" ] || return 1
+    printf '%s/.lanes/ledger.jsonl\n' "${_gcd%/*}"
+}
+
+# ledger EVENT [KEY VALUE]...: append one JSON line to $LEDGER_FILE (tdd_commit_post repoints it); never fails the hook.
 ledger() {
     have_jq || return 0
     mkdir -p "$(dirname "$LEDGER_FILE")" 2>/dev/null || return 0
