@@ -115,7 +115,8 @@ julia scripts/tdd.jl audit --base main   # history rules H1-H9 + evidence E1-E5 
 |---|---|---|---|
 | `architect` | write | opus | Writes and revises ADRs and design specs; owns the package's public API shape. |
 | `researcher` | write | inherit | Verified API and parity research: Context7 first, then official docs, then source. |
-| `implementer` | write | inherit | Implements one planned task test-first inside its file scope. |
+| `implementer` | write | inherit | Implements one planned task against the test-writer's red tests: minimal code to green, then refactor with tests unchanged. |
+| `test-writer` | write | inherit | Writes unit and example tests from the spec, plan and public API, in a context that never sees the implementation (RED); and characterization tests for untested code. |
 | `law-tester` | write | inherit | Writes algebraic-law tests (identity, associativity, functor/monad laws) for every typeclass instance. |
 | `property-tester` | write | inherit | Writes property-based tests (Supposition.jl) for invariants that are not algebraic laws. |
 | `differential-tester` | write | inherit | Compares results against reference implementations (R via Rscript, Python via uv). |
