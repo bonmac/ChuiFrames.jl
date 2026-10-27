@@ -105,7 +105,7 @@ rule = "Workflows call only jobs that scripts/ci.jl defines, so CI and local run
 prevented_by = "scripts/ci.jl"
 runs_in = ["ci (every workflow)", "local"]
 test = "scripts/test/test_ci.jl"
-blind_spots = ["workflow steps that are not ci.jl calls (setup, cache, upload, TagBot)", "the upstream-main contract run is UNVERIFIED end to end", "a skip's kind (0.2.4) is decided from the checkout: a package is `profile = package` in .factory-version or a root Project.toml; deleting both makes the package jobs `not applicable` (exit 0)", "`waiting` skips (no upstreams, no benchmark/ directory) exit 0 with a NOT RUN notice and a GitHub warning; deleting the whole benchmark/ directory turns `bench` from missing into waiting"]
+blind_spots = ["workflow steps that are not ci.jl calls (setup, cache, upload, TagBot)", "the upstream-main contract run is UNVERIFIED end to end", "a skip's kind (0.2.4) is decided from the checkout: a package is `profile = package` in .factory-version or a root Project.toml; deleting both makes the package jobs `not applicable` (exit 0)", "`waiting` skips (no upstreams, no benchmark/ directory) exit 0 with a NOT RUN notice and a GitHub warning; deleting the whole benchmark/ directory turns `bench` from missing into waiting", "the format job (0.3.2) checks every host `.jl` file outside a `scripts/test/fixtures/` directory at any depth, so in a coordinator it also checks repo-owned files (contracts/, reference/) that may not be Runic-clean; the coordinator has no format CI job, and the factory's own Runic-clean test covers only factory-managed scripts (the `.factory-version` [managed] files plus factory/template/scripts/)"]
 
 [[checks]]
 id = "ci_timeout"

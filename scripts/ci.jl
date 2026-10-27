@@ -113,10 +113,12 @@ module CI
         format_files(root) -> Vector{String}
 
     The `.jl` files the format job checks (factory 0.3.1): paths relative to `root`, sorted, each an
-    existing file, minus everything under `$FORMAT_EXCLUDE`. In a git checkout: tracked plus
-    untracked-but-not-ignored files (a fresh `git init` with nothing committed still counts);
-    otherwise a walk of the tree that skips `.git`, `.worktrees` and `.lanes`. A bare "." made
-    Runic walk into the fixtures and fail on their deliberate ParseError (0.3.0).
+    existing file, minus everything under `$FORMAT_EXCLUDE` at any depth (whole path segments, so
+    `factory/template/$FORMAT_EXCLUDE` is excluded but `my$FORMAT_EXCLUDE` is not). In a git
+    checkout: tracked plus untracked-but-not-ignored files (a fresh `git init` with nothing
+    committed still counts); otherwise a walk of the tree that skips `.git`, `.worktrees` and
+    `.lanes`. A bare "." made Runic walk into the fixtures and fail on their deliberate ParseError
+    (0.3.0); a root-only match missed a coordinator's vendored `factory/template/` fixtures (0.3.2).
     """
     function format_files(root)
         listed = git(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.jl")
@@ -133,7 +135,7 @@ module CI
             String.(split(listed, '\0'; keepempty = false))
         end
         rels = map(r -> replace(r, '\\' => '/'), rels)
-        keep(r) = endswith(r, ".jl") && !startswith(r, FORMAT_EXCLUDE) && isfile(joinpath(root, r))
+        keep(r) = endswith(r, ".jl") && !occursin("/" * FORMAT_EXCLUDE, "/" * r) && isfile(joinpath(root, r))
         return sort!(unique!(filter(keep, rels)))
     end
 

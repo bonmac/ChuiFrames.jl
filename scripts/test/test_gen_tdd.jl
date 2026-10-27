@@ -191,9 +191,14 @@ end
     end
 
     if IN_FACTORY
-        @testset "factory VERSION 0.3.1; the 0.3.1 and 0.3.0 CHANGELOG migration lists (§9.2, §6)" begin
-            @test strip(read(joinpath(FACTORY, "VERSION"), String)) == "0.3.1"
+        @testset "factory VERSION 0.3.2; the 0.3.2, 0.3.1 and 0.3.0 CHANGELOG migration lists (§9.2, §6)" begin
+            @test strip(read(joinpath(FACTORY, "VERSION"), String)) == "0.3.2"
             cl = read(joinpath(FACTORY, "CHANGELOG.md"), String)
+            sec2 = changelog_section(cl, "0.3.2")
+            @test !isempty(sec2)
+            @test occursin("**Migration.**", sec2)
+            @test occursin(r"\*\*Process note"i, sec2)          # how the gap was missed
+            @test occursin("FACTORY_GUARD_FULL", sec2) || occursin("test_profile_coordinator.jl", sec2)
             sec1 = changelog_section(cl, "0.3.1")
             @test occursin("**Migration.**", sec1) && occursin("julia scripts/gen.jl", sec1)
             sec = changelog_section(cl, "0.3.0")   # 0.3.0's section keeps its migration items
