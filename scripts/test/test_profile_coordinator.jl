@@ -9,16 +9,40 @@
 # scratch's own scripts/test/runtests.jl there on the files that exercise the seeded content,
 # selected with FACTORY_TEST_ONLY (runtests.jl). Expects no Fail and no Error.
 #
-# Only inside factory/ (it needs the factory to sync from). Cost: by default test_dod.jl only,
+# Only inside factory/ (it needs the factory to sync from). Cost: by default (GUARD_DEFAULT below)
 # about 30 s with the sync. FACTORY_GUARD_FULL=1 adds the tdd files that build scratch repos from
 # the seeds; their package runs make it about 4.5 min (measured on 1.13, tw-032), over the suite's
 # budget for one guard, so it is opt-in. Every factory change that touches scripts/test/ or the tdd
 # scripts runs it before merge, with 0 fail and 0 error (factory/README.md "Test it").
 # (test_tdd_c1/c2/c4/c5 need the hook tests' helpers, so they do not run alone; c5's seeded risk.toml
 # comes through c3_repo, which test_tdd_c3.jl exercises.)
+#
+# factory 0.3.2 (lane tw-035): 0.3.1's test_ci_format.jl failed 3 times in the real coordinator
+# (sync-031 evidence tests-8028094.txt) and passed here, because this scratch did not look like
+# the coordinator: no vendored factory/ (whose template carries scripts/test/fixtures/) and no
+# unformatted non-factory .jl files (contracts/*.jl, reference/prototype/**). The scratch now has
+# both (vendor_factory!, contracts/bad.jl) and the guard runs test_ci_format.jl by default, with
+# the other cheap files that read ROOT-relative host files (generated agents, docs): test_gen.jl
+# and test_check_docs.jl. test_ci.jl (profile-aware reachability, checkout_profile) took 85 s
+# there, so it is in the full list only. Measured on 1.13 (tw-035): the default selection's
+# scratch run 22.4 s (19.6 s with test_dod.jl and test_ci_format.jl alone), the whole item 27.6 s.
+const GUARD_DEFAULT = ["test_dod.jl", "test_ci_format.jl", "test_gen.jl", "test_check_docs.jl"]
 const GUARD_FILES = get(ENV, "FACTORY_GUARD_FULL", "") == "1" ?
-    ["test_dod.jl", "test_tdd.jl", "test_tdd_backfill.jl", "test_tdd_review.jl", "test_tdd_c3.jl"] :
-    ["test_dod.jl"]
+    [GUARD_DEFAULT; "test_ci.jl"; "test_tdd.jl"; "test_tdd_backfill.jl"; "test_tdd_review.jl"; "test_tdd_c3.jl"] :
+    GUARD_DEFAULT
+
+"Copy the factory (MANIFEST.toml, VERSION, profiles/, template/ with its fixtures) to `dst`, as the coordinator vendors it."
+function vendor_factory!(dst)
+    for (dir, dirs, files) in walkdir(FACTORY)
+        filter!(d -> !(d in (".git", ".worktrees", ".lanes")), dirs)
+        for f in files
+            to = joinpath(dst, relpath(joinpath(dir, f), FACTORY))
+            mkpath(dirname(to))
+            cp(joinpath(dir, f), to)
+        end
+    end
+    return dst
+end
 
 "`(pass, fail, error)` of the outermost `factory` row of a Test Summary in `out`, or nothing."
 function factory_counts(out)
@@ -52,7 +76,7 @@ function guard_report(txt)
     return nothing
 end
 
-@testset "coordinator-profile sync, the dod and tdd tests pass there (tw-032)" begin
+@testset "coordinator-profile sync, the dod, format and tdd tests pass there (tw-032, tw-035)" begin
     if !IN_FACTORY
         @test !IN_FACTORY
         @info "not inside factory/: the coordinator-profile guard needs the factory to sync from"
@@ -61,6 +85,11 @@ end
         rc, out = capture(() -> SyncFactory.main(["--from", FACTORY, "--to", c, "--profile", "coordinator", "--apply"]))
         @test rc == 0 || (print(out); false)
         @test !isdir(joinpath(c, "test"))                                            # the coordinator's shape
+        # the rest of its shape (0.3.2): the vendored factory, and a host .jl file that is not Runic-clean
+        vendor_factory!(joinpath(c, "factory"))
+        @test isfile(joinpath(c, "factory", "template", "scripts", "test", "fixtures", "tdd", "scratchpkg", "test", "parse_tests.jl"))
+        mkpath(joinpath(c, "contracts"))
+        write(joinpath(c, "contracts", "bad.jl"), "x=[1,2 ,3]\n")
         sh(`git -C $c add -- .`)
         sh(`git -C $c commit -q -m sync`)
         log = joinpath(c, ".lanes", "guard.log")

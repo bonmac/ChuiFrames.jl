@@ -13,6 +13,32 @@ format_selection(root) = isdefined(CI, :format_files) ? CI.format_files(root) : 
 
 const FIXTURES_PREFIX = "scripts/test/fixtures/"
 
+# factory 0.3.2 (lane tw-035): the 0.3.1 exclusion matched only at the repo root. The coordinator
+# vendors the template at factory/template/, so there format_files selected
+# factory/template/scripts/test/fixtures/** and Runic hit parse_tests.jl's ParseError (sync-031
+# evidence tests-8028094.txt: 3 fails here). "Under scripts/test/fixtures/" is read as whole path
+# segments at any depth: a/b/scripts/test/fixtures/x.jl is under it; myscripts/test/fixtures/x.jl
+# and scripts/test/fixtures.jl are not.
+"True when `rel` lies under a `scripts/test/fixtures/` directory at any depth (whole path segments)."
+in_fixtures(rel) = startswith(rel, FIXTURES_PREFIX) || occursin("/" * FIXTURES_PREFIX, rel)
+
+"""
+    runic_scope(root, sel) -> Vector{String}
+
+Test policy (0.3.2), not ci.jl behaviour: the files of the format selection `sel` that the
+Runic-clean item checks, the factory-managed scripts only. In the template (inside factory/, or
+`root` has no `.factory-version`) all of `sel`. In a synced host, the keys of `[managed]` in its
+`.factory-version`, plus a vendored template under `factory/template/scripts/` (the coordinator).
+A host's own files (the coordinator's contracts/*.jl, reference/prototype/**) are not the
+factory's to format; in the coordinator they made this item fail (tests-8028094.txt, :108).
+"""
+function runic_scope(root, sel)
+    fv = joinpath(root, ".factory-version")
+    ((root == ROOT && IN_FACTORY) || !isfile(fv)) && return sel
+    managed = Set(keys(get(TOML.parsefile(fv), "managed", Dict())))
+    return filter(f -> f in managed || startswith(f, "factory/template/scripts/"), sel)
+end
+
 @testset "ci.jl format selects its files (0.3.1 finding 1)" begin
     @testset "CI.format_files exists" begin
         @test isdefined(CI, :format_files)
@@ -23,7 +49,7 @@ const FIXTURES_PREFIX = "scripts/test/fixtures/"
         @test sel isa Vector{String}
         if sel isa Vector{String}
             @test !isempty(sel)
-            bad = filter(f -> startswith(f, FIXTURES_PREFIX), sel)
+            bad = filter(in_fixtures, sel)    # at any depth: a coordinator's ROOT vendors factory/template/
             @test isempty(bad) || (println("format_files selected fixtures: ", bad); false)
             @test !("scripts/test/fixtures/tdd/scratchpkg/test/parse_tests.jl" in sel)
             for f in ("scripts/ci.jl", "scripts/tdd.jl", "scripts/_common.jl", "scripts/test/runtests.jl", "scripts/test/test_ci.jl")
@@ -50,6 +76,53 @@ const FIXTURES_PREFIX = "scripts/test/fixtures/"
         @test sel == ["scripts/ci.jl", "scripts/test/test_x.jl", "src/A.jl"]
     end
 
+    @testset "a vendored template: fixtures excluded under any directory, in git and outside (0.3.2)" begin
+        files = Dict(
+            "scripts/ci.jl" => "y = 2\n",
+            "factory/template/scripts/ci.jl" => "y = 2\n",
+            "factory/template/scripts/test/runtests.jl" => "z = 3\n",
+            "factory/template/scripts/test/fixtures/x.jl" => "function (\n",
+            "factory/template/scripts/test/fixtures/tdd/scratchpkg/test/parse_tests.jl" => "end end\n",
+            "a/b/scripts/test/fixtures/deep.jl" => "end\n",
+            "myscripts/test/fixtures/a.jl" => "a = 1\n",       # not a scripts/ segment: kept
+            "scripts/test/fixtures.jl" => "b = 2\n",           # a file, not under the directory: kept
+        )
+        kept = sort!(
+            [
+                "factory/template/scripts/ci.jl", "factory/template/scripts/test/runtests.jl",
+                "myscripts/test/fixtures/a.jl", "scripts/ci.jl", "scripts/test/fixtures.jl",
+            ]
+        )
+        plain = mktempdir()                                    # the walk fallback (no git)
+        for (rel, c) in files
+            mkpath(dirname(joinpath(plain, rel)))
+            write(joinpath(plain, rel), c)
+        end
+        for d in (tmp_repo(files), plain)
+            sel = format_selection(d)
+            @test sel isa Vector{String}
+            sel isa Vector{String} || continue
+            bad = filter(in_fixtures, sel)
+            @test isempty(bad) || (println("format_files selected nested fixtures: ", bad); false)
+            @test !("factory/template/scripts/test/fixtures/tdd/scratchpkg/test/parse_tests.jl" in sel)
+            @test sel == kept || (println("format_files: got ", sel, ", want ", kept); false)
+        end
+    end
+
+    @testset "the Runic-clean item covers only factory-managed scripts (0.3.2, test policy)" begin
+        sel = [
+            "contracts/bad.jl", "factory/template/scripts/ci.jl", "reference/prototype/Tidy.jl",
+            "scripts/ci.jl", "scripts/test/test_x.jl",
+        ]
+        fv = "version = \"0.3.1\"\nprofile = \"coordinator\"\n\n[managed]\n\"scripts/ci.jl\" = \"ab\"\n\"scripts/test/test_x.jl\" = \"cd\"\n"
+        host = tmp_repo(Dict(".factory-version" => fv, "contracts/bad.jl" => "x=[1,2 ,3]\n"))
+        scope = runic_scope(host, sel)
+        @test !("contracts/bad.jl" in scope) && !("reference/prototype/Tidy.jl" in scope)
+        @test scope == ["factory/template/scripts/ci.jl", "scripts/ci.jl", "scripts/test/test_x.jl"]
+        @test runic_scope(mktempdir(), sel) == sel             # the template: no .factory-version
+        @test runic_scope(tmp_repo(Dict(".factory-version" => "version = \"0.3.1\"\n")), sel) == ["factory/template/scripts/ci.jl"]
+    end
+
     @testset "the format job passes the selection, never a bare \".\"" begin
         cmds = CI.JOBS["format"].commands(ROOT, String[])
         @test cmds isa Vector
@@ -72,7 +145,7 @@ const FIXTURES_PREFIX = "scripts/test/fixtures/"
         @test !occursin(FIXTURES_PREFIX, out)
     end
 
-    @testset "every selected template script is Runic-clean" begin
+    @testset "every selected factory-managed script is Runic-clean" begin
         # Offline only: no Pkg.add inside the tests. Skip, loudly, when @runic has no Runic.
         has_runic = success(
             pipeline(
@@ -84,17 +157,8 @@ const FIXTURES_PREFIX = "scripts/test/fixtures/"
             println("SKIPPED: Runic is not installed in the @runic environment; the Runic-clean check did not run (no network install inside tests)")
             @test_skip "Runic-clean template scripts"
         else
-            # While CI.format_files is missing, check the same set it must return, so this item
-            # reports the unformatted files rather than only the missing function.
-            sel = something(
-                format_selection(ROOT),
-                sort!(
-                    filter(
-                        f -> endswith(f, ".jl") && !startswith(f, FIXTURES_PREFIX) && isfile(joinpath(ROOT, f)),
-                        readlines(Cmd(`git ls-files`; dir = ROOT))
-                    )
-                ),
-            )
+            # The format selection, narrowed to the factory-managed scripts (runic_scope, 0.3.2).
+            sel = runic_scope(ROOT, something(format_selection(ROOT), String[]))
             @test !isempty(sel)
             out = IOBuffer()
             ok = success(
@@ -105,7 +169,7 @@ const FIXTURES_PREFIX = "scripts/test/fixtures/"
             )
             report = String(take!(out))
             bad = [m.captures[1] for m in eachmatch(r"Checking `([^`]+)`[^\n]*✖", report)]
-            @test ok || (println("Runic --check failed on template scripts: ", bad, "\n", report); false)
+            @test ok || (println("Runic --check failed on factory-managed scripts: ", bad, "\n", report); false)
         end
     end
 end
