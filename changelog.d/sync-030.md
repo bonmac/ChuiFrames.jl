@@ -1,5 +1,7 @@
-- Synced the ecosystem factory template to 0.3.0 (`.factory-version`; coordinator commit acae96b,
-  ADR-0015): the `test-writer` role and test-first lanes. New `scripts/tdd.jl` (`red`, `green`,
+- Synced the ecosystem factory template to 0.3.1 (`.factory-version`; coordinator commit b4aeda3,
+  ADR-0015): the `test-writer` role and test-first lanes of 0.3.0, with 0.3.1's fixes (the format
+  job selects its own files and skips the tdd fixtures, one TDD ledger per owning repo, unnamed
+  TDD dispatches, deletion-only test-fix). New `scripts/tdd.jl` (`red`, `green`,
   `api`, `brief`, `audit`) and its helpers, the `tdd_boundary` and `tdd_commit_post` hooks, dod's
   `tdd` requirement, the `test_writer` body and narrowed `implementer` body, and the updated
   tester and reviewer bodies, `/change-review` and `lane-lifecycle` skill.
