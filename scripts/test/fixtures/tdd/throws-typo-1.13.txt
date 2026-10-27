@@ -1,0 +1,121 @@
+# julia 1.13.2, TestItemRunner 1.3.2, command: JULIA_PKG_OFFLINE=true julia --project=. -e 'using Pkg; Pkg.test(test_args=ARGS)' -- "item=throws typo" (cwd scratchpkg)
+     Testing TddScratch
+      Status `/private/var/folders/z5/dwnm1yss3fn8mplfqtt74q700000gn/T/jl_jv89sn/Project.toml`
+  [8f2a3b4c] TddScratch v0.1.0 `~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg`
+  [f8b46487] TestItemRunner v1.3.2
+  [8dfed614] Test v1.11.0
+      Status `/private/var/folders/z5/dwnm1yss3fn8mplfqtt74q700000gn/T/jl_jv89sn/Manifest.toml`
+  [8f2a3b4c] TddScratch v0.1.0 `~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg`
+  [f8b46487] TestItemRunner v1.3.2
+  [1c621080] TestItems v1.1.0
+  [0dad84c5] ArgTools v1.1.2
+  [56f22d72] Artifacts v1.11.0
+  [2a0f44e3] Base64 v1.11.0
+  [ade2ca70] Dates v1.11.0
+  [f43a241f] Downloads v1.7.0
+  [7b1f6079] FileWatching v1.11.0
+  [b77e0a4c] InteractiveUtils v1.11.0
+  [ac6e5ff7] JuliaSyntaxHighlighting v1.12.0
+  [b27032c2] LibCURL v1.0.0
+  [76f85450] LibGit2 v1.11.0
+  [8f399da3] Libdl v1.11.0
+  [56ddb016] Logging v1.11.0
+  [d6f4376e] Markdown v1.11.0
+  [ca575930] NetworkOptions v1.3.0
+  [44cfe95a] Pkg v1.13.0
+  [de0858da] Printf v1.11.0
+  [9a3f8284] Random v1.11.0
+  [ea8e919c] SHA v1.0.0
+  [9e88b42a] Serialization v1.11.0
+  [f489334b] StyledStrings v1.11.0
+  [fa267f1f] TOML v1.0.3
+  [a4e569a6] Tar v1.10.0
+  [8dfed614] Test v1.11.0
+  [cf7118a7] UUIDs v1.11.0
+  [4ec0a83e] Unicode v1.11.0
+  [e66e0078] CompilerSupportLibraries_jll v1.5.5+2
+  [deac9b47] LibCURL_jll v8.22.0+0
+  [e37daf67] LibGit2_jll v1.9.7+0
+  [29816b5a] LibSSH2_jll v1.11.104+0
+  [14a3606d] MozillaCACerts_jll v2026.8.13
+  [458c3c95] OpenSSL_jll v3.5.8+0
+  [efcefdf7] PCRE2_jll v10.46.0+0
+  [83775a58] Zlib_jll v1.3.2+0
+  [3161d3a3] Zstd_jll v1.5.7+1
+  [8e850ede] nghttp2_jll v1.70.0+0
+  [3f19e933] p7zip_jll v17.8.3+0
+     Testing Running tests...
+ERROR: LoadError: Some tests did not pass: 0 passed, 1 failed, 0 errored, 0 broken.
+in expression starting at <PKG>/test/runtests.jl:2
+
+throws typo: Test Failed at <PKG>/test/items_tests.jl:37
+  Expression: gg(1)
+    Expected: ArgumentError
+      Thrown: UndefVarError
+      UndefVarError: `gg` not defined in `Main.var"##143"`
+      Suggestion: check for spelling errors or missing imports.
+      Stacktrace:
+       [1] top-level scope
+         @ ~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg/test/items_tests.jl:37
+       [2] macro expansion
+         @ ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Test/src/Test.jl:870 [inlined]
+       [3] macro expansion
+         @ ~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg/test/items_tests.jl:37 [inlined]
+  Stacktrace:
+    [1] do_test_throws(result::Test.ExecutionResult, orig_expr::Any, extype::Any)
+      @ Test ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Test/src/Test.jl:915
+    [2] top-level scope
+      @ ~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg/test/items_tests.jl:37
+    [3] eval(m::Module, e::Any)
+      @ Core ./boot.jl:489
+    [4] include_string(mapexpr::typeof(identity), mod::Module, code::String, filename::String)
+      @ Base ./loading.jl:3045
+    [5] include_string(m::Module, txt::String, fname::String)
+      @ Base ./loading.jl:3055
+    [6] #run_testitem##6
+      @ ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:258 [inlined]
+    [7] withpath(f::TestItemRunner.var"#run_testitem##6#run_testitem##7"{Module, String, String}, path::String)
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/vendored_code.jl:7
+    [8] #run_testitem##4
+      @ ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:257 [inlined]
+    [9] cd(f::TestItemRunner.var"#run_testitem##4#run_testitem##5"{Module, String, String}, dir::String)
+      @ Base.Filesystem ./file.jl:112
+   [10] run_testitem(mod::Module, filepath::String, use_default_usings::Bool, setups::Vector{Symbol}, package_name::String, original_code::String, line::Int64, column::Int64, test_setup_module_set::TestItemRunner.TestSetupModuleSet, testsetups::Dict{Symbol, Any})
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:256
+   [11] run_testitem_in_testset(ts::Test.DefaultTestSet, testitem::@NamedTuple{filename::String, code::String, name::String, option_tags::Vector{Symbol}, option_default_imports::Bool, option_setup::Vector{Symbol}, skip::Bool, line::Int64, column::Int64}, package_name::String, test_setup_module_set::TestItemRunner.TestSetupModuleSet, testsetups::Dict{Symbol, Any})
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:298
+   [12] #run_node!##0
+      @ ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:737 [inlined]
+   [13] macro expansion
+      @ ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:703 [inlined]
+   [14] macro expansion
+      @ ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Test/src/Test.jl:2136 [inlined]
+   [15] with_testset(f::TestItemRunner.var"#run_node!##0#run_node!##1"{String, TestItemRunner.TestSetupModuleSet, Dict{Symbol, Any}, @NamedTuple{filename::String, code::String, name::String, option_tags::Vector{Symbol}, option_default_imports::Bool, option_setup::Vector{Symbol}, skip::Bool, line::Int64, column::Int64}, Test.DefaultTestSet}, ts::Test.DefaultTestSet)
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:702
+Test Summary:         | Fail  Total  Time
+TddScratch            |    1      1  2.9s
+  test/items_tests.jl |    1      1  2.9s
+    throws typo       |    1      1  2.9s
+ERROR: Package TddScratch errored during testing
+Stacktrace:
+  [1] pkgerror(msg::String)
+    @ Pkg.Types ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Pkg/src/Types.jl:68
+  [2] test(ctx::Pkg.Types.Context, pkgs::Vector{PackageSpec}; coverage::Bool, julia_args::Cmd, test_args::Cmd, test_fn::Nothing, force_latest_compatible_version::Bool, allow_earlier_backwards_compatible_versions::Bool, allow_reresolve::Bool)
+    @ Pkg.Operations ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Pkg/src/Operations.jl:3319
+  [3] test
+    @ ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Pkg/src/Operations.jl:3197 [inlined]
+  [4] test(ctx::Pkg.Types.Context, pkgs::Vector{PackageSpec}; coverage::Bool, test_fn::Nothing, julia_args::Cmd, test_args::Vector{String}, force_latest_compatible_version::Bool, allow_earlier_backwards_compatible_versions::Bool, allow_reresolve::Bool, kwargs::@Kwargs{io::IOContext{IO}})
+    @ Pkg.API ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Pkg/src/API.jl:587
+  [5] test(pkgs::Vector{PackageSpec}; io::IOContext{IO}, kwargs::@Kwargs{test_args::Vector{String}})
+    @ Pkg.API ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Pkg/src/API.jl:172
+  [6] test(; name::Nothing, uuid::Nothing, version::Nothing, url::Nothing, rev::Nothing, path::Nothing, mode::PackageMode, subdir::Nothing, kwargs::@Kwargs{test_args::Vector{String}})
+    @ Pkg.API ~/.julia/juliaup/julia-1.13.2+0.aarch64.apple.darwin14/Julia-1.13.app/Contents/Resources/julia/share/julia/stdlib/v1.13/Pkg/src/API.jl:189
+  [7] top-level scope
+    @ none:1
+  [8] eval(m::Module, e::Any)
+    @ Core ./boot.jl:489
+  [9] exec_options(opts::Base.JLOptions)
+    @ Base ./client.jl:310
+ [10] _start()
+    @ Base ./client.jl:577
+# exit status: 1

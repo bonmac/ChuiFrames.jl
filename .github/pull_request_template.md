@@ -7,13 +7,13 @@
 ## Risk tier (label the PR with exactly one)
 
 - [ ] **T0**: Trivial: typo, comment, formatting, docs wording. No spec or plan. Requires: ci.
-- [ ] **T1**: Normal change inside this package: a plan, tests first, review. Requires: ci, ref, tests, changelog, review.
-- [ ] **T2**: Public API, contracts, dependencies or compat bounds: full spec, plan, review. Requires: ci, spec, tests, changelog, review.
-- [ ] **T3**: Process, CI, hooks, release machinery: needs an ADR and the user's approval. Requires: ci, spec, tests, changelog, review, adr.
+- [ ] **T1**: Normal change inside this package: a plan, tests first, review. Requires: ci, ref, tests, tdd, changelog, review.
+- [ ] **T2**: Public API, contracts, dependencies or compat bounds: full spec, plan, review. Requires: ci, spec, tests, tdd, changelog, review.
+- [ ] **T3**: Process, CI, hooks, release machinery: needs an ADR and the user's approval. Requires: ci, spec, tests, tdd, changelog, review, adr.
 
 Protected paths raise the tier automatically (`scripts/dod.jl`):
 
-- T3: `.github/workflows/*`, `.claude/settings.json`, `.claude/hooks/*`, `.agents/agent-registry.toml`, `.agents/factory.toml`, `.agents/factory.local*`, `.agents/bodies/*`, `.agents/checks.toml`, `.claude/agents/*`, `.codex/agents/*`, `scripts/dod.jl`, `scripts/ratchet.jl`, `scripts/gen.jl`, `scripts/check_docs.jl`, `scripts/contract_usage.jl`, `scripts/ci.jl`, `scripts/_common.jl`, `scripts/bench.jl`, `scripts/lane`, `scripts/lane.jl`, `scripts/changelog.jl`, `scripts/check_claims.jl`, `scripts/evidence.jl`, `scripts/test/*`, `risk.toml`, `ratchets.toml`, `.factory-version`
+- T3: `.github/workflows/*`, `.claude/settings.json`, `.claude/hooks/*`, `.agents/agent-registry.toml`, `.agents/factory.toml`, `.agents/factory.local*`, `.agents/bodies/*`, `.agents/checks.toml`, `.claude/agents/*`, `.codex/agents/*`, `scripts/dod.jl`, `scripts/ratchet.jl`, `scripts/gen.jl`, `scripts/check_docs.jl`, `scripts/contract_usage.jl`, `scripts/ci.jl`, `scripts/_common.jl`, `scripts/bench.jl`, `scripts/lane`, `scripts/lane.jl`, `scripts/changelog.jl`, `scripts/check_claims.jl`, `scripts/evidence.jl`, `scripts/tdd.jl`, `scripts/_tdd_classify.jl`, `scripts/_tdd_history.jl`, `scripts/_tdd_evidence.jl`, `scripts/_tdd_backfill.jl`, `scripts/test/*`, `risk.toml`, `ratchets.toml`, `.factory-version`
 - T2: `Project.toml`, `test/contracts/*`, `ext/*`
 
 ## Evidence

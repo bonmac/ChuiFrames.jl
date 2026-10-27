@@ -230,8 +230,10 @@
         @test allow(pre("j2"), r, 1)
         # M4: the TTL drops only dispatches that never ran; a spawned long-running lane stays counted
         r = realpath(mktempdir()); mkpath(joinpath(r, ".lanes"))
-        write(led(r), "{\"ts\":\"2026-01-01T00:00:00Z\",\"ev\":\"dispatch\",\"session\":\"s2\",\"key\":\"sub\",\"name\":\"sub\"}\n" *
-            "{\"ts\":\"2026-01-01T00:00:05Z\",\"ev\":\"spawned\",\"session\":\"s2\",\"key\":\"sub\",\"agent_id\":\"sub@session-s2\"}\n")
+        write(
+            led(r), "{\"ts\":\"2026-01-01T00:00:00Z\",\"ev\":\"dispatch\",\"session\":\"s2\",\"key\":\"sub\",\"name\":\"sub\"}\n" *
+                "{\"ts\":\"2026-01-01T00:00:05Z\",\"ev\":\"spawned\",\"session\":\"s2\",\"key\":\"sub\",\"agent_id\":\"sub@session-s2\"}\n"
+        )
         @test denied(pre("y2"), r, 1)
         # m1: a close BEFORE a re-dispatch does not close it; an empty TaskStop ref closes no unnamed lane
         r = realpath(mktempdir())
@@ -274,9 +276,12 @@
     @testset "settings.json: guards fail CLOSED when their script is missing" begin
         settings = joinpath(ROOT, ".claude/settings.json")
         cmds = readlines(pipeline(`jq -r '.hooks.PreToolUse[].hooks[].command' $settings`))
-        @test length(cmds) == 3
-        guards = ("bash_guard.sh", "write_guard.sh", "dispatch_limit.sh")
+        @test length(cmds) == 5                                  # 0.3.0: tdd_boundary.sh on two matchers
+        guards = ("bash_guard.sh", "write_guard.sh", "dispatch_limit.sh", "tdd_boundary.sh")
         @test all(g -> any(contains(g), cmds), guards)
+        @test count(contains("tdd_boundary.sh"), cmds) == 2
+        tdd_m = readlines(pipeline(`jq -r '.hooks.PreToolUse[] | select(.hooks[].command | contains("tdd_boundary.sh")) | .matcher' $settings`))
+        @test sort(tdd_m) == sort(["Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit|Bash", "Agent|Task"])
         empty_root = realpath(mktempdir())                       # no .claude/hooks/ at all
         shells = filter(s -> Sys.which(s) !== nothing, ["sh", "bash", "zsh", "fish"])
         for c in cmds, s in shells                               # the command must not depend on the user's shell

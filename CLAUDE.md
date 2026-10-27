@@ -56,6 +56,8 @@ Intake → Classify → Design → Plan → Execute → Verify → Review → Fi
 - Mark simulated work as simulated. Report the roster: ran, skipped (why), failed.
 - The reviewer is read-only; a merge or rebase done by a subagent is reviewed before it lands.
 - Roles and their output formats: `.agents/agent-registry.toml` (prose in `.agents/bodies/`).
+- Test-first lanes: a fresh `test-writer` writes the red tests (`scripts/tdd.jl red`), a fresh
+  `implementer` the code; the tdd-brief is the only channel between them (`lane-lifecycle` skill).
 
 <!-- claude-only:begin -->
 Claude Code specifics:
@@ -65,7 +67,8 @@ Claude Code specifics:
 - Commands: `/intake`, `/lanes`, `/change-review`, `/contract-check`, `/release-check`,
   `/test-changed`. Lifecycle rules: the `lane-lifecycle` skill.
 - Hooks (`.claude/settings.json`): `bash_guard`, `write_guard`, `dispatch_limit`,
-  `teammate_idle`, `lane_ledger`, `precompact`. If a hook blocks you, read its message;
+  `teammate_idle`, `lane_ledger`, `precompact`, `tdd_boundary` (test-writer/implementer paths,
+  Bash and commits). If a hook blocks you, read its message;
   do not work around it. Each one's blind spots are in `docs/CHECK_COVERAGE.md`.
 - After a compaction, read `.lanes/precompact.md` and `HANDOFF.md` before acting.
 <!-- claude-only:end -->
@@ -81,6 +84,9 @@ julia scripts/ci.jl format          # Runic --check
 julia scripts/ci.jl guards          # gen --check, ratchets, doc references, factory tests
 julia scripts/ci.jl test --timeout 1800   # bound a run (or CI_TIMEOUT=1800): kills the whole process group, exits 124
 julia scripts/dod.jl --base main    # definition of done for the current branch
+julia scripts/tdd.jl red            # test-writer: classify the RED commit's items (right reason?)
+julia scripts/tdd.jl green          # the lane's red items pass, then the default suite
+julia scripts/tdd.jl audit --base main   # history rules H1-H9 + evidence E1-E5 of a test-first lane
 ```
 
 ## Testing

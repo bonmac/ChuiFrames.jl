@@ -303,6 +303,15 @@ checkout_profile(root) = get(
             end
             excluded(rel) = any(p -> startswith(p, '/') && endswith(p, '/') && startswith(rel, p[2:end]), jti["exclude"])
             @test excluded(".worktrees/x/test/helpers.jl") && excluded(".lanes/scratch/broken.jl") && !excluded("test/answer_tests.jl")
+            # 0.3.0 (tw-033): in a package, discovery picked up the tdd fixture package's @testitems, which fail on
+            # purpose (ChuiTypes `ci.jl test -- all`: 16 extra items, 2 fail, 13 error). Every fixture .jl is excluded.
+            @test "/scripts/test/fixtures/" in jti["exclude"]
+            fx = joinpath(ROOT, "scripts", "test", "fixtures")
+            fixture_jl = [relpath(joinpath(r, f), ROOT) for (r, _, fs) in walkdir(fx) for f in fs if endswith(f, ".jl")]
+            @test !isempty(fixture_jl)
+            for rel in fixture_jl
+                @test excluded(replace(rel, '\\' => '/')) || (println("JuliaTestItems.toml does not exclude $rel"); false)
+            end
             for e in ("test", "test/contracts")                            # the version that reads it
                 @test TOML.parsefile(joinpath(ROOT, e, "Project.toml"))["compat"]["TestItemRunner"] == "1.3.2"
             end

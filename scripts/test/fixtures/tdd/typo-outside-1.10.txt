@@ -1,0 +1,125 @@
+# julia 1.10.12, TestItemRunner 1.3.2, command: JULIA_PKG_OFFLINE=true julia +lts --project=. -e 'using Pkg; Pkg.test(test_args=ARGS)' -- "item=typo outside" (cwd scratchpkg)
+┌ Warning: The active manifest file has dependencies that were resolved with a different julia version (1.13.2). Unexpected behavior may occur.
+└ @ ~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg/Manifest.toml:0
+┌ Warning: The project dependencies or compat requirements have changed since the manifest was last resolved.
+│ It is recommended to `Pkg.resolve()` or consider `Pkg.update()` if necessary.
+└ @ Pkg.API ~/.julia/juliaup/julia-1.10.12+0.aarch64.apple.darwin14/Julia-1.10.app/Contents/Resources/julia/share/julia/stdlib/v1.10/Pkg/src/API.jl:1142
+     Testing TddScratch
+      Status `/private/var/folders/z5/dwnm1yss3fn8mplfqtt74q700000gn/T/jl_XJY3GK/Project.toml`
+  [8f2a3b4c] TddScratch v0.1.0 `~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg`
+  [f8b46487] TestItemRunner v1.3.2
+  [8dfed614] Test
+      Status `/private/var/folders/z5/dwnm1yss3fn8mplfqtt74q700000gn/T/jl_XJY3GK/Manifest.toml`
+  [8f2a3b4c] TddScratch v0.1.0 `~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg`
+  [f8b46487] TestItemRunner v1.3.2
+  [1c621080] TestItems v1.1.0
+  [0dad84c5] ArgTools v1.1.1
+  [56f22d72] Artifacts
+  [2a0f44e3] Base64
+  [ade2ca70] Dates
+  [f43a241f] Downloads v1.6.0
+  [7b1f6079] FileWatching
+  [b77e0a4c] InteractiveUtils
+  [b27032c2] LibCURL v0.6.4
+  [76f85450] LibGit2
+  [8f399da3] Libdl
+  [56ddb016] Logging
+  [d6f4376e] Markdown
+  [ca575930] NetworkOptions v1.2.0
+  [44cfe95a] Pkg v1.10.0
+  [de0858da] Printf
+  [3fa0cd96] REPL
+  [9a3f8284] Random
+  [ea8e919c] SHA v0.7.0
+  [9e88b42a] Serialization
+  [6462fe0b] Sockets
+  [fa267f1f] TOML v1.0.3
+  [a4e569a6] Tar v1.10.0
+  [8dfed614] Test
+  [cf7118a7] UUIDs
+  [4ec0a83e] Unicode
+  [deac9b47] LibCURL_jll v8.4.0+0
+  [e37daf67] LibGit2_jll v1.6.4+0
+  [29816b5a] LibSSH2_jll v1.11.0+1
+  [c8ffd9c3] MbedTLS_jll v2.28.1010+0
+  [14a3606d] MozillaCACerts_jll v2025.12.2
+  [83775a58] Zlib_jll v1.2.13+1
+  [8e850ede] nghttp2_jll v1.52.0+1
+  [3f19e933] p7zip_jll v17.6.1+0
+     Testing Running tests...
+ERROR: LoadError: Some tests did not pass: 0 passed, 0 failed, 1 errored, 0 broken.
+in expression starting at <PKG>/test/runtests.jl:2
+typo outside: Error During Test at <PKG>/test/items_tests.jl:19
+  Got exception outside of a @test
+  LoadError: UndefVarError: `gg` not defined
+  Stacktrace:
+    [1] top-level scope
+      @ ~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg/test/items_tests.jl:19
+    [2] eval
+      @ ./boot.jl:385 [inlined]
+    [3] include_string(mapexpr::typeof(identity), mod::Module, code::String, filename::String)
+      @ Base ./loading.jl:2160
+    [4] include_string(m::Module, txt::String, fname::String)
+      @ Base ./loading.jl:2170
+    [5] #invokelatest#2
+      @ ./essentials.jl:892 [inlined]
+    [6] invokelatest
+      @ ./essentials.jl:889 [inlined]
+    [7] #20
+      @ ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:258 [inlined]
+    [8] withpath(f::TestItemRunner.var"#20#24"{Module, String, String}, path::String)
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/vendored_code.jl:7
+    [9] #19
+      @ ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:257 [inlined]
+   [10] cd(f::TestItemRunner.var"#19#23"{Module, String, String}, dir::String)
+      @ Base.Filesystem ./file.jl:112
+   [11] run_testitem(mod::Module, filepath::String, use_default_usings::Bool, setups::Vector{Symbol}, package_name::String, original_code::String, line::Int64, column::Int64, test_setup_module_set::TestItemRunner.TestSetupModuleSet, testsetups::Dict{Symbol, Any})
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:256
+   [12] run_testitem_in_testset(ts::Test.DefaultTestSet, testitem::@NamedTuple{filename::String, code::String, name::String, option_tags::Vector{Symbol}, option_default_imports::Bool, option_setup::Vector{Symbol}, skip::Bool, line::Int64, column::Int64}, package_name::String, test_setup_module_set::TestItemRunner.TestSetupModuleSet, testsetups::Dict{Symbol, Any})
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:298
+   [13] #31
+      @ ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:737 [inlined]
+   [14] with_testset(f::TestItemRunner.var"#31#33"{String, TestItemRunner.TestSetupModuleSet, Dict{Symbol, Any}, @NamedTuple{filename::String, code::String, name::String, option_tags::Vector{Symbol}, option_default_imports::Bool, option_setup::Vector{Symbol}, skip::Bool, line::Int64, column::Int64}, Test.DefaultTestSet}, ts::Test.DefaultTestSet)
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:683
+   [15] run_node!(node::TestItemRunner.TestItemTree, package_name::String, test_setup_module_set::TestItemRunner.TestSetupModuleSet, testsetups::Dict{Symbol, Any}, verbose::Bool, failfast::Bool, testset::typeof(TestItemRunner.default_testset))
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:736
+   [16] (::TestItemRunner.var"#32#34"{String, TestItemRunner.TestSetupModuleSet, Dict{Symbol, Any}, Bool, Bool, typeof(TestItemRunner.default_testset), TestItemRunner.TestItemTree})()
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:746
+   [17] with_testset(f::TestItemRunner.var"#32#34"{String, TestItemRunner.TestSetupModuleSet, Dict{Symbol, Any}, Bool, Bool, typeof(TestItemRunner.default_testset), TestItemRunner.TestItemTree}, ts::Test.DefaultTestSet)
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:683
+   [18] run_node!(node::TestItemRunner.TestItemTree, package_name::String, test_setup_module_set::TestItemRunner.TestSetupModuleSet, testsetups::Dict{Symbol, Any}, verbose::Bool, failfast::Bool, testset::typeof(TestItemRunner.default_testset))
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:745
+   [19] (::TestItemRunner.var"#39#43"{Bool, Bool, typeof(TestItemRunner.default_testset), TestItemRunner.TestSetupModuleSet, TestItemRunner.TestItemTree, Dict{Symbol, Any}})()
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:861
+   [20] with_root_testset(f::TestItemRunner.var"#39#43"{Bool, Bool, typeof(TestItemRunner.default_testset), TestItemRunner.TestSetupModuleSet, TestItemRunner.TestItemTree, Dict{Symbol, Any}}, ts::Test.DefaultTestSet)
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:693
+   [21] run_tests(path::String; filter::var"#1#3", verbose::Bool, failfast::Bool, testset::typeof(TestItemRunner.default_testset))
+      @ TestItemRunner ~/.julia/packages/TestItemRunner/uGBn3/src/TestItemRunner.jl:860
+   [22] top-level scope
+      @ ~/personal-projects/julia-data-analysis/.worktrees/tw-030/factory/template/scripts/test/fixtures/tdd/scratchpkg/test/runtests.jl:2
+   [23] include(fname::String)
+      @ Base.MainInclude ./client.jl:487
+   [24] top-level scope
+      @ none:6
+  in expression starting at <PKG>/test/items_tests.jl:19
+Test Summary:         | Error  Total  Time
+TddScratch            |     1      1  6.8s
+  test/items_tests.jl |     1      1  6.8s
+    typo outside      |     1      1  6.8s
+ERROR: Package TddScratch errored during testing
+Stacktrace:
+ [1] pkgerror(msg::String)
+   @ Pkg.Types ~/.julia/juliaup/julia-1.10.12+0.aarch64.apple.darwin14/Julia-1.10.app/Contents/Resources/julia/share/julia/stdlib/v1.10/Pkg/src/Types.jl:70
+ [2] test(ctx::Pkg.Types.Context, pkgs::Vector{Pkg.Types.PackageSpec}; coverage::Bool, julia_args::Cmd, test_args::Cmd, test_fn::Nothing, force_latest_compatible_version::Bool, allow_earlier_backwards_compatible_versions::Bool, allow_reresolve::Bool)
+   @ Pkg.Operations ~/.julia/juliaup/julia-1.10.12+0.aarch64.apple.darwin14/Julia-1.10.app/Contents/Resources/julia/share/julia/stdlib/v1.10/Pkg/src/Operations.jl:2051
+ [3] test
+   @ ~/.julia/juliaup/julia-1.10.12+0.aarch64.apple.darwin14/Julia-1.10.app/Contents/Resources/julia/share/julia/stdlib/v1.10/Pkg/src/Operations.jl:1932 [inlined]
+ [4] test(ctx::Pkg.Types.Context, pkgs::Vector{Pkg.Types.PackageSpec}; coverage::Bool, test_fn::Nothing, julia_args::Cmd, test_args::Vector{String}, force_latest_compatible_version::Bool, allow_earlier_backwards_compatible_versions::Bool, allow_reresolve::Bool, kwargs::@Kwargs{io::IOStream})
+   @ Pkg.API ~/.julia/juliaup/julia-1.10.12+0.aarch64.apple.darwin14/Julia-1.10.app/Contents/Resources/julia/share/julia/stdlib/v1.10/Pkg/src/API.jl:444
+ [5] test(pkgs::Vector{Pkg.Types.PackageSpec}; io::IOStream, kwargs::@Kwargs{test_args::Vector{String}})
+   @ Pkg.API ~/.julia/juliaup/julia-1.10.12+0.aarch64.apple.darwin14/Julia-1.10.app/Contents/Resources/julia/share/julia/stdlib/v1.10/Pkg/src/API.jl:159
+ [6] test(; name::Nothing, uuid::Nothing, version::Nothing, url::Nothing, rev::Nothing, path::Nothing, mode::Pkg.Types.PackageMode, subdir::Nothing, kwargs::@Kwargs{test_args::Vector{String}})
+   @ Pkg.API ~/.julia/juliaup/julia-1.10.12+0.aarch64.apple.darwin14/Julia-1.10.app/Contents/Resources/julia/share/julia/stdlib/v1.10/Pkg/src/API.jl:174
+ [7] top-level scope
+   @ none:1
+# exit status: 1

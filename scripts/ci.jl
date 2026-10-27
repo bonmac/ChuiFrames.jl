@@ -107,6 +107,36 @@ module CI
         return cmds()
     end
 
+    # Deliberately broken test fixtures (a ParseError on purpose); Runic 1.13 has no exclude option.
+    const FORMAT_EXCLUDE = "scripts/test/fixtures/"
+    """
+        format_files(root) -> Vector{String}
+
+    The `.jl` files the format job checks (factory 0.3.1): paths relative to `root`, sorted, each an
+    existing file, minus everything under `$FORMAT_EXCLUDE`. In a git checkout: tracked plus
+    untracked-but-not-ignored files (a fresh `git init` with nothing committed still counts);
+    otherwise a walk of the tree that skips `.git`, `.worktrees` and `.lanes`. A bare "." made
+    Runic walk into the fixtures and fail on their deliberate ParseError (0.3.0).
+    """
+    function format_files(root)
+        listed = git(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.jl")
+        rels = if listed === nothing
+            out = String[]
+            for (dir, dirs, files) in walkdir(root)
+                filter!(d -> !(d in (".git", ".worktrees", ".lanes")), dirs)
+                for f in files
+                    push!(out, relpath(joinpath(dir, f), root))
+                end
+            end
+            out
+        else
+            String.(split(listed, '\0'; keepempty = false))
+        end
+        rels = map(r -> replace(r, '\\' => '/'), rels)
+        keep(r) = endswith(r, ".jl") && !startswith(r, FORMAT_EXCLUDE) && isfile(joinpath(root, r))
+        return sort!(unique!(filter(keep, rels)))
+    end
+
     const SETUP = "using Pkg; Pkg.Registry.add(\"General\"); u = get(ENV, \"ECOSYSTEM_REGISTRY_URL\", \"\"); isempty(u) || Pkg.Registry.add(Pkg.RegistrySpec(url = u))"
 
     const JOBS = Dict{String, Job}(
@@ -130,11 +160,14 @@ module CI
             (root, extra) -> [["julia", "--project=.", "-e", PKG_TEST, "--", "quality"]]
         ),
         "format" => Job(
-            "Runic check (ADR-0007): fails if any file is not formatted.",
-            (root, extra) -> [
-                ["julia", "--project=@runic", "-e", RUNIC_ADD],
-                ["julia", "--project=@runic", "-e", RUNIC_RUN, "--", "--check", "--diff", "."],
-            ]
+            "Runic check (ADR-0007) of format_files(root): fails if any file is not formatted; skips $FORMAT_EXCLUDE.",
+            (root, extra) -> (
+                files = format_files(root);
+                isempty(files) ? Skip(:not_applicable, "no .jl files to format outside $FORMAT_EXCLUDE") : [
+                        ["julia", "--project=@runic", "-e", RUNIC_ADD],
+                        ["julia", "--project=@runic", "-e", RUNIC_RUN, "--", "--check", "--diff", files...],
+                    ]
+            )
         ),
         "docs" => Job(
             "Build Documenter docs from a scratch copy of docs/ (doctests run in the test suite too).",

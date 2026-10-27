@@ -18,6 +18,10 @@ done
 . "$d/_lanes.sh"
 need_jq
 payload_ok || deny "cannot parse the hook payload as a JSON object, so the dispatch cannot be keyed or counted (fails closed)."
+# 0.3.0 (review 1 M1): a TDD role's dispatch (tdd_role, _lib.sh) tdd_boundary.sh denies is denied here too, unrecorded:
+# the two hooks run in parallel, so recording it would leave a phantom open lane (tdd_dispatch, _lanes.sh)
+st=$(field '.tool_input.subagent_type | strings')
+! tdd_role "$st" || tdd_dispatch "$st" "$(field '.agent_type | strings')" || deny "tdd_boundary §0.6 ($TD_RULE): $TD_MSG (no lane recorded)."
 max=${FACTORY_MAX_OPEN_LANES:-${MAX_OPEN_LANES:-4}}
 lock="$(dirname "$LEDGER_FILE")/.dispatch.lock"
 mkdir -p "$(dirname "$LEDGER_FILE")" 2>/dev/null || deny "cannot create $(dirname "$LEDGER_FILE"), so no dispatch can be recorded (fails closed)."
@@ -55,10 +59,10 @@ if [ -f "$LEDGER_FILE" ]; then # a malformed line (a crash mid-write) is skipped
 fi
 case $open in '' | *[!0-9]*) deny "the lane ledger $LEDGER_FILE gave no open-lane count ($open); dispatch_limit fails closed." ;; esac
 if [ "$open" -ge "$max" ]; then
-    ledger dispatch-denied open "$open" max "$max" subagent_type "$(field '.tool_input.subagent_type')"
+    ledger dispatch-denied open "$open" max "$max" subagent_type "$st"
     _first=${names%% *}
     deny "$open lanes are open (cap $max): $names. Read a finished lane's report and close it with TaskStop <name>. If its agent is gone (TaskStop says no task found, or the dispatch never ran), release it: scripts/lane release ${_first:-<name>}. The cap is [lanes] max_open in .agents/agent-registry.toml."
 fi
 ledger dispatch key "$(lane_key)" name "$(field '.tool_input.name')" desc "$(field '.tool_input.description')" \
-    subagent_type "$(field '.tool_input.subagent_type')"
+    subagent_type "$st"
 exit 0

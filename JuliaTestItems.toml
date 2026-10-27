@@ -2,4 +2,5 @@
 # test explorer search for @testitem/@testmodule. Lane worktrees and agent scratch live inside the
 # package directory: a stale @testmodule there shadows the real one, and a malformed .jl aborts discovery.
 # Excluded files are never parsed. Patterns are gitignore-style; a leading / anchors at this directory.
-exclude = ["/.lanes/", "/.worktrees/", "/.claude/worktrees/", "/.superpowers/"]
+# /scripts/test/fixtures/ (0.3.0): the tdd fixture package's items fail on purpose.
+exclude = ["/.lanes/", "/.worktrees/", "/.claude/worktrees/", "/.superpowers/", "/scripts/test/fixtures/"]

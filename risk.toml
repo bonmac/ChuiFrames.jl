@@ -15,22 +15,24 @@ default_tier = "T1"
 #             manager folds into CHANGELOG.md with `julia scripts/changelog.jl fold`),
 #   review (branch protection; dod.jl only reports it),
 #   adr (an ADR added or changed in the repo's ADR directory, or the PR cites a coordinator
-#        ADR-NNNN; the directory is the profile's `adr_dir`, recorded in .factory-version).
+#        ADR-NNNN; the directory is the profile's `adr_dir`, recorded in .factory-version),
+#   tdd (0.3.0: the lane's commits pass the history rules H1-H9 of scripts/_tdd_history.jl:
+#        phase trailers, role authors, order; a lane with no src/ or ext/ change passes on H9 alone).
 [tiers.T0]
 summary = "Trivial: typo, comment, formatting, docs wording. No spec or plan."
 requires = ["ci"]
 
 [tiers.T1]
 summary = "Normal change inside this package: a plan, tests first, review."
-requires = ["ci", "ref", "tests", "changelog", "review"]
+requires = ["ci", "ref", "tests", "tdd", "changelog", "review"]
 
 [tiers.T2]
 summary = "Public API, contracts, dependencies or compat bounds: full spec, plan, review."
-requires = ["ci", "spec", "tests", "changelog", "review"]
+requires = ["ci", "spec", "tests", "tdd", "changelog", "review"]
 
 [tiers.T3]
 summary = "Process, CI, hooks, release machinery: needs an ADR and the user's approval."
-requires = ["ci", "spec", "tests", "changelog", "review", "adr"]
+requires = ["ci", "spec", "tests", "tdd", "changelog", "review", "adr"]
 
 [[protected]]
 tier = "T3"
@@ -60,6 +62,12 @@ globs = [
   "scripts/changelog.jl",
   "scripts/check_claims.jl",
   "scripts/evidence.jl",
+  # the TDD gate (0.3.0): tdd.jl and its helpers decide `tdd` in dod.jl and the evidence audit
+  "scripts/tdd.jl",
+  "scripts/_tdd_classify.jl",
+  "scripts/_tdd_history.jl",
+  "scripts/_tdd_evidence.jl",
+  "scripts/_tdd_backfill.jl",
   # the gate's own tests (0.2.4): a lane must not weaken a test so its gate passes
   "scripts/test/*",
   "risk.toml",
