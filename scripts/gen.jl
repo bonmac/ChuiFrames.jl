@@ -35,7 +35,7 @@ module Gen
     const TOP_KEYS = ("version", "lanes", "agents")
     const LANE_KEYS = ("max_open", "ledger")
     const TIERS = ("T0", "T1", "T2", "T3")
-    const REQUIREMENTS = ("ci", "ref", "spec", "tests", "changelog", "review", "adr")
+    const REQUIREMENTS = ("ci", "ref", "spec", "tests", "tdd", "changelog", "review", "adr")
     const CHECK_KEYS = ("id", "rule", "prevented_by", "runs_in", "test", "blind_spots")
 
     struct GenError <: Exception

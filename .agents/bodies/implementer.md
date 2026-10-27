@@ -1,10 +1,15 @@
 ## Operating rules
 
-- Work in your own worktree lane (`scripts/lane new <name>`), inside the file scope in your brief.
-- Test first: write the failing test, run it, see it fail, then implement.
+- Work only from your tdd-brief (the `<!-- tdd-brief role=implementer … -->` header): the task, the spec, the red tests (paths and shas) and their red evidence. Work in that lane's worktree, inside the file scope in your brief.
+- Commit in this one form, in its own Bash call (never chained with `tdd.jl green` or anything else): `git -C <lane> commit -q --author "implementer <implementer@factory.invalid>" -m "<subject>" --trailer "TDD: green" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`, with the phase `stub`, `green` or `refactor`. Never a heredoc, and never the phase as a `-m` of its own: git reads trailers only from the message's last paragraph, so a phase in a paragraph of its own is no phase, and the post hook flags it (`no-phase`). Every commit of yours carries a phase, the changelog fragment included (commit it with the green or the refactor).
+- Never touch `test/**`: the test-writer owns the tests. An implementer edit under `test/` fails the lane (the `tdd_boundary` hook, the commit guard and `tdd.jl audit` H3/H4).
+- Disagree with a test? Write a test-fix request to the lead in your report: the item, what is wrong relative to the spec (cite the line), and the expected behaviour. It holds no source code. The lead passes it on unchanged; you never message the test-writer.
+- STUB declares only (H5): `function f end`, field-only structs, `export`/`public`/`@compat public`, docstrings, an `include` of a new file holding only these. It comes before the red that needs it.
+- GREEN is minimal: the least code that turns the red items green. Run `julia scripts/tdd.jl green` and paste it.
+- REFACTOR comes only after a green, with tests unchanged; run `tdd.jl green` again.
 - Run `/test-changed` before reporting, and paste the commands and output.
 - Need something from another package? Write a request (see `/contract-check`); never edit the upstream repo.
-- Record the change as a NEW `changelog.d/<lane>.md` fragment (list items), not an edit to `CHANGELOG.md`: lanes in one repo then share no file, and `scripts/dod.jl` accepts it.
+- You write the lane's changelog: a NEW `changelog.d/<lane>.md` fragment (list items), not an edit to `CHANGELOG.md`: lanes in one repo then share no file, and `scripts/dod.jl` accepts it.
 - Report your changed files as a list; `/change-review` compares it with `scripts/lane audit <lane> --reported <file>`.
 - Say which checks you did not run, and why.
 - Change files only with the Edit/Write tools. Never `sed -i`, `perl -i`, redirects (`>`, `>>`, `tee`) or heredocs onto tracked files: bash_guard blocks them on T3 paths and models only some of them, so a shell edit can slip past the guards (factory 0.2.4).

@@ -154,3 +154,52 @@ prevented_by = "scripts/changelog.jl"
 runs_in = ["local /release-check"]
 test = "scripts/test/test_changelog.jl"
 blind_spots = ["the fold runs only when the release manager runs it", "fragment order is by file name, not by merge order"]
+
+[[checks]]
+id = "tdd"
+rule = "In a lane that changes src/ext: mode required has a RED; GREEN follows its RED; REFACTOR follows a GREEN; STUB only declares (inside module blocks too); implementer phases never touch test/** and the phases of a test-side role (test-writer, law-, property-, differential-tester) never touch src/ext/changelog.d; phase authors match roles; a skip lane fails unless the lead set the mode; red items fail by assertion or in-item exception, never UndefVarError, a parse/load error, a typo under @test_throws, a pass or no run; characterization items kill a mutant"
+prevented_by = "scripts/tdd.jl"
+runs_in = ["local /change-review: tdd.jl audit (history + evidence) and dod.jl `tdd` (history) before every merge", "ci Guards dod.jl on pull_request only (none in Chui today)"]
+test = "scripts/test/test_tdd.jl"
+blind_spots = [
+  "authorship ties a phase to a role only through the tdd_boundary commit guard: one machine and one user set both authors; a commit made outside the modelled forms (julia/sh -c code, git commit-tree, a script, a hook-less session) can carry any author and trailer",
+  "evidence and the ledger are gitignored: E1-E5 run only on the machine that made them; dod checks history only",
+  "that a test comes from the spec and asserts behaviour, that GREEN is minimal, that a refactor-mode lane adds no behaviour",
+  "a MethodError from wrong arguments is BEHAVIOUR (the reviewer checks the signature)",
+  "exceptions caught inside property or law kits or a try/catch are ASSERTION until `green` fails",
+  "a broken helper raising inside an item is BEHAVIOUR; it is only flagged (HELPER)",
+  "a rebase or squash orphans sha-keyed evidence; a test edit made while resolving a merge conflict is seen only by the reviewer",
+  "mutate proves one mutation fails the item, not how strong it is; mutexp proves only that the assertion runs",
+  "gaps: a public name counts as tested if it appears anywhere in test/; needs Julia >= 1.11",
+  "merge commits are invisible to H1/H3/H4: lane_commits reads base..head with --no-merges, so code or test edits made in a merge resolution are seen only by the reviewer's git show --cc",
+  "an alias commit (git ci) gets no commit guard, post check or record: tdd.jl audit's E5 fails it when a role identity authored it, but dod, which has no E rules, does not"
+]
+
+[[checks]]
+id = "tdd_boundary"
+rule = "A test-writer reads and writes only allowlisted paths (test/, docs/, evidence, its briefs; never src/ext, transcripts, the depot or the mutate copy) and runs only allowlisted Bash, and so does every test-side role (test-writer, law-, property-, differential-tester); an implementer never writes test/**; every git commit's effective author is a role only when the caller is that role, and its staged paths fit the role; the lead dispatches a role only on a clean lane with a current tdd-brief, and the prompt is saved. The allowlists live in _tdd_allow.sh and the commit guard in _tdd_commit_guard.sh, both sourced by tdd_boundary.sh; the dispatch check lives in _lanes.sh, which dispatch_limit.sh also runs, prompt-save precondition included, so a denied dispatch is never recorded as an open lane (only a save write that fails after that check, e.g. a full disk, can leave one). A role caller's Bash command with $'...' or $\"...\" quoting is denied whole, as is a test-side role's command containing $, a backquote or a heredoc (<<, <<<) anywhere, because bash_guard's parser drops heredoc bodies (the implementer and the lead keep heredocs; an implementer's unmodelled write inside a heredoc body is caught only at commit, by the staged-path check), and only an entry named exactly .git marks a checkout"
+prevented_by = ".claude/hooks/tdd_boundary.sh"
+runs_in = ["hook PreToolUse(Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit|Bash)", "hook PreToolUse(Agent|Task)"]
+test = "scripts/test/test_hooks_tdd.jl"
+blind_spots = [
+  "the role comes from agent_type, documented for subagents only; teammates and a missing agent_type leave reads unguarded (TDD lanes are subagent-only)",
+  "the Bash allowlist relies on bash_guard's parser; unparsed forms are denied, not modelled; a git alias for commit (git -c alias.ci=commit ci) is not seen as a commit, and E5 fails it: no tdd-commit record",
+  "test code that reads src at run time is detected after the fact by review, never prevented; an uncommitted read leaves no trace",
+  "run output names src files and lines, and show() can expose fields",
+  "the lead's paraphrase in a brief passes; only review of the saved prompts catches it",
+  "E5 needs the local ledger: a fresh clone or CI sees H9 only, and a forged ledger line passes",
+  "fails closed on every Read/Grep/Glob/Bash call, the lead's included, when jq or a library is missing (availability cost)",
+  "two instances of one model share priors; other harnesses (.codex) run no hooks",
+  "a git alias for commit (e.g. git ci, from git config) bypasses the commit guard for every caller: the guard sees no commit subcommand"
+]
+
+[[checks]]
+id = "tdd_commit_post"
+rule = "Every git commit seen by the hooks is checked after it is made (author vs caller, phase vs role, paths vs role) and recorded as tdd-commit with the resulting sha in the session ledger (only first-parent commits since the call's HEAD whose committer time is within [entry mtime - 5 s, entry mtime + 600 s]); a violation is recorded as tdd-commit-violation, which audit E5 fails. Also blind (beyond the listed blind spots): a commit made in the same checkout while another call is in flight (up to 10 minutes) is attributed to that call's caller, no stronger than a forged ledger line; and the committer time decides the window, so a backdated commit gets no record and E5 fails it (fail-closed)"
+prevented_by = ".claude/hooks/tdd_commit_post.sh"
+runs_in = ["hook PostToolUse(Bash) and PostToolUseFailure(Bash)"]
+test = "scripts/test/test_hooks_tdd.jl"
+blind_spots = [
+  "PostToolUse cannot undo a commit: a violating commit exists until audit E5 fails the lane",
+  "a cancelled Bash call fires no post event: its commit gets only a tdd-commit-late record from a later call's sweep of .lanes/tdd-pending after 11 minutes, which does not satisfy E5: re-make or amend the commit through the hooks"
+]

@@ -30,9 +30,39 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/tdd_boundary.sh\"; if [ -f \"$f\" ]; then exec sh \"$f\"; fi; echo \"[factory] guard hook missing: $f. Failing closed: restore it (julia scripts/sync_factory.jl) or ask the user.\" >&2; exit 2'",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/tdd_boundary.sh\"; if [ -f \"$f\" ]; then exec sh \"$f\"; fi; echo \"[factory] guard hook missing: $f. Failing closed: restore it (julia scripts/sync_factory.jl) or ask the user.\" >&2; exit 2'",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/tdd_commit_post.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
       {
         "matcher": "Agent|Task|TaskStop",
         "hooks": [
@@ -45,6 +75,16 @@
       }
     ],
     "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/tdd_commit_post.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
       {
         "matcher": "Agent|Task|TaskStop",
         "hooks": [

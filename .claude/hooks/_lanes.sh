@@ -56,3 +56,41 @@ OPEN_LANES_JQ='now as $now
      | select($ttl == 0 or ($ran | length) > 0 or (try ($d.ts | fromdateiso8601) catch $now) > $now - $ttl)
      | $d.key] | unique as $ids
   | {ids: $ids, count: ($ids | length)}'
+
+# tdd_dispatch SUB AGENT_TYPE (factory 0.3.0, spec §0.6; review 1 M1): tdd_boundary's check of a TDD role's
+# dispatch (tdd_role, _lib.sh: a test-side role or the implementer; critic C1), run by tdd_boundary.sh AND dispatch_limit.sh (parallel hooks of one Agent|Task call, no
+# order), so a dispatch tdd_boundary denies is never recorded as an open lane. Only the lead (no agent_type)
+# dispatches a role, on a clean lane worktree whose HEAD is the brief's head=, with lane= its lane. Returns 0
+# (allowed, or not a role dispatch) or 1 with TD_RULE and TD_MSG. Sets TD_PR (the prompt), TD_LN, TD_MAIN.
+td_no() { TD_RULE=$1 TD_MSG=$2; return 1; }
+# shellcheck disable=SC2034 # TD_* are read by tdd_boundary.sh and dispatch_limit.sh
+tdd_dispatch() {
+    TD_RULE="" TD_MSG="" TD_PR="" TD_LN="" TD_MAIN=""
+    tdd_role "$1" || return 0
+    [ -z "$2" ] || { td_no dispatch-not-lead "only the lead (no agent_type) dispatches a $1; this caller is $2"; return; }
+    TD_PR=$(field '.tool_input.prompt | strings')
+    _ro="" _co="" _he="" _hd=${TD_PR%%"
+"*}
+    case $_hd in '<!-- tdd-brief '*' -->') ;; *) td_no brief-header "a $1 prompt starts with <!-- tdd-brief role=$1 lane=<lane> checkout=<abs path> head=<sha> --> (julia scripts/tdd.jl brief prints it)"; return ;; esac
+    set -f
+    for _w in $_hd; do case $_w in role=*) _ro=${_w#*=} ;; lane=*) TD_LN=${_w#*=} ;; checkout=*) _co=${_w#*=} ;; head=*) _he=${_w#*=} ;; esac; done
+    set +f
+    [ "$_ro" = "$1" ] || { td_no brief-role "the brief says role=$_ro but the dispatch is a $1"; return; }
+    case $TD_LN in '' | .* | *[!A-Za-z0-9._-]*) td_no brief-lane "lane=$TD_LN is not a lane name"; return ;; esac
+    case ${_co%/} in */.worktrees/"$TD_LN" | */.claude/worktrees/"$TD_LN") ;; */.worktrees/* | */.claude/worktrees/*)
+        td_no brief-lane "lane=$TD_LN is not the lane of checkout=$_co"; return ;; esac
+    case $_co in /*) phys "$_co" ;; *) td_no brief-checkout "checkout= must be an absolute path: $_co"; return ;; esac
+    case $RP in "$ROOT_P"/?*) ;; *) td_no brief-checkout "checkout=$_co is not under the session root $ROOT"; return ;; esac
+    _gl="" _bk=""
+    [ ! -f "$RP/.git" ] || read -r _gl <"$RP/.git"
+    case $_gl in "gitdir: /"*/.git/worktrees/?*) read -r _bk <"${_gl#gitdir: }/gitdir" 2>/dev/null ;; esac
+    case $_bk in "$RP/.git" | "$_co/.git") ;; *) td_no brief-checkout "checkout=$_co is not a lane worktree (git worktree add), so it has no main checkout to save the brief in"; return ;; esac
+    TD_MAIN=${_gl#gitdir: } && TD_MAIN=${TD_MAIN%/.git/worktrees/*}
+    [ -n "$_he" ] && [ "$(git -C "$RP" rev-parse HEAD 2>/dev/null)" = "$_he" ] ||
+        { td_no brief-head "head=$_he is not the HEAD of $_co: write the brief again (julia scripts/tdd.jl brief)"; return; }
+    [ -z "$(git -C "$RP" status --porcelain 2>/dev/null)" ] || { td_no brief-dirty "$_co has uncommitted changes: commit or clean them before dispatching a $1"; return; }
+    # review 2 (iii): the prompt-save step's precondition is checked here too, so dispatch_limit records no lane that
+    # tdd_boundary then denies at the save (only a write that fails after this check, e.g. a full disk, still can)
+    _sd="$TD_MAIN/.lanes/briefs/$TD_LN/dispatched"
+    { mkdir -p "$_sd" && [ -w "$_sd" ]; } 2>/dev/null || td_no brief-save "cannot save the prompt under $_sd (fails closed)"
+}

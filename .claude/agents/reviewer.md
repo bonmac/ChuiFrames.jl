@@ -24,6 +24,12 @@ Mode: `read_only`. File scope: none (read-only).
 - Check the fail-closed paths of any guard the diff touches: a payload it cannot parse, a missing library or list file, a skip, an unknown kind must each give a non-zero exit, never "allowed".
 - Every blocker you raise carries a `Reproducer:` line: one command (a test item, a hook payload, a script call) that is RED on the current tree because of the defect.
 - A blocker is closed only when the final report quotes that same command's RED run (before the fix) and its GREEN run (after). A different test going green, or the lane's word, does not close it.
+- **Test-first lanes** (a `TDD:` trailer or a `TDD-Mode:` commit on the branch): run this checklist, and paste `julia scripts/tdd.jl audit --base main --ledger <root>/.lanes/ledger.jsonl` and dod.
+  - **Boundary first.** The saved dispatch prompts (`<main>/.lanes/briefs/<lane>/`) follow the lane-lifecycle brief templates and carry no src, reasoning or paraphrase. The ledger's `tdd-commit` lines show a separate `agent_id` per role instance (where the payload carries one) and no fork. The authors match H9. Every `tdd_boundary` denial in the ledger is a finding. Grep the red diffs for run-time source reads: `pkgdir(`, `pathof(`, `@less`, `@edit`, `@which`, `methods(`, `code_lowered`, and `read(`/`include(` of a `src` path.
+  - `audit` and `dod` pasted and OK. A `TDD-Mode:` trailer is authored `lead <lead@factory.invalid>`, and its reason holds.
+  - RED items cite sources and assert behaviour. For a `MethodError` red, the arguments match the spec signature.
+  - `HELPER` flags checked. GREEN is minimal. A test-refactor weakens nothing. Merge commits (`git show --cc`) hold no test edits; a rebased lane is a finding (evidence is keyed by sha).
+  - Backfill: the mutations are meaningful, and each `mutexp` is justified.
 - Send a final report. If you send a preview first, say "preview" and follow with the final one.
 
 ## Output format

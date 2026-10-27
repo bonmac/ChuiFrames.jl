@@ -1,7 +1,6 @@
 # shellcheck shell=sh
 # _lib.sh: shared helpers for the factory hooks. Sourced, never run.
-# POSIX sh + jq, because a hook runs on every tool call: sh+jq starts in ~5 ms,
-# `julia` in ~150 ms warm (measured 2026-10-19, see factory/README.md).
+# POSIX sh + jq, because a hook runs on every tool call: sh+jq starts in ~5 ms, `julia` in ~150 ms warm (2026-10-19).
 # Guards (bash_guard, write_guard, dispatch_limit) fail CLOSED when jq is missing;
 # advisory hooks (ledger, idle, precompact) fail OPEN.
 
@@ -112,6 +111,21 @@ abspath() {
     esac
     normpath "$_p"
 }
+
+# phys ABS (0.3.0, the tdd hooks): ABS with symlinks resolved (a missing tail kept) as RP; one fork.
+# shellcheck disable=SC2034 # RP is read by _lanes.sh and _tdd_allow.sh
+phys() {
+    _p=$1 _t="" _n=0
+    while [ -L "$_p" ] && [ "$_n" -lt 20 ]; do _n=$((_n + 1)) _l=$(readlink "$_p"); case $_l in /*) _p=$_l ;; *) _p="${_p%/*}/$_l" ;; esac; done
+    while [ -n "$_p" ] && [ ! -d "$_p" ]; do _t="/${_p##*/}$_t" _p=${_p%/*}; done
+    _r=$(CDPATH='' cd -P -- "${_p:-/}" 2>/dev/null && pwd -P) && RP=${_r%/}$_t || RP=""
+}
+# is_co, co_of and in_root (the checkout of a path) live in _tdd_allow.sh: only tdd_boundary.sh uses them.
+
+# test_role ROLE / tdd_role ROLE (factory 0.3.0, critic C1): the one list of test-side roles (they author the test
+# phases and share the test-writer's boundary); a TDD role is a test-side role or the implementer.
+test_role() { case $1 in test-writer | law-tester | property-tester | differential-tester) return 0 ;; esac; return 1; }
+tdd_role() { [ "$1" = implementer ] || test_role "$1"; }
 
 # allowed ABS: true if ABS is inside the repo root, a lane worktree or the reports of its main checkout (in_main), or a scratch location.
 allowed() {

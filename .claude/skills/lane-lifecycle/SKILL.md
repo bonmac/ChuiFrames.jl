@@ -26,6 +26,73 @@ description: Rules for dispatching, monitoring, closing and reporting agent lane
   (TaskStop says no task found; a dispatch that never ran) is released with
   `scripts/lane release <name>`. A spawned teammate or background agent is never dropped by time.
 
+**Test-first lanes (factory 0.3.0, ADR-0015)**
+- Each task gets two agents, each a fresh `subagent_type` dispatch (Agent call, the brief as
+  `prompt`): `test-writer` (RED, test-fix, test-refactor, backfill) then `implementer` (STUB,
+  GREEN, REFACTOR). Never a fork, never one agent switching roles, never one resumed with the other's transcript, no
+  `team_name`: subagents only, not teammates. A `name` is allowed (`tw-<lane>-<task>`,
+  `impl-<lane>-<task>`): a named teammate's payloads still carry `agent_type`. Continue an agent
+  only within its own task.
+- The hooks key the role on `agent_type` only, never `agent_id` (a named dispatch has none). The
+  lead is the caller with no `agent_type`. SubagentStart/SubagentStop never fired here; nothing
+  relies on them.
+- A new agent type added mid-session is not dispatchable until the session restarts: after
+  syncing 0.3.0 and adding the registry entries, restart the session before the first TDD dispatch.
+- Dispatch only on a clean lane. `julia scripts/tdd.jl brief --role <role> --root
+  <lane checkout>` prints the header, the public API and the stub diffs, and saves the brief under
+  `<main>/.lanes/briefs/<lane>/`; add the rest by hand. `tdd_boundary` checks the header (role,
+  `checkout=` a lane worktree, `head=` its HEAD) and saves the prompt under `dispatched/`.
+- **The brief is the only channel.** Never relay src beyond the stub diffs, a GREEN/REFACTOR diff,
+  or the other agent's report or reasoning. A test-fix request passes on verbatim.
+- test-writer brief:
+
+  ```
+  <!-- tdd-brief role=test-writer lane=<lane> checkout=<abs path of the lane worktree> head=<sha> -->
+  ## Task    (the plan task text)
+  ## Spec    (the path)
+  ## Public API   (tdd.jl api output; docs/src pages)
+  ## Stub diffs   (git show of each stub commit, only if H5 passed)
+  ## Test-fix requests   (verbatim, if any)
+  ## Boundary  (spec §0.4 and §0.6, quoted)
+  ```
+
+- implementer brief: the same header with `role=implementer`, then `## Task`, `## Spec`,
+  `## Red tests` (paths and shas), `## Red evidence` (paths) and `## Boundary`. Never the
+  test-writer's report or messages.
+- **Test-side roles (critic C1).** `law-tester`, `property-tester` and `differential-tester` are
+  test-side roles like the test-writer: each may author `red`, `test-fix`, `test-refactor` and
+  `backfill` under its own identity (`<role> <<role>@factory.invalid>`), gets the test-writer's
+  boundary, reads only its own `.lanes/briefs/<lane>/<role>-*`, and is dispatched by the lead with
+  `julia scripts/tdd.jl brief --role <role>` (header `role=<role>`, the test-writer's sections).
+- **The one commit form (critic C2).** Every role commits with
+  `git -C <lane> commit -q --author "<role> <<role>@factory.invalid>" -m "<subject>" --trailer "TDD: red" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`
+  (the phase varies), in its own Bash call, never chained with `tdd.jl red` or anything else (a
+  cancelled chained call leaves a late commit). git reads trailers only from the last paragraph, and
+  git's `%(trailers)` is the one parser (post hook, H1/H9, `tdd.jl`): a phase in a paragraph of its
+  own (a separate `-m`, a heredoc) is no phase. The post hook flags a role commit with no phase
+  (`no-phase`, exit 2) while it is still HEAD: amend it then with
+  `git -C <lane> commit -q --amend --no-edit` plus `--trailer` and the phase.
+- **A cancelled commit call (critic C4).** A commit whose Bash call was cancelled (Esc) fires no post
+  event; the sweep records it `tdd-commit-late`, which E5 rejects. The lead's recovery: while that
+  commit is HEAD, have its role amend it through the hooks (`--amend --no-edit`); otherwise reset the
+  lane to before the commit and re-dispatch the role, or attest the commit with a lead waiver:
+  `git -C <lane> commit -q --allow-empty --author "lead <lead@factory.invalid>" -m "chore: waive E5" --trailer "TDD-Waiver: E5 <sha> — <reason>"`
+  (sha full or at least 7 hex; a reason; the waiver covers only a late-only record, never a sha with
+  no record or a violation; the guard denies the trailer to role callers).
+- **Sub-leads (critic C3).** A sub-lead teammate has an `agent_type`, so it can neither dispatch the
+  TDD roles nor write a mode commit: a sub-lead asks the lead for the TDD dispatch and the mode commit
+  (a `TDD-Mode: skip — <reason>` for its non-TDD code lanes too).
+- **Mode.** The lead records it as a `TDD-Mode: required|refactor|skip — <reason>` trailer on a
+  commit authored `lead <lead@factory.invalid>` (e.g. `git commit --allow-empty --author "lead
+  <lead@factory.invalid>"`). The commit guard denies the lead identity to any caller with an
+  `agent_type`, and a `TDD-Mode:` trailer line to the role callers (the test-side roles, implementer). Default `required`; no `src/`/`ext/` change needs none.
+  The reason separator is ` — `, ` - ` or ` -- `. On an integration branch the mode is per merged
+  sub-lane (critic C6): each `--no-ff` merge's `M^1..M^2` follows its own mode commit, and the commits
+  made directly on the branch follow the branch's own.
+- Before the merge: `/change-review` runs `tdd.jl audit --ledger` and `dod.jl`.
+  **Merge, never rebase:** evidence is keyed by sha; after a rebase run `tdd.jl green` at the tip, and audit
+  lists the missing reds for the lead to decide.
+
 **Monitor**
 - Wait for completion notifications; do not poll output files.
 - Bound every long run with `julia scripts/ci.jl <job> --timeout SECONDS` (or `CI_TIMEOUT`), and

@@ -1,0 +1,80 @@
+# Risk tiers and protected paths: the ONE list. Repo-owned after the first sync.
+# Read by:
+#   scripts/gen.jl  -> .claude/hooks/protected-paths.txt (write_guard.sh blocks T3 writes)
+#                   -> .github/pull_request_template.md  (tier checkboxes)
+#   scripts/dod.jl  -> tier of a change = max(PR label tier, tiers of the paths it touches)
+# Glob rule everywhere: `*` matches any characters INCLUDING `/` (sh `case` semantics),
+# and paths are relative to the repo (or worktree lane) root.
+version = 1
+default_tier = "T1"
+
+# `requires` names what scripts/dod.jl checks:
+#   ci (CI itself), ref (PR links a spec or plan under docs/superpowers/),
+#   spec (PR links a spec), tests (src/ or ext/ changed => test/ changed),
+#   changelog (CHANGELOG.md changed, or a new changelog.d/*.md fragment, which the release
+#             manager folds into CHANGELOG.md with `julia scripts/changelog.jl fold`),
+#   review (branch protection; dod.jl only reports it),
+#   adr (an ADR added or changed in the repo's ADR directory, or the PR cites a coordinator
+#        ADR-NNNN; the directory is the profile's `adr_dir`, recorded in .factory-version),
+#   tdd (0.3.0: the lane's commits pass the history rules H1-H9 of scripts/_tdd_history.jl:
+#        phase trailers, role authors, order; a lane with no src/ or ext/ change passes on H9 alone).
+[tiers.T0]
+summary = "Trivial: typo, comment, formatting, docs wording. No spec or plan."
+requires = ["ci"]
+
+[tiers.T1]
+summary = "Normal change inside this package: a plan, tests first, review."
+requires = ["ci", "ref", "tests", "tdd", "changelog", "review"]
+
+[tiers.T2]
+summary = "Public API, contracts, dependencies or compat bounds: full spec, plan, review."
+requires = ["ci", "spec", "tests", "tdd", "changelog", "review"]
+
+[tiers.T3]
+summary = "Process, CI, hooks, release machinery: needs an ADR and the user's approval."
+requires = ["ci", "spec", "tests", "tdd", "changelog", "review", "adr"]
+
+[[protected]]
+tier = "T3"
+globs = [
+  ".github/workflows/*",
+  ".claude/settings.json",
+  ".claude/hooks/*",
+  ".agents/agent-registry.toml",
+  ".agents/factory.toml",
+  ".agents/factory.local*",            # machine-local roots (gitignored)
+  # agent rules and the check register: a lane must not delete a body rule or a blind spot
+  ".agents/bodies/*",
+  ".agents/checks.toml",
+  ".claude/agents/*",
+  ".codex/agents/*",
+  # the gate scripts (and the helpers they all include): a lane must not weaken its own gate
+  "scripts/dod.jl",
+  "scripts/ratchet.jl",
+  "scripts/gen.jl",
+  "scripts/check_docs.jl",
+  "scripts/contract_usage.jl",
+  "scripts/ci.jl",
+  "scripts/_common.jl",
+  "scripts/bench.jl",
+  "scripts/lane",
+  "scripts/lane.jl",                   # `scripts/lane audit` gates /change-review (0.2.4)
+  "scripts/changelog.jl",
+  "scripts/check_claims.jl",
+  "scripts/evidence.jl",
+  # the TDD gate (0.3.0): tdd.jl and its helpers decide `tdd` in dod.jl and the evidence audit
+  "scripts/tdd.jl",
+  "scripts/_tdd_classify.jl",
+  "scripts/_tdd_history.jl",
+  "scripts/_tdd_evidence.jl",
+  "scripts/_tdd_backfill.jl",
+  # the gate's own tests (0.2.4): a lane must not weaken a test so its gate passes
+  "scripts/test/*",
+  "risk.toml",
+  "ratchets.toml",
+  ".factory-version",
+]
+
+[[protected]]
+tier = "T2"
+globs = ["Project.toml", "test/contracts/*", "ext/*"]

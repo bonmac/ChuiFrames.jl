@@ -97,6 +97,21 @@ function tracked_files(dir)
     return files
 end
 
+"""`Base.remove_linenums!`, then each macrocall's own line slot (`args[2]`) set to `nothing` and the
+`:toplevel` LineNumberNodes dropped: `remove_linenums!` keeps both (measured on 1.13.2 and 1.10.12).
+Used by _tdd_history.jl (H5) and _tdd_classify.jl (`requested`: an item that only moved is unchanged)."""
+function strip_lines!(ex)
+    Base.remove_linenums!(ex)
+    function walk(x)
+        x isa Expr || return
+        x.head === :macrocall && length(x.args) >= 2 && (x.args[2] = nothing)
+        x.head === :toplevel && filter!(a -> !(a isa LineNumberNode), x.args)
+        foreach(walk, x.args)
+    end
+    walk(ex)
+    return ex
+end
+
 "Julia environment variables inherited from a parent shell that make a lane or a CI job resolve the wrong project (0.2.4)."
 const LEAKY_ENV = ("JULIA_PROJECT", "JULIA_LOAD_PATH", "JULIA_DEPOT_PATH")
 env_warnings() = [

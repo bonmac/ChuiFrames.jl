@@ -160,3 +160,5 @@ end
         end
     end
 end
+
+include("test_gen_tdd.jl")                                        # factory 0.3.0: the test-writer role
